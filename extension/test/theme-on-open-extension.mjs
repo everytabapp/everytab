@@ -164,6 +164,7 @@ async function waitFor(client, expression, label, timeout = 3000) {
 
 const profile = await mkdtemp(`${tmpdir()}/everytab-theme-on-open-`);
 const chrome = spawn(chromeBin, [
+  ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
   "--disable-gpu",
   "--disable-background-networking",
   "--disable-component-update",
@@ -456,5 +457,21 @@ try {
   ]);
   chrome.stderr.destroy();
   chrome.unref();
-  await rm(profile, { recursive: true, force: true });
+  try {
+    await rm(profile, {
+      recursive: true,
+      force: true,
+      maxRetries: process.platform === "win32" ? 8 : 0,
+      retryDelay: 100
+    });
+  } catch (error) {
+    // Chrome on Windows can leave a short-lived child holding LocalStorage
+    // after the owned browser process exits. The hosted runner removes its
+    // isolated temp directory; do not turn a completed product gate red for
+    // that runner-only cleanup race.
+    if (process.platform !== "win32" || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error?.code)) {
+      throw error;
+    }
+    console.warn(`EveryTab: temporary Chrome profile cleanup deferred (${error.code})`);
+  }
 }
