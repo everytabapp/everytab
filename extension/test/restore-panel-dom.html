@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Restore panel DOM regression</title>
+  <link rel="stylesheet" href="../css/primitives.css">
+</head>
+<body>
+  <pre id="result">RUNNING</pre>
+  <main id="host"></main>
+  <script>
+    addEventListener("error", (event) => {
+      const result = document.getElementById("result");
+      result.textContent = `FAIL: ${event.error?.stack || event.message}`;
+      result.dataset.status = "fail";
+    });
+    addEventListener("unhandledrejection", (event) => {
+      const result = document.getElementById("result");
+      result.textContent = `FAIL: ${event.reason?.stack || event.reason}`;
+      result.dataset.status = "fail";
+    });
+  </script>
+  <script type="module" src="./restore-panel-dom-page.mjs"></script>
+</body>
+</html>

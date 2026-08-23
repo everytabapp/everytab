@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
+      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+<head>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="dark light" />
+<script src="js/boot.js"></script>
+<link rel="stylesheet" href="css/tokens.css" />
+<link rel="stylesheet" href="css/primitives.css" />
+<link rel="stylesheet" href="css/tablist-d4.css" />
+<style>
+  * { box-sizing: border-box; }
+  /* D4-3b: 340px forced the primary's label onto three lines. 380px is still a
+     compact task surface and lets every action label read on one line. */
+  /* Chrome caps action popups at 600px. Use that complete allowance so the
+     ordinary shell reaches its footer without a scrollbar; #app retains its
+     scroll fallback for short displays, text enlargement, and extra banners. */
+  html, body { width: 400px; height: 600px; overflow: hidden; }
+  body { font: 13px/1.45 var(--font-body); margin: 0; min-width: 400px; }
+  #app { height: 100%; overflow-y: auto; padding: 12px 12px 0; }
+  body:not(.popup-ready) #app { visibility: hidden; }
+  h1 { font-family: var(--font-display); font-weight: var(--display-weight);
+       letter-spacing: var(--display-tracking); font-size: 14px; margin: 0 0 8px; }
+  .count { color: var(--ink-3); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+  /* D4-3d: the popup's default control is a quiet ROW, not a box. Nine bordered
+     boxes in two nested cards is what made this surface read as a form; the
+     dashboard already teaches the row vocabulary, so the popup speaks it too.
+     The accent primary and the few genuinely boxed controls opt back in below. */
+  button { display: flex; align-items: center; gap: 10px; width: 100%; margin: 0;
+           padding: 0 8px; min-height: 32px;
+           border: none; border-radius: var(--shape-control);
+           background: none; color: var(--ink); cursor: pointer;
+           text-align: left;
+           transition: background-color var(--motion-feedback) var(--ease-out),
+                       border-color var(--motion-feedback) var(--ease-out),
+                       box-shadow var(--motion-feedback) var(--ease-out),
+                       color var(--motion-feedback) var(--ease-out),
+                       filter var(--motion-feedback) var(--ease-out); }
+  button:hover { background: var(--surface-2); color: var(--ink); }
+  button > .ic { flex: none; color: var(--ink-3); }
+  button:hover > .ic { color: var(--accent-strong-ink); }
+  button > .lbl { flex: 1; min-width: 0; overflow: hidden;
+                  text-overflow: ellipsis; white-space: nowrap; }
+  /* The real binding, shown quietly. Never the only route to an action. */
+  button > .k { flex: none; color: var(--ink-3); font-size: 11px;
+                font-variant-numeric: tabular-nums; }
+  button:disabled > .k { display: none; }
+  /* D4-3c: search material is shared (css/primitives.css). The popup is a
+     genuinely tighter surface, so only its density stays here. */
+  .search-box { margin-bottom: 8px; }
+  .search-field { padding-left: 8px; }
+  .search-field .search-input { padding: 9px 0; font-size: 13px; }
+  .search-results { --search-inset: 8px; --search-row-block: 5px; --search-gap: 7px; }
+  .ghost-hint { font-size: 11px; }
+  .ghost-chip { padding-inline: 4px; font-size: 11px; }
+  .search-results { max-height: min(320px, 68vh); }
+  .rtype { font-size: 10px; }
+  .rmeta { font-size: 10px; }
+  .chip { display: inline-flex; align-items: center; border-radius: 99px; padding: 1px 3px 1px 8px;
+          font-size: 11px; white-space: nowrap; }
+  .chip .x { cursor: pointer; margin-left: 1px; border: none; background: none;
+             color: inherit; font-size: 13px; line-height: 1; padding: 0 4px; }
+  .chip .x:hover { color: var(--ink); background: var(--danger-bg); border-radius: 99px; }
+  .chip .x:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .empty { color: var(--ink-3); font-style: italic; padding: 4px 6px; }
+  /* Inline panels (P3, never modals): material comes from the shared .panel
+     role; only this host's tighter inset lives here. */
+  .panel { padding: 8px 10px; margin: 6px 0 2px; }
+  .panel:empty { display: none; }
+  .snooze-panel, .label-panel { padding-left: 10px; }
+  .snooze-opt { font-size: 12px; padding: 0 8px; min-height: var(--control-h-compact); }
+  .snooze-custom { width: 100%; margin-bottom: 6px; padding: 5px 8px;
+                   border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+                   font: inherit; font-size: 12px; background: var(--surface); color: var(--ink); }
+  .snooze-recur-row { display: flex; align-items: center; gap: 6px; font-size: 12px;
+                      color: var(--ink-2); margin-bottom: 6px; }
+  .snooze-recur { flex: 1; font: inherit; font-size: 12px; padding: 4px 6px;
+                  border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+                  background: var(--surface); color: var(--ink); }
+  /* F16 — the page's existing labels (clickable chips under the title). Each
+     chip is a <button>, so it must override the popup's global full-width button
+     rule back to an inline pill. */
+  .tablabels { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
+               min-width: 0; overflow: hidden; margin: 4px 0 5px; padding: 0 8px; }
+  .tablabels:empty { display: none; }
+  .tablabels .tl-lead { color: var(--ink-3); font-size: 11px; margin-right: 2px; }
+  .chip.labelchip { width: auto; max-width: 105px; min-width: 0; margin: 0; padding: 1px 9px;
+                    border: none; display: inline-flex; overflow: hidden; text-overflow: ellipsis;
+                    text-align: center; cursor: pointer; font-size: 11px; }
+  .chip.labelchip:hover { background: var(--accent); color: var(--accent-ink); }
+  .chip.labelchip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .tablabels-more { width: auto; min-height: 24px; padding: 0 4px; flex: none;
+                    font-size: 11px; color: var(--ink-3); }
+  /* F16 — quick-label panel. The tag combobox (js/ui/labelinput.js) is ported
+     from the dashboard; the popup's .chip rules already style its chips. */
+  .label-panel .label-save { width: 100%; margin-top: 6px; text-align: center; }
+  .tagbox { position: relative; display: inline-flex; align-items: center; gap: 4px;
+            flex-wrap: wrap; width: 100%; padding: 3px 8px; }
+  .tagchips { display: contents; }
+  .taginput { border: none !important; background: none !important; box-shadow: none !important;
+              outline: none; padding: 3px 2px !important; flex: 1; min-width: 70px; font: inherit;
+              font-size: 12px; color: var(--ink); margin: 0; }
+  .tagmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; z-index: 30;
+             max-height: 200px; overflow-y: auto; padding: 4px; }
+  .tagopt { padding: 6px 10px; border-radius: var(--r-mini); font-size: 12px; color: var(--ink-2);
+            cursor: pointer; margin: 0; }
+  .tagopt:hover, .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .msg { color: var(--ink-2); margin-top: 8px; min-height: 18px; padding: 0 8px; }
+  /* The shared feedback row is transient, not structural. Reserving it while
+     empty created a false extra gap before Focus. */
+  .popup-msg:empty { display: none; margin: 0; min-height: 0; padding: 0; }
+  /* F16 — the label confirmation lives inside the This-tab group; collapse it
+     while empty so it reserves no space. */
+  .tabmsg { margin-top: 8px; }
+  .tabmsg:empty { display: none; margin: 0; min-height: 0; }
+  /* Variant colors, disabled behavior, the link role, and the tooltip now come
+     from css/primitives.css; only this host's placement stays here. */
+  .msg .linkbtn { display: inline; width: auto; margin: 0 0 0 8px; }
+  .rename-form { display: flex; gap: 6px; margin-top: 8px; }
+  .rename-form input { flex: 1; min-width: 0; padding: 5px 8px; font: inherit; font-size: 12px;
+                       border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+                       background: var(--surface); color: var(--ink); }
+  .rename-form button { width: auto; margin: 0; justify-content: center; padding: 0 12px;
+                        border: var(--bw) solid var(--border); background: var(--surface); }
+
+  /* D4-3d: sections, not cards. Space and one hairline do the work a nested
+     card used to do, so nothing is a box inside a box. */
+  .group { padding: 12px 0; margin: 0; border-top: var(--bw) solid var(--border); }
+  .group-head { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+                color: var(--accent-strong-ink); margin: 0 0 6px; padding: 0 8px; }
+  .actgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 4px; margin-top: 4px; }
+  .tab-actions { margin-top: 3px; }
+  /* Author CSS outranks Chrome's user-agent `[hidden]` rule. Without this
+     explicit host rule, `.actgrid { display:grid }` kept unsupported tab
+     actions visible even though popup.js correctly set `hidden = true`. */
+  .tab-actions[hidden] { display: none; }
+  .tabhead { display: flex; align-items: center; gap: 8px; min-height: 28px;
+             margin-bottom: 1px; padding: 0 8px; }
+  .tabhead .group-head { flex: none; margin: 0 2px 0 0; padding: 0; }
+  .tabhead .fav { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto; }
+  .tabhead .th-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                       white-space: nowrap; color: var(--ink); font-weight: 600; }
+  .tab-star { width: 28px; min-height: 28px; flex: none; justify-content: center;
+              padding: 0; color: var(--ink-3); }
+  .tab-star.is-starred { color: var(--accent-soft-ink); background: var(--accent-soft); }
+  .tab-star.is-starred .ic { fill: currentColor; }
+  .group-title-row { display: flex; align-items: center; gap: 7px; min-height: 28px;
+                     padding: 0 8px; }
+  .group-title-row .group-head { flex: none; margin: 0; padding: 0; }
+  .group-utility { width: auto; min-height: 28px; margin-left: auto; padding: 0 6px;
+                   gap: 6px; flex: none; font-size: 12px; color: var(--ink-2); }
+  .actions-row { display: flex; gap: 4px; }
+  .actions-row button { width: auto; flex: 1; }
+  .actions-row .grow2 { flex: 2; }
+  /* Transient alert/form primaries keep their bar treatment. Standing popup
+     commands use the quiet row vocabulary, including Save window to Inbox. */
+  button.primary { justify-content: center; min-height: var(--control-h-default);
+                   padding: 0 12px; border-radius: var(--r-btn); font-weight: 650; }
+  button.primary > .lbl { flex: none; }
+  button.primary > .ic { color: var(--accent-ink); }
+  button.primary:hover > .ic { color: var(--accent-ink); }
+  /* The popup's broad row hover must not wash out its one standing accent.
+     Keep the exact accent fill and signal hover with a crisp inner keyline. */
+  button.duplicate-close:hover {
+    background: var(--accent);
+    color: var(--accent-ink);
+    filter: none;
+    box-shadow: var(--btn-glow),
+      inset 0 0 0 1px color-mix(in srgb, var(--accent-ink) 38%, transparent);
+  }
+  .reason { color: var(--ink-3); font-size: 12px; font-style: italic; margin: 5px 0 0; padding: 0 8px; }
+  .reason:empty { display: none; }
+  /* F8-R2 — site-only Focus group. Reuses .group / .actions-row; only the Focus-specific
+     lines need their own rules (no Workspace Focus code returns). */
+  .focus-inline-status { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                         white-space: nowrap; color: var(--ink-3); font-size: 12px;
+                         font-variant-numeric: tabular-nums; }
+  .focus-inline-status.on { display: inline-flex; align-items: center; color: var(--ink-2); }
+  .focus-inline-status.on::before { content: ""; display: block; width: 7px; height: 7px;
+                                    flex: none; border-radius: 50%; background: var(--accent);
+                                    margin-right: 6px; }
+  /* End sits with the status it ends, quiet, so the accent stays unique. */
+  .focus-end { width: auto; margin-left: auto; min-height: 26px; padding: 0 8px;
+               font-size: 12px; font-weight: 400; color: var(--ink-2); white-space: nowrap; }
+  .focus-start { justify-content: center; border: var(--bw) solid var(--border);
+                 background: var(--surface); min-height: var(--control-h-compact); padding-inline: 10px; }
+  .focus-start-row { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+                     gap: 6px; padding: 3px 8px 0; }
+  .popup-focus-access { margin-top: 6px; padding: 6px 8px 0; border-bottom: 0; }
+  .popup-focus-access .focus-access-head { padding-top: 5px; }
+  .focus-duration { width: 100%; font: inherit; font-size: 12px; padding: 6px 8px;
+                    border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+                    background: var(--surface); color: var(--ink); }
+  .focus-custom-panel input { width: 100%; font: inherit; font-size: 12px; padding: 5px 8px;
+                    border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+                    background: var(--surface); color: var(--ink); }
+  .focus-custom-status { color: var(--ink); font-size: 12px; margin-top: 4px; }
+  .focus-custom-status:empty { display: none; }
+
+  /* J5 status strip */
+  .statusstrip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+                 color: var(--ink-3); margin-bottom: 12px; padding: 0 8px; min-height: 18px;
+                 font-variant-numeric: tabular-nums; }
+  .statusstrip a { color: var(--accent-strong-ink); cursor: pointer; text-decoration: none; }
+  .statusstrip a:hover { text-decoration: underline; }
+  .statusstrip .sep { opacity: .5; }
+
+  /* J5/J6 banners (dup hint, vault warn, close-N) */
+  .banner { display: flex; gap: 8px; align-items: center; padding: 7px 9px; margin-bottom: 8px;
+            border-radius: var(--r-btn); border: var(--bw) solid var(--border);
+            background: var(--surface-2); }
+  .banner.warn { background: var(--warn-bg);
+                 border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .banner .fav { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto; }
+  .banner .btext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                   white-space: nowrap; color: var(--ink); }
+  .banner button { width: auto; margin: 0; padding: 4px 9px; justify-content: center;
+                   min-height: var(--control-h-compact); }
+  /* Ordinary banner actions are boxed locally. Semantic primaries keep the
+     shared accent material instead of being overwritten here (notably in Ink). */
+  .banner button:not(.primary) { border: var(--bw) solid var(--border);
+                                 background: var(--surface); }
+  .banner .x { width: auto; min-width: 24px; margin: 0; padding: 2px 7px; border: none;
+               background: none; color: var(--ink-3); justify-content: center; }
+  .banner .x:hover { background: var(--danger-bg); color: var(--ink); }
+  .banner-body { flex: 1; min-width: 0; }
+
+
+  /* J8 footer: navigation, not action. A rule plus quiet buttons keep it from
+     competing with the tab/window groups above it. */
+  .linkrow { position: sticky; z-index: 20; bottom: 0; display: flex; gap: 4px;
+             margin: 0 -12px; padding: 10px 12px 12px;
+             border-top: var(--bw) solid var(--border); background: var(--surface); }
+  .linkrow button { width: auto; flex: 1; margin: 0; justify-content: center; font-size: 12px; }
+
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./js/ui/popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-emphasis="bold"
+      data-checkbox-shape="round" data-corner-style="crisp" data-row-info="useful">
+<head>
+<meta charset="utf-8" />
+<title>EveryTab custom scheme DOM regression</title>
+<link rel="stylesheet" href="../css/tokens.css" />
+<link rel="stylesheet" href="../css/primitives.css" />
+<link rel="stylesheet" href="../css/dashboard.css" />
+<link rel="stylesheet" href="../css/settings-schemes.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; margin: 0; }
+  body { padding: 18px; background: var(--bg-solid); color: var(--ink); }
+  #app { width: min(960px, 100%); margin: 0 auto; }
+</style>
+</head>
+<body>
+<main id="app"><h1>Settings</h1><div id="settings" class="setlist"></div></main>
+<pre id="result">running</pre>
+<script type="module" src="./custom-schemes-dom-page.mjs"></script>
+</body>
+</html>

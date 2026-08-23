@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-emphasis="bold">
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard polish DOM regression</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/tablist-d4.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <style>
+    body { min-height: 2400px; margin: 0; padding: 18px; }
+    #result { position: fixed; right: 4px; bottom: 4px; z-index: 100; max-width: 50vw; }
+    #filter-fixture { position: fixed; top: 18px; right: 18px; z-index: 50; }
+    #focus-motion-fixture { position: fixed; left: 18px; bottom: 18px; z-index: 50; }
+    #search-keyboard-fixture { position: fixed; left: 18px; top: 18px; width: 420px; z-index: 80; }
+    .hero { position: relative; width: min(760px, calc(100vw - 36px)); margin: 0 auto 720px; }
+    .hero-panel { position: relative; }
+    #list-host { width: min(880px, calc(100vw - 36px)); margin: 0 auto; }
+  </style>
+</head>
+<body data-workbench="true" data-row-info="clean">
+  <pre id="result">RUNNING</pre>
+  <div id="filter-fixture" class="section-actions">
+    <div class="open-filter-control"><input class="open-filter-input" type="search" placeholder="Filter tabs..."></div>
+    <button type="button">Close the day</button>
+  </div>
+  <div id="focus-motion-fixture"></div>
+  <div id="search-keyboard-fixture"></div>
+  <section class="hero">
+    <div class="hero-panel">
+      <div class="search-field"><input id="search-input" value="tab"></div>
+      <div class="hero-search-overlay">
+        <div class="search-results search-option-list" role="listbox">
+          <button class="search-row" role="option"><span class="rtitle">Visible search result</span></button>
+          <button class="search-row" role="option"><span class="rtitle">Second result</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <main id="list-host"></main>
+  <script type="module" src="./dashboard-polish-dom-page.mjs"></script>
+</body>
+</html>

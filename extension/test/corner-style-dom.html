@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-scheme="ink" data-mode="light" data-corner-style="crisp"
+      data-checkbox-shape="round" data-row-info="detailed">
+<head>
+  <meta charset="utf-8">
+  <title>Corner style computed contract</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <style>
+    body { margin: 0; padding: 8px; }
+    #fixtures { display: grid; gap: 8px; }
+    .surface-host { display: block; width: min(100%, 760px); }
+    #result { position: fixed; right: 2px; bottom: 2px; z-index: 200; max-width: 70vw; }
+  </style>
+</head>
+<body>
+  <pre id="result">RUNNING</pre>
+  <main id="fixtures"></main>
+  <script>
+    const reportFailure = (reason) => {
+      const node = document.querySelector("#result");
+      node.dataset.status = "fail";
+      node.textContent = reason?.stack || reason?.message || String(reason);
+    };
+    addEventListener("error", (event) => reportFailure(event.error || event.message));
+    addEventListener("unhandledrejection", (event) => reportFailure(event.reason));
+  </script>
+  <script type="module" src="./corner-style-dom-page.mjs"></script>
+</body>
+</html>
+

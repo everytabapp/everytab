@@ -1,0 +1,32 @@
+<!doctype html>
+<html data-scheme="ink" data-mode="light" data-emphasis="bold" data-corner-style="soft"
+      data-row-info="detailed" data-action-labels="icons">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/onboarding.css">
+  <style>
+    body { margin: 0; background: var(--bg-solid); color: var(--ink); }
+    #opener { margin: 12px; }
+    #result { position: fixed; inset: auto 0 0; max-height: 90px; overflow: auto;
+      margin: 0; padding: 4px; background: var(--surface); font: 10px/1.2 monospace; z-index: 200; }
+  </style>
+</head>
+<body>
+  <button id="opener" type="button">Open Help</button>
+  <pre id="result" data-status="pending">RUNNING</pre>
+  <script>
+    const reportFailure = (reason) => {
+      const result = document.querySelector("#result");
+      result.dataset.status = "fail";
+      result.textContent = `FAIL: ${reason?.stack || reason?.message || reason}`;
+    };
+    addEventListener("error", (event) => reportFailure(event.error || event.message));
+    addEventListener("unhandledrejection", (event) => reportFailure(event.reason));
+  </script>
+  <script type="module" src="onboarding-help-dom-page.mjs"></script>
+</body>
+</html>

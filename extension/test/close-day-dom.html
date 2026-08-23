@@ -1,0 +1,31 @@
+<!doctype html>
+<html data-scheme="cream" data-mode="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <style>
+    html { --hero-h: 0px; --section-lead-h: 0px; }
+    body { margin: 0; background: var(--bg-solid); color: var(--ink); }
+    #host { box-sizing: border-box; width: min(100%, 1080px); margin-inline: auto; padding: 24px 16px 80px; }
+    #result { position: fixed; right: 4px; bottom: 4px; z-index: 100; max-width: 60vw;
+      margin: 0; padding: 3px 6px; background: var(--surface); color: var(--ink); font-size: 10px; }
+  </style>
+</head>
+<body data-workbench="true">
+  <main id="host"></main>
+  <pre id="result" data-status="pending">RUNNING</pre>
+  <script>
+    const reportFailure = (reason) => {
+      const result = document.querySelector("#result");
+      result.dataset.status = "fail";
+      result.textContent = `FAIL: ${reason?.stack || reason?.message || reason}`;
+    };
+    addEventListener("error", (event) => reportFailure(event.error || event.message));
+    addEventListener("unhandledrejection", (event) => reportFailure(event.reason));
+  </script>
+  <script type="module" src="close-day-dom-page.mjs"></script>
+</body>
+</html>

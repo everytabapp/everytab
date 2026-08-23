@@ -1,0 +1,791 @@
+/* ============================================================
+   D4 shared semantic primitives.
+
+   This layer contains only behavior and material already shared by
+   multiple product hosts. Dimensions, layout, and host presentation stay
+   in each host stylesheet until their visible D4 migration.
+   ============================================================ */
+
+/* Button and icon-button roles.
+   D4-3b: the variant vocabulary is semantic only. Every host keeps its own
+   width, padding, and density; none of them redefines what primary, danger,
+   warn, quiet, or disabled MEAN. */
+button { font: inherit; }
+button.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--btn-glow);
+}
+button.primary:hover { filter: brightness(1.08); color: var(--accent-ink); }
+/* Danger and warning read through a tint behind normal ink, never colored text:
+   raw --danger/--warn on their own tints falls below AA in several schemes. */
+button.danger {
+  color: var(--ink);
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+}
+button.danger:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--danger) 15%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 48%, transparent);
+}
+button.warn {
+  color: var(--ink);
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+button.warn:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+button.quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+button.quiet:hover { background: var(--nav-hover); color: var(--ink); }
+/* Disabled states are a reason, not a dead end: hosts pair them with a visible
+   line explaining why, so an action never fails after the click. */
+button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+button:disabled:hover {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+button.primary:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+/* Link role: navigation inside prose or a footer, never a fake button box. */
+.linklike, button.linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-strong-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linklike:hover, button.linkbtn:hover { background: none; color: var(--ink); }
+
+/* Inline decision panel. The interaction model bans workflow modals, so every
+   "are you sure" and every follow-up choice is an anchored panel in flow. */
+.panel {
+  background: var(--surface-2);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  text-align: left;
+}
+.panel-q { font-size: 13px; font-weight: 600; color: var(--ink); }
+.panel-actions { display: flex; flex-direction: column; }
+
+/* Field role: the shared label/combobox field */
+.tagbox {
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  cursor: text;
+}
+.tagbox:focus-within {
+  border-color: var(--focus-accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Native checkboxes and radios follow the scheme instead of the OS accent.
+   The tab list's custom checkbox is unaffected: it opts out of native
+   appearance entirely. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
+/* Shared Label/Session group navigation. Both Dashboard and side panel mount
+   the same organization component, so its anatomy must not live in either
+   host stylesheet. It is a flat navigation rail, not another chip family:
+   names and tabular counts have separate lanes and the active group is an
+   underline rather than a browser-default button box. */
+.organization-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 1px 0 var(--sp-3);
+  border-bottom: var(--bw) solid var(--border);
+}
+.organization-row-label {
+  flex: none;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 750;
+}
+.organization-lenses {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.organization-lenses::-webkit-scrollbar { display: none; }
+.organization-lens {
+  min-width: 0;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.organization-lens:hover { color: var(--ink); background: var(--nav-hover); }
+.organization-lens.on {
+  color: var(--accent-strong-ink);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+.organization-lens-name {
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.organization-lens-count {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.organization-row-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.organization-command {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.organization-command:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+
+@media (max-width: 520px) {
+  .organization-row { flex-wrap: wrap; }
+  .organization-lenses { flex-basis: 100%; }
+  .organization-row-actions { flex-basis: 100%; justify-content: flex-end; }
+}
+
+/* Open pointer-drag feedback. Chrome snapshots this compact surface as the
+   native drag image, so the count travels with the pointer instead of living
+   only on the source row. */
+.open-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-200%, -200%);
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 10px;
+  color: var(--accent-strong-ink);
+  background: var(--surface);
+  border: var(--bw) solid var(--accent);
+  border-radius: var(--shape-control);
+  box-shadow: var(--shadow-1);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A quiet terminal rail directly after the final rendered row communicates the
+   append position without adding another full-height instructional row. Its
+   accessible name carries the instruction; the visible affordance is the line. */
+.drop-zone-window-end {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  --drop-end-inset: 10px;
+  min-height: 18px;
+  padding: 0 var(--drop-end-inset);
+  background: transparent;
+  border: 0;
+}
+.drop-zone-window-end::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--drop-end-inset);
+  right: var(--drop-end-inset);
+  height: 2px;
+  border-radius: var(--shape-pill);
+  background: var(--border);
+}
+body.tab-dragging [data-tablist="open"] .drop-zone-window-end,
+.drop-zone-window-end.kbd-slot { display: flex; }
+.drop-zone-window-end.on::before,
+.drop-zone-window-end.kbd-slot:focus-visible::before {
+  height: 3px;
+  background: var(--accent);
+}
+
+/* One cross-platform select arrow. Native arrows sit at different insets on
+   Windows, macOS, and Linux and were visibly off-axis beside same-height
+   controls. Keep the native control semantics while owning only its painted
+   chevron and the space it needs. */
+select:not([multiple]) {
+  appearance: none;
+  padding-inline-end: 32px !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%) !important;
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50% !important;
+  background-size: 5px 5px, 5px 5px !important;
+  background-repeat: no-repeat !important;
+}
+select:not([multiple]):focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: 2px;
+}
+
+/* Chip role */
+.chip {
+  background: var(--accent-soft);
+  color: var(--accent-soft-ink);
+}
+
+/* Open quick filter: one permanently available field on the existing section
+   action line. There is no intermediate icon state and therefore no layout
+   expansion, double boundary, or mystery empty square. Hosts choose its width. */
+.open-filter-control {
+  box-sizing: border-box;
+  width: 180px;
+  min-width: 0;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.open-filter-control:has(.open-filter-input:focus) {
+  border-color: var(--focus-accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.open-filter-input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  opacity: 1;
+}
+.open-filter-input::placeholder { color: var(--ink-3); opacity: 1; }
+
+/* Float/panel role: anchored combobox menu */
+.tagmenu {
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  box-shadow: 0 10px 28px rgba(0,0,0,.22);
+}
+.tagmenu.hidden { display: none; }
+
+/* Shared active-Focus panel material. Hosts retain their own spacing/type. */
+@property --focus-layout-h {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.focus-strip-layout {
+  block-size: var(--focus-layout-h);
+  overflow: hidden;
+}
+.focus-strip-layout-inner { min-height: 0; }
+html.focus-layout-transition {
+  overflow-anchor: none;
+  transition: --focus-layout-h calc(var(--motion-continuity) + var(--motion-feedback) / 2) var(--ease-out);
+}
+.focus-strip {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  border: var(--bw) solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: var(--r-btn);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.focus-strip.hidden { display: none; }
+.focus-strip-content {
+  width: 100%; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: inherit; gap: inherit;
+}
+.focus-strip.focus-exit {
+  pointer-events: none;
+}
+.focus-strip .fs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.focus-strip .fs-name { font-weight: 600; }
+.focus-strip .fs-time { font-variant-numeric: tabular-nums; }
+.focus-strip .fs-counts { font-size: 11.5px; }
+@media (prefers-reduced-motion: reduce) {
+  html.focus-layout-transition { transition: none; }
+}
+
+/* P11-17r: temporary access is a flat status band, not another pill or card.
+   The domain gets the flexible lane; the exact clock and repeated action never
+   disappear at compact widths. Hosts may alter only placement/density. */
+.focus-access {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  width: 100%;
+  padding-block: var(--sp-4);
+  border-block: var(--bw) solid var(--border);
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-variant-numeric: tabular-nums;
+}
+.focus-access.hidden { display: none; }
+.focus-access-head { flex: none; padding-top: 5px; font-weight: 650; }
+.focus-access-rows { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.focus-access-row {
+  min-width: 0;
+  min-height: var(--control-h-compact);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.focus-access-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-access-time { color: var(--ink-2); white-space: nowrap; }
+.focus-access-actions { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.focus-access-add,
+.focus-access-stop {
+  width: auto;
+  min-height: var(--control-h-compact);
+  margin: 0;
+  padding: 0 var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  border-radius: var(--shape-control);
+  background: transparent;
+  color: var(--accent-strong-ink);
+  font: inherit;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.focus-access-add:hover { background: var(--accent-soft); color: var(--accent-soft-ink); }
+.focus-access-stop { color: var(--ink-2); font-weight: 500; }
+.focus-access-stop:hover { background: var(--surface-2); color: var(--ink); }
+.focus-access-add:disabled,
+.focus-access-stop:disabled { cursor: wait; opacity: .62; }
+@media (max-width: 360px) {
+  .focus-access { flex-wrap: wrap; row-gap: var(--sp-2); }
+  .focus-access-head { flex-basis: 100%; padding-top: 0; }
+  .focus-access-rows { flex-basis: 100%; }
+}
+@media (max-width: 260px) {
+  .focus-access-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .focus-access-actions { grid-column: 1 / -1; justify-self: end; }
+}
+.focus-strip > .focus-access {
+  flex: 1 0 100%;
+  margin-top: var(--sp-2);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.focus-strip.access-only > .focus-access { margin-top: 0; border-top: 0; padding-top: 0; }
+
+/* Feedback role: neutral toast plus warning marker */
+.toast.hidden { display: none; }
+.toast.toast-alert {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+}
+.toast.toast-alert::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex: none;
+}
+
+/* ============================================================
+   Search: one field, one result overlay, four hosts.
+
+   D4-3c consolidated four near-identical copies (dashboard, popup, side panel,
+   new tab). Where they had drifted, the CORRECT rule won rather than the union:
+   the result overlay is a floating surface, so it carries a border AND a shadow
+   in every host. Two of them had lost the border. Hosts keep only their own
+   dimensions: field height, input type scale, and max width.
+   ============================================================ */
+.search-box { position: relative; width: 100%; }
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-left: 10px;
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-search);
+  box-shadow: var(--shadow-1);
+  transition: box-shadow var(--motion-feedback) var(--ease-out),
+              border-color var(--motion-feedback) var(--ease-out);
+}
+.search-field:focus-within {
+  border-color: var(--focus-accent);
+  box-shadow: 0 0 0 4px var(--focus-ring), var(--shadow-1);
+}
+/* Inside the field the input is bare: the field owns the boundary. This rule
+   neutralizes the BOUNDARY only. It must not touch type, or its two-class
+   specificity would silently outrank each host's own `.search-input` size. */
+.search-field .search-input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+}
+.search-field .search-input:focus { border: none; box-shadow: none; }
+.scope-chip-host:empty { display: none; }
+.scope-chip-host {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(56%, 240px);
+}
+/* A scope can legitimately be a very long label or Session name. Keep its
+   removal control in sight and let only the descriptive part give way. The
+   compound selector deliberately outranks the compact hosts' generic .chip
+   rules, which also prevents a native popup button from stretching the pill. */
+.scope-chip-host .search-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding-block: 2px;
+  padding-inline: 8px 3px;
+  background: var(--accent-soft);
+  color: var(--accent-soft-ink);
+  border: var(--bw) solid transparent;
+  border-radius: var(--shape-keeper);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.scope-chip-host .search-scope-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-chip-host .search-scope-chip .x {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 22px;
+  min-block-size: 22px;
+  margin: 0;
+  margin-inline-start: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 99px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+.scope-chip-host .search-scope-chip .x:hover { color: var(--ink); background: var(--danger-bg); }
+.scope-chip-host .search-scope-chip .x:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+
+.search-results {
+  position: absolute;
+  top: calc(100% - var(--bw));
+  inset-inline: 0;
+  z-index: 30;
+  max-height: min(60vh, var(--search-results-max-h, 60vh));
+  overflow-y: auto;
+  text-align: left;
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: 0 0 var(--shape-search) var(--shape-search);
+  box-shadow: var(--shadow-1);
+}
+.search-results:empty { display: none; }
+
+/* Popup, side panel, and Minimal use the same connected command silhouette as
+   Dashboard. The field remains a complete rounded control while closed; once
+   results open, the two nodes form one accented top-to-bottom boundary. */
+.search-box:has(.search-results:not(:empty)) .search-field {
+  border-radius: var(--shape-search) var(--shape-search) 0 0;
+  border-bottom-color: transparent;
+}
+.search-box:has(.search-results:not(:empty)) .search-results {
+  border-top: var(--bw) solid var(--border);
+}
+
+/* Search remains non-modal, but while its result surface is open the field and
+   overlay read as one accented command boundary instead of two nearby cards. */
+.search-box:has(.search-results:not(:empty)):focus-within .search-field,
+.search-box:has(.search-results:not(:empty)):focus-within .search-results {
+  border-color: var(--focus-accent);
+  box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-1);
+}
+.search-box:has(.search-results:not(:empty)):focus-within .search-field {
+  border-bottom-color: transparent;
+  clip-path: inset(-5px -5px 0 -5px);
+}
+.search-box:has(.search-results:not(:empty)):focus-within .search-results {
+  border-top-color: var(--border);
+  clip-path: inset(0 -5px -5px -5px);
+}
+
+.search-option-list { min-width: 0; }
+.search-option-group { min-width: 0; }
+/* The divider is visual only. Its group structure stays valid for a listbox:
+   suggestion and result options are never interrupted by a separator role. */
+.search-option-group.has-separator {
+  margin-block-start: var(--sp-1);
+  padding-block-start: var(--sp-1);
+  border-block-start: var(--bw) solid var(--border);
+}
+
+.search-recent {
+  border-top: var(--bw) solid var(--border);
+}
+
+.search-recent-label {
+  padding: 8px var(--search-inset, 10px) 4px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ghost-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--search-gap, 8px);
+  padding: var(--search-row-block, 7px) var(--search-inset, 10px);
+}
+.ghost-hint { color: var(--ink-3); font-size: 12px; margin-right: 2px; }
+.ghost-view-slot,
+.ghost-label-slot { display: contents; }
+.ghost-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 5px;
+  background: transparent;
+  color: var(--ink-2);
+  border: 0;
+  border-radius: var(--shape-control);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ghost-chip:hover { color: var(--ink); background: var(--nav-hover); }
+.ghost-chip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+.ghost-prefix {
+  flex: none;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+.ghost-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ghost-chip:hover .ghost-value { color: var(--ink); }
+
+/* Search's link-like recovery action remains a compact inline control even on
+   the popup, whose document-level button rule otherwise makes every button a
+   full-width workflow row. */
+.search-results .linklike {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 28px;
+  margin: 0;
+  padding: 2px 4px;
+}
+.search-results .empty {
+  padding: var(--search-row-block, 7px) var(--search-inset, 10px);
+  color: var(--ink-3);
+  font-style: italic;
+}
+.search-results .search-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--search-gap, 8px);
+  padding: var(--search-row-block, 7px) var(--search-inset, 10px);
+  border-radius: var(--shape-row);
+  cursor: pointer;
+}
+.search-row:hover { background: var(--nav-hover); }
+.search-row.selected { background: var(--accent-soft); }
+.rtype {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  text-align: end;
+  white-space: nowrap;
+}
+.search-row:hover .rtype { color: var(--ink-2); }
+.search-row.selected .rtype { color: var(--accent-soft-ink); }
+.rtype-session-entity { color: var(--accent-strong-ink); }
+.rtitle { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rmeta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(36%, 14rem);
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rmeta-count {
+  flex: none;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Screen-reader-only text: page titles, status markers, and live regions. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* P11-16: one restrained state for a genuinely blank wait. The solid accent
+   label appears after the shared anti-flash delay without a spinner, looping
+   decoration, or a new container. Hosts keep their own surrounding layout. */
+.loading-feedback {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-10) var(--sp-2);
+  color: var(--accent-strong-ink);
+  font-size: var(--text-control);
+  font-weight: 650;
+  line-height: 1.4;
+  opacity: 0;
+  will-change: opacity;
+  animation: loading-feedback-reveal var(--motion-feedback) var(--ease-out)
+    var(--loading-delay, var(--motion-continuity)) both;
+}
+@keyframes loading-feedback-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Themed tooltip. It supplements a label and never carries the only copy of a
+   critical instruction. Shown by js/ui/tooltip.js. */
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 90;
+  max-width: 240px;
+  padding: 5px 9px;
+  background: var(--surface);
+  color: var(--ink);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  box-shadow: 0 10px 28px rgba(0,0,0,.22);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--motion-reveal) var(--ease-out),
+              transform var(--motion-reveal) var(--ease-out);
+}
+.tooltip.show { opacity: 1; transform: none; }
+
+/* Shared keyboard focus state. More specific row/field rules remain host-owned. */
+:where(button, a[href], summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: 2px;
+}

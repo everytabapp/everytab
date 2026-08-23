@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-scheme="miaminights" data-mode="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PROTOTYPE: Focus entry motion</title>
+  <link rel="stylesheet" href="./focus-motion-prototype.css">
+</head>
+<body>
+  <!-- PROTOTYPE ONLY: one shared Focus-band motion and five button-only state
+       transitions, switchable with ?variant=A..E. No storage or production integration. -->
+  <main id="prototype"></main>
+  <nav class="prototype-switcher" aria-label="Focus motion variants">
+    <button id="previous" type="button" aria-label="Previous proposal">←</button>
+    <span id="variant-name"></span>
+    <button id="replay" type="button">Replay</button>
+    <button id="next" type="button" aria-label="Next proposal">→</button>
+  </nav>
+  <script type="module" src="./focus-motion-prototype.js"></script>
+</body>
+</html>

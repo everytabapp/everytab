@@ -1,0 +1,1806 @@
+  /* ---- shell (D4-3a: one navigation model, three responsive presentations) ----
+     `data-nav` is resolved once, in js/lib/nav-mode.js, from the remembered
+     `uiSidebarCollapsed` preference plus the two measured viewport boundaries
+     (and mirrored pre-paint by js/boot.js). Nothing below re-derives it, and no
+     state introduces a second nav rail: expanded, rail, and header are three
+     presentations of the SAME sidebar DOM in the same order. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: var(--display-weight);
+               letter-spacing: var(--display-tracking); }
+  .app { display: grid; grid-template-columns: var(--nav-w, 204px) 1fr; min-height: 100vh; }
+  /* Manual wide-layout collapse publishes the complete final page once. A flat
+     material layer above that page carries the moving pane edge, revealing or
+     concealing content that is already painted at its final width. The page's
+     sticky fixed-background layers are never transformed, which avoids the
+     compositor seams a transformed gradient left on some sections. */
+  html.nav-morphing,
+  html.nav-morphing body { overflow-x: clip; }
+  html.nav-morphing .sidebar { z-index: 4; }
+  html.nav-morphing .content { position: relative; z-index: 2; }
+  .nav-resize-backdrop {
+    position: fixed;
+    z-index: 3;
+    transform-origin: left center;
+    pointer-events: none;
+    background: var(--side-bg);
+    border-right: var(--bw) solid var(--border);
+  }
+  body.gradient .nav-resize-backdrop,
+  [data-gradient="true"] body .nav-resize-backdrop {
+    background: color-mix(in srgb, var(--side-bg) 92%, transparent);
+  }
+  /* Skip to content: out of the way until a keyboard user reaches it. Kept
+     focusable at all times (moved off-screen rather than display:none). */
+  .skip-link { position: absolute; left: -9999px; top: 0; z-index: 100;
+               padding: var(--sp-3) var(--sp-5); border: var(--bw) solid var(--accent);
+               border-radius: var(--shape-control); background: var(--surface);
+               color: var(--ink); font-size: var(--text-control); font-weight: 600;
+               box-shadow: var(--shadow-1); }
+  .skip-link:focus { position: fixed; left: var(--sp-4); top: var(--sp-4); }
+  .content:focus { outline: none; }
+  .content:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: -4px; }
+  [data-nav="expanded"] .app { --nav-w: 204px; }
+  [data-nav="rail"] .app { --nav-w: 60px; }
+  [data-nav="header"] .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+
+  /* The pane owns the viewport height and never scrolls as a whole: the nav
+     region scrolls inside it so the vault, appearance, and settings footer is
+     always reachable. The depth cue is INSET, falling inside the pane's own
+     right edge, so the content column reads as the nearer surface and the pane
+     as the recess behind it. It is deliberately faint: this is a hint of
+     recess, not a rendered edge, and it must darken in dark schemes rather
+     than glow, which is what `--shadow-ink` guarantees. */
+  .sidebar { position: sticky; top: 0; height: 100vh; overflow: visible;
+             background: var(--side-bg); border-right: var(--bw) solid var(--border);
+             box-shadow: inset -5px 0 5px -6px color-mix(in srgb, var(--shadow-ink) 12%, transparent);
+             padding: 20px 12px 16px; display: flex; flex-direction: column; gap: 2px; }
+  .side-scroll { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
+                 display: flex; flex-direction: column; gap: 2px; }
+  body.gradient .sidebar, [data-gradient="true"] body .sidebar {
+    background: color-mix(in srgb, var(--side-bg) 92%, transparent);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display);
+           font-weight: 700; font-size: 15px; padding: 2px 10px 16px; color: var(--ink); }
+  .brand .mark { width: 24px; height: 24px;
+                 display: grid; place-items: center; font-size: 13px; }
+  /* The manual collapse control. Its action lives in the label, its state in
+     aria-expanded, and its direction in the glyph. */
+  .nav-collapse { flex: none; margin-left: auto;
+                  display: inline-grid; place-items: center;
+                  width: 30px; height: 30px; padding: 0;
+                  border: 0; background: transparent;
+                  color: var(--ink-3); border-radius: var(--shape-control);
+                  cursor: pointer; }
+  .nav-collapse:hover { background: var(--accent-soft); color: var(--accent-soft-ink);
+                        border-color: var(--accent); }
+  /* An author `display` beats the UA sheet's [hidden] rule, so withdrawing the
+     control needs to be stated explicitly or it stays on screen. */
+  .nav-collapse[hidden] { display: none; }
+  .nav { display: flex; flex-direction: column; gap: 1px; }
+  .navitem { display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+             border-radius: var(--shape-nav); color: var(--ink-2); font-size: 13.5px; font-weight: 500;
+             cursor: pointer; border: none; background: none; text-align: left; width: 100%;
+             transition: background var(--motion-feedback) var(--ease-out),
+                         color var(--motion-feedback) var(--ease-out),
+                         transform var(--motion-feedback) var(--ease-out); }
+  /* Hover stays quieter than the current section in both emphasis modes. */
+  .navitem:hover { background: var(--nav-hover); color: var(--ink); }
+  .navitem.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+  /* Bold, the default: the current section is a high-contrast accent fill.
+     `--accent-ink` on `--accent` is the pair the 46-block contrast audit
+     already enforces at 4.5:1, so every scheme stays AA. */
+  [data-emphasis="bold"] .navitem.active { background: var(--accent); color: var(--accent-ink); }
+  [data-emphasis="bold"] .navitem.active .n,
+  [data-emphasis="bold"] .navitem.active .ic,
+  [data-emphasis="bold"] .navitem.active .twist { color: var(--accent-ink); }
+  [data-emphasis="bold"] .navitem.active .twist:hover {
+    background: color-mix(in srgb, var(--accent-ink) 18%, transparent); color: var(--accent-ink); }
+  /* The shared focus ring rounds what it wraps; nav keeps its own shape token so
+     the item does not visibly change radius while focused. */
+  .navitem:focus-visible { border-radius: var(--shape-nav); }
+  .navitem .n { margin-left: auto; font-size: 12px; color: var(--ink-3);
+                font-variant-numeric: tabular-nums; }
+  .navitem.active .n { color: var(--accent-soft-ink); }
+  /* The glyph is small; its hit target is not (24px minimum). */
+  .navitem .twist { transition: transform var(--motion-reveal) var(--ease-out); font-size: 11px;
+                    color: var(--ink-3); display: inline-grid; place-items: center;
+                    min-width: 24px; min-height: 24px; padding: 0 var(--sp-2);
+                    margin: -3px -4px -3px 0; border-radius: var(--r-mini); }
+  .navitem .twist:hover { background: var(--nav-hover); color: var(--ink); }
+  .sec-inner { padding: 0 0 8px; }
+  .navgroup.open > .navitem .twist { transform: rotate(90deg); }
+  /* D4-4: the fold is instant. Animating `grid-template-rows` animates LAYOUT,
+     which the approved vocabulary rejects for routine rendering, and it ran at
+     220-300ms, over the 200ms ceiling. Opening a nav group is a disclosure, not
+     a story. */
+  .subnav { overflow: hidden; display: grid; grid-template-rows: 0fr; }
+  .navgroup.open > .subnav { grid-template-rows: 1fr; }
+  .subnav > div { min-width: 0; min-height: 0; }
+  .subnav .navitem { padding-left: 34px; font-size: 13px; font-weight: 400; }
+  /* U5: session sub-items — nav button + a hover/focus-revealed Restore beside
+     it (opacity only: reveals never shift layout) */
+  .subrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center; min-width: 0; max-width: 100%; }
+  /* The navigation target paints the full row. Its children use the parent's
+     three stable lanes, while Restore sits above the middle lane. The count
+     therefore keeps the same right edge as every other sub-navigation count
+     without making a long name push either trailing control away. */
+  .subrow .navitem { grid-area: 1 / 1 / 2 / -1; display: grid;
+    grid-template-columns: subgrid; width: 100%; min-width: 0; }
+  /* The session-name lane, not the whole button, owns the available width. This
+     lets a localized or unbroken name yield to its count and Restore control
+     instead of pushing either lane out of the sidebar. */
+  .subrow .navitem .navtext { grid-column: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .subrow .navitem .n { grid-column: 3; margin-left: 0; }
+  .subrow .subact { grid-area: 1 / 2; z-index: 1; padding: 3px 6px; border: none;
+    background: transparent; color: var(--ink-3); border-radius: var(--shape-mini);
+    opacity: 0; transition: opacity var(--motion-feedback) var(--ease-out); cursor: pointer; }
+  .subrow:hover .subact, .subrow:focus-within .subact { opacity: 1; }
+  .subrow .subact:hover { background: var(--nav-hover); color: var(--accent-strong-ink); }
+  .navlabel { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+              color: var(--accent-strong-ink); padding: 16px 10px 4px; }
+  /* Always-available footer. It is a flex sibling of the scrolling nav rather
+     than a sticky overlay, so it needs no opaque patch and stays correct on the
+     translucent gradient background. */
+  .side-foot { flex: none; margin-top: 10px; padding: 10px 6px 0; display: flex;
+               flex-direction: column; align-items: stretch; gap: 7px;
+               border-top: var(--bw) solid var(--border); }
+  .side-vault-row, .appearance-row { display: flex; align-items: center; min-width: 0; }
+  .vault-slot { min-width: 0; display: flex; }
+  .appearance-row { gap: 8px; }
+  .appearance-row > .gear { margin-left: auto; }
+  /* status carried by the tint bg + the colored dot; text stays dark for AA */
+  .vault-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+                color: var(--ink); background: var(--ok-bg); border-radius: 99px; padding: 4px 10px;
+                cursor: pointer; border: none; min-width: 0; max-width: 100%;
+                white-space: nowrap; overflow: hidden; }
+  .vault-pill .vp-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vault-pill.warn { background: var(--warn-bg); }
+  .vault-pill.unset { color: var(--ink); background: var(--surface-2); }
+  .vault-pill .dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
+                     background: var(--ok); box-shadow: 0 0 0 1px var(--status-marker-outline); }
+  .vault-pill.warn .dot { background: var(--warn); }
+  .vault-pill.unset .dot { background: var(--ink-3); }
+  .gear { margin-left: auto; width: 30px; height: 30px; min-width: 30px;
+          display: inline-grid; place-items: center; padding: 0;
+          border-radius: var(--shape-control); border: none;
+          background: transparent; color: var(--ink-3); cursor: pointer; font-size: 15px; }
+  .gear:hover { background: var(--nav-hover); color: var(--ink); }
+
+  /* --- rail: the manual collapse OR the automatic compact breakpoint. Only the
+     VISIBLE text is dropped; names, counts, tooltips, and DOM order survive. --- */
+  [data-nav="rail"] .sidebar { padding: 20px 6px 16px; }
+  /* A 60px rail is part of the page edge, not a recessed side room. Reuse the
+     page material in the settled rail and in the temporary resize layer so a
+     collapse cannot leave a differently coloured vertical slab beside the
+     content. Expanded navigation keeps the deliberately quieter side material. */
+  [data-nav="rail"] .sidebar,
+  [data-nav="rail"] .nav-resize-backdrop {
+    background: var(--bg-solid);
+    background-attachment: fixed;
+  }
+  [data-nav="rail"] body.gradient .sidebar,
+  [data-nav="rail"] body.gradient .nav-resize-backdrop,
+  [data-gradient="true"][data-nav="rail"] body .sidebar,
+  [data-gradient="true"][data-nav="rail"] body .nav-resize-backdrop {
+    background: var(--bg-grad, var(--bg-solid));
+    background-attachment: fixed;
+  }
+  [data-nav="rail"] .brand { flex-direction: column; gap: var(--sp-4); padding: 2px 0 var(--sp-6); }
+  /* The group labels carry the only structure the rail has left, so they become
+     a hairline rather than disappearing: without it the three groups read as one
+     undifferentiated run of fifteen icons. The text stays in the accessibility
+     tree, which is where it is still useful. */
+  [data-nav="rail"] .navlabel { height: 0; overflow: hidden; padding: 0;
+    margin: var(--sp-3) var(--sp-2); border-top: var(--bw) solid var(--border); }
+  [data-nav="rail"] .brandname,
+  [data-nav="rail"] .navitem .navtext,
+  [data-nav="rail"] .navitem .n,
+  [data-nav="rail"] .navitem .twist,
+  [data-nav="rail"] .subnav,
+  [data-nav="rail"] .vault-pill .vp-text { display: none; }
+  [data-nav="rail"] .nav-collapse { margin-left: 0; }
+  [data-nav="rail"] .navitem { justify-content: center; gap: 0; padding: var(--sp-4) 0; }
+  [data-nav="rail"] .side-foot { align-items: center; padding: var(--sp-6) 0 0; }
+  [data-nav="rail"] .appearance-row { flex-direction: column; gap: var(--sp-3); }
+  [data-nav="rail"] .appearance-row > .gear { margin-left: 0; }
+  [data-nav="rail"] .quick-theme,
+  [data-nav="rail"] .mode-switch { flex-direction: column; }
+  [data-nav="rail"] .vault-pill { padding: var(--sp-3); justify-content: center; }
+
+  /* --- anchored header switcher: below the phone-like/200%-zoom boundary a
+     squeezed side rail costs more than it gives, so the same navigation becomes
+     a horizontal header strip above the content column and the content takes
+     the full width. The sticky sticker in this state is the hero, not the
+     switcher, so the two never stack or collide. --- */
+  [data-nav="header"] .sidebar { position: static; height: auto; flex-direction: row;
+    align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-6);
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+    border-right: 0; border-bottom: var(--bw) solid var(--border); }
+  /* The horizontal switcher has one scroll axis of its own, so the nav region
+     dissolves and its children become direct items of the header row. */
+  [data-nav="header"] .side-scroll { display: contents; }
+  [data-nav="header"] .sidebar > *,
+  [data-nav="header"] .side-scroll > * { flex: none; }
+  [data-nav="header"] .sidebar { box-shadow: none; }
+  [data-nav="header"] .brand { padding: 0 var(--sp-4) 0 0; }
+  [data-nav="header"] .brandname,
+  [data-nav="header"] .navlabel,
+  [data-nav="header"] .subnav,
+  [data-nav="header"] .navitem .twist,
+  [data-nav="header"] .nav-collapse { display: none; }
+  [data-nav="header"] .nav { flex-direction: row; }
+  [data-nav="header"] .navitem { width: auto; white-space: nowrap; }
+  [data-nav="header"] .side-foot { flex-direction: row; align-items: center;
+    gap: var(--sp-3); margin-top: 0; margin-left: auto; padding: 0 0 0 var(--sp-4);
+    border-top: 0; }
+
+  /* Content column. `--pad-x` is one number so the sticky shell and the Focus
+     band can full-bleed the pane without re-deriving the padding. */
+  .content { position: relative; min-width: 0; --pad-x: max(28px, 4vw);
+             --utility-right: clamp(18px, 2vw, 28px);
+             padding: 0 var(--pad-x) 90px; }
+  [data-nav="header"] .content { --pad-x: var(--sp-6); }
+  /* F34-6: no shell. The hero paints the page's own viewport-anchored
+     background purely so nothing shows ABOVE the box, and it stops at the
+     box's lower edge, so a row slides under the floating panel and is simply
+     gone. No band, no fade strip, no blur: the panel's own shadow is what
+     tells you something is on top. */
+  .hero { position: sticky; top: 0; z-index: 20; text-align: center;
+          margin: 0 calc(-1 * var(--pad-x));
+          padding: var(--sp-10) var(--pad-x) 0;
+          background: var(--bg-solid); background-attachment: fixed;
+          box-shadow: none; }
+  body.gradient .hero,
+  [data-gradient="true"] body .hero {
+    background: var(--bg-grad, var(--bg-solid));
+    background-attachment: fixed;
+  }
+  /* F31: one composer-style panel holds the input and the counts beneath it.
+     It owns the boundary, the elevation, and the focus ring; the field inside
+     is bare. Its axis matches the collections below, so scrolled rows pass
+     under an edge that lines up with them instead of a floating capsule. */
+  /* F34: the panel is now a container of full-width rows, so its own padding
+     goes to zero and each row owns its inset. */
+  .hero-panel { position: relative; max-width: 680px; margin: 0 auto; text-align: left;
+                padding: 0;
+                border: var(--bw) solid var(--border); border-radius: var(--shape-search);
+                background: var(--surface);
+                box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-ink) 8%, transparent),
+                            0 10px 26px color-mix(in srgb, var(--shadow-ink) 10%, transparent);
+                transition: box-shadow var(--motion-feedback) var(--ease-out),
+                            border-color var(--motion-feedback) var(--ease-out); }
+  /* Dark schemes put `--surface` close to the page, so the floating panel takes
+     the next material step up and a slightly firmer edge. Both are already
+     contrast-audited surfaces, so the text on them is unchanged. */
+  [data-mode="dark"] .hero-panel {
+    background: var(--surface-2);
+    border-color: color-mix(in srgb, var(--ink) 20%, var(--border));
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-ink) 34%, transparent),
+                0 12px 30px color-mix(in srgb, var(--shadow-ink) 40%, transparent); }
+  .hero-panel:focus-within { border-color: var(--focus-accent);
+    box-shadow: 0 0 0 4px var(--focus-ring),
+                0 2px 5px color-mix(in srgb, var(--shadow-ink) 10%, transparent),
+                0 12px 30px color-mix(in srgb, var(--shadow-ink) 12%, transparent); }
+  [data-mode="dark"] .hero-panel:focus-within { border-color: var(--focus-accent);
+    box-shadow: 0 0 0 4px var(--focus-ring),
+                0 2px 5px color-mix(in srgb, var(--shadow-ink) 36%, transparent),
+                0 14px 34px color-mix(in srgb, var(--shadow-ink) 44%, transparent); }
+  body[data-workbench="true"] .hero .hero-panel { max-width: 760px; }
+  /* The panel is the boundary, so NOTHING inside it draws one. The field and
+     the input each carry their own border, radius and elevation for the hosts
+     that use them bare, and every one of those has to be neutralized here or a
+     second frame appears inside the panel. */
+  /* F34-7: one inset and one row height for every row the box holds, so the
+     field, the launcher, the attention line and the results all read as one
+     evenly spaced object rather than a stack of differently sized bands. */
+  .hero-panel {
+    --cmd-inset: 14px;
+    --cmd-row-h: 40px;
+    --search-inset: var(--cmd-inset);
+    --search-row-block: 5px;
+    --search-gap: 8px;
+  }
+  .hero-panel .search-box { position: static; max-width: none; padding: 0; }
+  .hero-panel .search-field { min-height: var(--cmd-row-h); align-items: center;
+                              padding: 4px var(--cmd-inset); }
+  .hero-panel .search-field,
+  .hero-panel .search-field:focus-within,
+  .hero-panel .search-input,
+  .hero-panel .search-input:focus {
+    border: none; border-radius: 0; background: transparent;
+    box-shadow: none; outline: none;
+  }
+  .hero-panel .search-input { padding: 0; font-size: 15px; line-height: 1.5; }
+  /* F37: Dashboard rejoins the shared Search overlay contract. The connected
+     overlay owns results plus the optional History footer and is absolutely
+     positioned below the fixed-height field, so opening Search cannot change
+     --hero-h, push a sticky window header, or reveal that window's own rows
+     above its cap. */
+  .hero-search-overlay {
+    display: none;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% - var(--bw));
+    inset-inline: calc(-1 * var(--bw));
+    overflow: clip;
+    border: var(--bw) solid var(--border);
+    border-radius: 0 0 var(--shape-search) var(--shape-search);
+    background: var(--surface);
+    box-shadow:
+      0 2px 6px color-mix(in srgb, var(--shadow-ink) 12%, transparent),
+      0 18px 38px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+  }
+  .hero-search-overlay:has(.search-results:not(:empty)) { display: block; }
+  [data-mode="dark"] .hero-search-overlay {
+    background: var(--surface-2);
+    border-color: color-mix(in srgb, var(--ink) 20%, var(--border));
+  }
+  .hero-search-overlay .search-results {
+    position: static;
+    max-height: 46vh;
+    margin: 0;
+    overflow-y: auto;
+    border: 0;
+    border-top: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  [data-mode="dark"] .hero-panel .search-results {
+    border-top-color: color-mix(in srgb, var(--ink) 20%, var(--border));
+  }
+  /* The suggestion and result rows share the box's inset, and centre rather
+     than sitting on a baseline, which is what left "Jump to" looking high. */
+  .hero-panel .ghost-chips { min-height: var(--cmd-row-h); }
+  .hero-panel .ghost-hint { line-height: 1; }
+  .hero-panel:has(.search-results:not(:empty)) {
+    border-radius: var(--shape-search) var(--shape-search) 0 0;
+    border-bottom-color: transparent;
+  }
+  .hero-panel:has(.search-results:not(:empty)) .hero-search-overlay {
+    border-top-color: var(--border);
+  }
+  /* Being open is its own affordance, and a ring around a panel that now
+     contains the results would be a very large loop. */
+  .hero-panel:has(.search-results:not(:empty)):focus-within {
+    border-color: var(--focus-accent);
+    border-bottom-color: transparent;
+    box-shadow: -4px 0 0 -1px var(--focus-ring),
+                4px 0 0 -1px var(--focus-ring),
+                0 -4px 0 -1px var(--focus-ring),
+                0 2px 5px color-mix(in srgb, var(--shadow-ink) 10%, transparent),
+                0 12px 30px color-mix(in srgb, var(--shadow-ink) 12%, transparent);
+  }
+  [data-mode="dark"] .hero-panel:has(.search-results:not(:empty)):focus-within {
+    border-color: var(--focus-accent);
+    border-bottom-color: transparent;
+    box-shadow: -4px 0 0 -1px var(--focus-ring),
+                4px 0 0 -1px var(--focus-ring),
+                0 -4px 0 -1px var(--focus-ring),
+                0 2px 5px color-mix(in srgb, var(--shadow-ink) 36%, transparent),
+                0 14px 34px color-mix(in srgb, var(--shadow-ink) 44%, transparent);
+  }
+  /* Once its results connect to the panel, the usual panel-wide focus ring
+     would outline a much larger object. Keep keyboard focus unmistakable on
+     the 40px text-entry row itself instead. */
+  .hero-panel:has(.search-results:not(:empty)) .search-field:focus-within {
+    border-radius: calc(var(--shape-search) - var(--bw)) calc(var(--shape-search) - var(--bw)) 0 0;
+    box-shadow: none;
+  }
+  .hero-panel:has(.search-results:not(:empty)):focus-within .hero-search-overlay {
+    border-color: var(--focus-accent);
+    border-top-color: var(--border);
+    box-shadow: -4px 0 0 -1px var(--focus-ring),
+      4px 0 0 -1px var(--focus-ring),
+      0 4px 0 -1px var(--focus-ring),
+      0 18px 38px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+  }
+  /* The Starred rail uses the same neutral placeholder as the former chips. */
+  .cmd-fav-blank { background: var(--surface); border: var(--bw) solid var(--border); }
+  /* F8-R2/F37 — the global site-only Focus strip, last in the sticky hero. The
+     inactive entry lives in the sidebar. On the Dashboard the active state
+     is a full-width square band across the content pane; the constrained side
+     panel keeps the contained strip. It never names a window. */
+  .hero .focus-strip-layout {
+    position: relative;
+    margin: 0 calc(-1 * var(--pad-x));
+    --focus-recess-bg: var(--accent-soft);
+    --focus-recess-ink: var(--ink);
+  }
+  /* The layout track itself reveals this borderless material while it opens
+     and conceals it while it closes. Its two restrained inset shadows make
+     the new band read as a shallow recess, without reviving a rail or glow. */
+  .hero .focus-strip-layout::before {
+    content: "";
+    position: absolute;
+    inset: var(--sp-8) 0 0;
+    pointer-events: none;
+    background: var(--focus-recess-bg);
+    box-shadow:
+      inset 0 2px 3px -3px color-mix(in srgb, var(--focus-recess-ink) 22%, transparent),
+      inset 0 -2px 3px -3px color-mix(in srgb, var(--focus-recess-ink) 22%, transparent);
+  }
+  .hero .focus-strip-layout-inner { position: relative; z-index: 1; padding-top: var(--sp-8); }
+  .hero .focus-strip { gap: var(--sp-3) var(--sp-6); font-size: 12.5px;
+    margin: 0;
+    padding: var(--sp-3) var(--pad-x);
+    border-radius: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none; }
+  /* Bold, the default: a solid accent fill, clearly stronger than a selected
+     row. `--accent-ink` on `--accent` is contrast-audited in all 46 blocks.
+     Muted keeps the same geometry on the softer accent-soft fill, where --ink
+     is AA by construction. */
+  [data-emphasis="bold"] .hero .focus-strip { background: transparent;
+    color: var(--accent-ink); border-color: transparent; }
+  [data-emphasis="bold"] .hero .focus-strip-layout {
+    --focus-recess-bg: var(--accent);
+    --focus-recess-ink: var(--accent-ink);
+  }
+  [data-emphasis="bold"] .hero .focus-strip .fs-dot { background: var(--accent-ink); }
+  [data-emphasis="bold"] .hero .focus-strip .mini { background: var(--surface);
+    color: var(--ink); border-color: var(--border); }
+  [data-emphasis="bold"] .hero .focus-strip .mini:hover { background: var(--surface-2);
+    color: var(--ink); border-color: var(--accent); }
+  /* End focus is a real control inside the band, not a row-sized mini action. */
+  .hero .focus-strip .mini { min-height: var(--control-h-compact);
+    padding: 0 var(--sp-5); font-size: var(--text-control); border-radius: var(--shape-control); }
+  .focus-strip .mini { margin: 0; }
+  .hero .focus-strip > .focus-strip-content > .focus-access {
+    border-color: color-mix(in srgb, currentColor 38%, transparent);
+  }
+  [data-emphasis="bold"] .hero .focus-access,
+  [data-emphasis="bold"] .hero .focus-access-time,
+  [data-emphasis="bold"] .hero .focus-access-add,
+  [data-emphasis="bold"] .hero .focus-access-stop { color: var(--accent-ink); }
+  [data-emphasis="bold"] .hero .focus-access-add:hover,
+  [data-emphasis="bold"] .hero .focus-access-stop:hover {
+    background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+    color: var(--accent-ink);
+  }
+  /* F48: the guarded count acts. No button chrome: the underline on hover is
+     the same quiet link language as Needs you's Activity route. */
+  .fs-counts-link { padding: 0; border: 0; background: transparent; color: inherit;
+    font: inherit; cursor: pointer; }
+  /* F48r: pin the ink. The generic `button:hover` paints accent ink, which is
+     unreadable ON the accent band — inside this strip the only safe colour is
+     the one the band already uses. */
+  .fs-counts-link:hover, .fs-counts-link:focus-visible {
+    color: inherit; background: transparent;
+    text-decoration: underline; text-underline-offset: 3px; }
+
+  .sections { max-width: 880px; margin: 20px auto 0; }
+  .sections > section { border-bottom: var(--bw) solid var(--border); padding: 4px 0 10px; }
+  .sections > section:last-child { border-bottom: none; }
+
+  /* F40/F42: Canvas line. Route identity stays on the page material rather
+     than becoming a second toolbar/card. It owns the complete 10px handoff to
+     the first group cap. No part of that handoff lives in scrolling content,
+     so its opaque paint and its measured lower edge are always identical. */
+  .section-lead { min-width: 0; min-height: 42px; display: flex;
+    align-items: center; justify-content: space-between; gap: var(--sp-5);
+    padding: 0 2px calc(var(--sp-4) + var(--sp-1)); color: var(--ink); }
+  .section-identity { min-width: 0; display: flex; align-items: baseline;
+    gap: var(--sp-3); overflow: hidden; white-space: nowrap; }
+  .section-lead h2 { flex: none; margin: 0; font-size: var(--text-section); line-height: 34px; }
+  .section-actions { flex: none; display: flex; align-items: center; gap: var(--sp-3); }
+  .section-actions:empty { display: none; }
+  .section-actions > button { min-height: 30px; padding: 0 var(--sp-4);
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+    background: var(--surface); color: var(--ink-2); font: inherit; font-size: 12px;
+    cursor: pointer; }
+  .section-actions > button:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+  .section-actions > button.section-primary-action { color: var(--accent-text);
+    background: transparent; border-color: transparent; font-weight: 700; }
+  .section-actions > button.section-primary-action:hover { color: var(--accent-soft-ink);
+    background: var(--accent-soft); border-color: var(--accent); }
+  /* Open's quick scanner belongs to the existing action line. Keeping it out
+     of the section body preserves the long-settled window/header axis and
+     removes an otherwise almost-empty sticky tier. */
+  .section-actions .open-filter-control { width: min(230px, 27vw); }
+
+  /* N15: explanation shares the identity line. The middle dot is a quiet
+     reading cue, not a breadcrumb; overflow ellipsizes before actions move. */
+  /* F10 — quiet idle-window nudge on Open-tabs headers (a gentle amber, not an alarm) */
+  .idle-nudge { color: var(--ink); background: var(--warn-bg); border-radius: var(--r-mini);
+                padding: 2px 7px; margin-left: 2px; }
+  .sec-tagline { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+  .sec-tagline::before { content: "·"; margin-right: var(--sp-3); }
+  body.hide-taglines .sec-tagline { display: none; }
+  /* U10 — the "Learn more" link that opens the matching onboarding page */
+  .ob-learn { margin-left: 6px; padding: 0; border: none; background: none; font: inherit;
+              font-size: 12.5px; color: var(--accent-strong-ink); text-decoration: underline;
+              cursor: pointer; }
+  .ob-learn:hover { color: var(--ink); }
+  .ob-learn:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 2px;
+    border-radius: var(--shape-focus); }
+
+  .sec-wrap { min-width: 0; display: grid; grid-template-rows: 1fr; }
+  /* F34-7r: `clip`, not `hidden`. Both clip identically, but `hidden` makes
+     this a scroll container, and a sticky window header inside it would then
+     anchor to a box that never scrolls, landing mid-page instead of under the
+     command box. The fold animations this once served were retired in D4-4. */
+  .sec-body { min-width: 0; min-height: 0; overflow: clip; }
+  .sec-body { opacity: 1; }
+  .sec-inner { min-width: 0; }
+
+  /* generic animated fold (smart views, labels, window blocks) */
+  .fold-wrap { display: grid; grid-template-rows: 0fr; }
+  .fold-wrap.open { grid-template-rows: 1fr; }
+  .fold-wrap > div { min-height: 0; overflow: hidden; }
+
+  /* N12 is now structural: with the folds instant (D4-4), nothing animates while
+     the sections fill, so no boot-time suppression is needed. `body.booting`
+     remains as the render-phase marker other code reads. */
+
+  button.mini2 { padding: 3px 11px; font-size: 12px; color: var(--ink-3);
+    background: transparent; border-color: transparent; }
+  button.mini2:hover { color: var(--accent-soft-ink);
+    background: var(--accent-soft); }
+
+  /* selection — click the title, not just the checkbox */
+  .item.selected { border-color: var(--accent);
+                   background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+  .item-title.selectable { cursor: pointer; }
+  .item-title.selectable:hover { color: var(--accent-strong-ink); }
+
+  /* D4-2b: shared row/group/checkbox/action geometry lives in tablist-d4.css. */
+  .chip .x { cursor: pointer; margin-left: 4px; opacity: .6; border: none; background: none;
+             color: inherit; font: inherit; line-height: 1; padding: 0 2px; border-radius: var(--r-mini); }
+  /* Destructive-hover reads via a danger *tint* behind dark ink (the hardening
+     pattern), not danger-colored text: raw --danger on accent-soft fell to
+     ~2.77:1 on Everforest light. --ink is AA on every tint by construction. */
+  .chip .x:hover { opacity: 1; color: var(--ink); background: var(--danger-bg); }
+  .chip .x:focus-visible { opacity: 1; outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+
+  /* open-tabs drag & drop + inline snooze */
+  .trow.dragging { opacity: .45; }
+  .trow.drop-target { box-shadow: inset 0 2.5px 0 var(--accent); }
+  .item-head.drop-target { box-shadow: inset 0 -2.5px 0 var(--accent); }
+  /* P2g-4a: between-windows "new window" zone — exists only while a tab drag
+     is live (body.tab-dragging), highlights on hover. No transitions, so it
+     needs no reduced-motion exemption. */
+  .drop-zone-new { display: none; margin: 6px 0; padding: 7px 10px;
+    border: 1.5px dashed var(--border); border-radius: var(--shape-card);
+    color: var(--ink-3); font-size: 12px; text-align: center; }
+  /* zones reveal only in the section whose drag is live (P2g-4b: an Inbox
+     drag must not surface the Open-tabs zones, or vice versa).
+     P2g-4c: session zones only inside the dragged row's OWN card (.drag-home) —
+     session drag never crosses sessions. */
+  body.tab-dragging [data-tablist="open"] .drop-zone-new,
+  body.inbox-dragging [data-tablist="inbox"] .drop-zone-new,
+  body.session-dragging [data-tablist="sessions"] .item.drag-home .drop-zone-new { display: block; }
+  /* P2g-4d: keyboard move — the highlighted target slot; a highlighted zone
+     becomes visible regardless of any drag body class. No transitions. */
+  .move-handle { cursor: grab; }
+  .kbd-slot { outline: 2px solid var(--focus-accent); outline-offset: 1px;
+    border-radius: var(--shape-focus); }
+  .drop-zone-new.kbd-slot { display: block; }
+  .drop-zone-new.on { border-color: var(--accent); color: var(--accent-soft-ink);
+    background: var(--accent-soft); }
+  .trow[draggable="true"] { cursor: grab; }
+  .trow[draggable="true"]:active { cursor: grabbing; }
+  .snoozebar { display: flex; gap: 6px; align-items: center; padding: 4px 10px 8px 44px;
+               flex-wrap: wrap; }
+  .snoozebar .mini { margin-left: 0; }
+  /* F13 — the Open-tabs window "Organize" panel (sort rows + gather dropdown) */
+  .organizebar { display: flex; gap: 6px; align-items: center; padding: 6px 10px 8px;
+                 flex-wrap: wrap; }
+  .organizebar .mini { margin-left: 0; }
+  .organizebar .host { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+  .organize-hint { margin-left: 2px; }
+  /* P2b-1 — a whole-window snooze expands to its tab list */
+  .snooze-tabs > summary { cursor: pointer; list-style: none; display: inline; }
+  .snooze-tabs > summary::-webkit-details-marker { display: none; }
+  .snooze-tabs > summary::after { content: " ▾"; color: var(--ink-3); font-size: 10px; }
+  .snooze-tabs[open] > summary::after { content: " ▴"; }
+  .snooze-tablist { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 2px 2px;
+                    padding-left: 8px; border-left: var(--bw) solid var(--border); }
+  .snooze-tablist a { font-size: 12px; color: var(--ink-2); overflow: hidden;
+                      text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
+
+  /* quick theme controls + scheme popover */
+  .quick-theme { display: inline-flex; align-items: center; gap: 4px; }
+  .mode-switch { display: inline-flex; gap: 1px; padding: 2px; background: var(--surface-2);
+                 border: var(--bw) solid var(--border); border-radius: var(--r-btn); }
+  .mode-choice { display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+                 border: none; border-radius: var(--shape-mini); color: var(--ink-3); background: transparent; }
+  .mode-choice:hover { color: var(--ink); background: var(--nav-hover); }
+  .mode-choice.on { color: var(--accent-strong-ink); background: var(--surface);
+                    box-shadow: var(--shadow-1); }
+  .quick-theme > .gear { margin-left: 0; width: 30px; height: 30px; min-width: 30px; }
+  .theme-quadrants { grid-column: 1 / -1; display: grid;
+                     grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .theme-quadrant { min-width: 0; padding: 6px 6px 8px; }
+  .theme-quadrant:nth-child(even) { border-left: var(--bw) solid var(--border); }
+  .theme-quadrant:nth-child(n + 3) { border-top: var(--bw) solid var(--border); padding-top: 10px; }
+  .theme-group-label { margin: 0; padding: 0 2px 6px; color: var(--accent-strong-ink);
+                       font-size: 11px; font-weight: 700; line-height: 1.25; }
+  .theme-quadrant-options { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .theme-custom-group { grid-column: 1 / -1; margin-top: 4px; padding: 10px 6px 3px;
+                        border-top: var(--bw) solid var(--border); }
+  .theme-custom-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                          gap: 3px 20px; min-width: 0; }
+  .theme-manage { grid-column: 1 / -1; width: 100%; margin-top: 5px; padding: 8px 10px; text-align: left;
+                  color: var(--accent-strong-ink); background: transparent;
+                  border: none; border-top: var(--bw) solid var(--border); cursor: pointer; }
+  .theme-manage:hover { background: var(--accent-soft); }
+  button.mini2.on { color: var(--accent-soft-ink); background: var(--accent-soft); font-weight: 600; }
+  .theme-pop { position: fixed; z-index: 40;
+               background: var(--surface); border: var(--bw) solid var(--border);
+               border-radius: var(--r-card); box-shadow: 0 14px 38px rgba(0,0,0,.28);
+               padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0;
+               overflow-y: auto; }
+  .theme-pop.hidden { display: none; }
+  .theme-opt-row { display: flex; min-width: 0; overflow: hidden; border-radius: var(--shape-nav); }
+  .theme-opt { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; border: none; background: none;
+               padding: 6px 8px; border-radius: var(--shape-nav); font-size: 12.5px; color: var(--ink-2);
+               cursor: pointer; text-align: left; overflow: hidden; }
+  .theme-opt:hover { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .theme-opt.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+  .theme-opt .sw { width: 12px; height: 12px; min-width: 12px; border-radius: 50%; }
+  .theme-opt-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-star { width: 28px; flex: none; border: none; background: none; color: var(--ink-3);
+                border-radius: var(--shape-nav); cursor: pointer; font-size: 14px; }
+  .theme-star:hover, .theme-star.on { color: var(--accent-soft-ink); background: var(--accent-soft); }
+
+  /* undo toast + session drift */
+  .toast { position: fixed; left: 20px; bottom: 20px; z-index: 80;
+           display: flex; gap: 10px; align-items: center;
+           background: var(--surface); color: var(--ink);
+           border: var(--bw) solid var(--border); border-radius: var(--r-card);
+           box-shadow: 0 14px 38px rgba(0,0,0,.3); padding: 11px 16px; font-size: 13.5px;
+           animation: toast-in var(--motion-continuity) var(--ease-out); }
+  /* sync-failure alert variant is supplied by the shared feedback primitive. */
+  @keyframes toast-in { from { transform: translateY(12px); opacity: 0; }
+                        to { transform: none; opacity: 1; } }
+  .driftrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+              margin: 0; padding: 7px 12px; font-size: 12.5px;
+              color: var(--accent-soft-ink); background: var(--accent-soft);
+              border-radius: 0; }
+
+  /* F18 — read-only tab-group chips on session window blocks. The dot uses
+     Chrome's fixed group palette (not theme tokens — these are Chrome's colors). */
+  .group-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;
+                font-size: 11.5px; color: var(--ink-2); }
+  .gdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
+          display: inline-block; }
+  .gdot-grey   { background: #5f6368; }
+  .gdot-blue   { background: #1a73e8; }
+  .gdot-red    { background: #d93025; }
+  .gdot-yellow { background: #f9ab00; }
+  .gdot-green  { background: #188038; }
+  .gdot-pink   { background: #d01884; }
+  .gdot-purple { background: #a142f4; }
+  .gdot-cyan   { background: #007b83; }
+  .gdot-orange { background: #fa903e; }
+  /* F18 — the "Preserve tab groups" permission hint in Settings. */
+  .perm-note { color: var(--accent-strong-ink); margin-top: 3px; }
+
+  /* First run and permanent Help live in css/onboarding.css so standalone
+     Settings can open the exact same Help surface. */
+
+  /* tag-style label input */
+  .tagbox { position: relative; display: inline-flex; align-items: center; gap: 4px;
+            flex-wrap: wrap; min-width: 180px; max-width: 340px; padding: 3px 8px; }
+  .tagchips { display: contents; }
+  .taginput { border: none !important; background: none !important; box-shadow: none !important;
+              outline: none; padding: 3px 2px !important; flex: 1; min-width: 70px; font: inherit;
+              font-size: 13px; color: var(--ink); }
+  .tagmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; z-index: 30;
+             max-height: 220px; overflow-y: auto; padding: 4px; }
+  .tagopt { padding: 6px 10px; border-radius: var(--r-mini); font-size: 13px; color: var(--ink-2);
+            cursor: pointer; }
+  .tagopt:hover, .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  /* P2g-1: the P2 combobox rides the tagbox/tagmenu skin; the Create entry is
+     distinguished by weight only (its label already says "New session …"). */
+  .tagbox.cbx { min-width: 210px; }
+  .tagopt.create { font-weight: 600; }
+
+  h1 { font-size: 24px; }
+  h2 { font-size: 16px; margin: 18px 0 10px; padding-bottom: 0; border: none; color: var(--ink); }
+  h3 { font-size: 12px; margin: 16px 0 8px; color: var(--ink-3); text-transform: uppercase;
+       letter-spacing: .06em; }
+
+  /* ---- components (existing render functions keep their classes) ---- */
+  .item { background: var(--surface); border: var(--bw) solid var(--border);
+          border-radius: var(--r-card); padding: 10px 12px; margin-bottom: 8px;
+          box-shadow: var(--shadow-1); transition: box-shadow var(--motion-feedback) var(--ease-out);
+          /* F8-2: keyboard focus / card jumps clear the measured sticky hero */
+          scroll-margin-top: var(--hero-h, 120px); }
+  .item.jump-arrival {
+    position: relative;
+    isolation: isolate;
+    animation: jump-arrival-settle var(--motion-continuity) cubic-bezier(.16, 1, .3, 1);
+  }
+  /* N41: above the sticky `.item-head-shell` (z-index 6), not under it. At
+     z-index 4 the ring and wash stopped at the card's header, so a jumped-to
+     label or session looked half-highlighted. The overlay takes no pointer
+     events, so covering the header costs nothing. */
+  .item.jump-arrival::after {
+    content: "";
+    position: absolute;
+    z-index: 7;
+    inset: 1px;
+    border-radius: var(--shape-card);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    pointer-events: none;
+    animation: jump-arrival calc(var(--motion-continuity) * 3) var(--ease-out);
+  }
+  .item.jump-arrival > .item-head-shell > .item-head .item-title {
+    animation: jump-arrival-title calc(var(--motion-continuity) * 3) var(--ease-out);
+  }
+  @keyframes jump-arrival-settle {
+    from { transform: translateY(4px) scale(.997); }
+    to { transform: translateY(0) scale(1); }
+  }
+  @keyframes jump-arrival-title {
+    0%, 62% { color: var(--accent-strong-ink); }
+    100% { color: var(--ink); }
+  }
+  @keyframes jump-arrival {
+    0% {
+      opacity: 0;
+      transform: scale(.996);
+      box-shadow: inset 0 0 0 1px transparent,
+                  inset 0 0 0 0 transparent;
+    }
+    20% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: inset 0 0 0 2px var(--accent),
+                  inset 0 0 0 7px var(--focus-ring);
+    }
+    62% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: inset 0 0 0 1px var(--accent),
+                  inset 0 0 0 4px var(--focus-ring);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1);
+      box-shadow: inset 0 0 0 1px transparent,
+                  inset 0 0 0 1px transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .item.jump-arrival,
+    .item.jump-arrival > .item-head-shell > .item-head .item-title { animation: none; }
+    .item.jump-arrival::after { animation: none; opacity: 1; transform: none; }
+  }
+
+/* P11-15 Close the day. The compact save/close summary and each connected
+   ledger cap form one measured sticky stack below Search and the Canvas line. */
+.close-day-review { --close-day-stack-gap: var(--sp-8);
+  display: grid; gap: var(--sp-12); min-width: 0; padding-bottom: var(--sp-12); }
+.close-day-intro { display: grid; gap: var(--sp-3); max-width: 72ch; padding: var(--sp-4) 2px 0; }
+.close-day-intro p { margin: 0; color: var(--ink-2); line-height: 1.5; }
+.close-day-intro .close-day-honesty { color: var(--ink); font-weight: 550; }
+.close-day-excluded { font-size: 12.5px; color: var(--ink-3); }
+.close-day-stage { display: grid; gap: var(--sp-5); min-width: 0;
+  scroll-margin-top: calc(var(--hero-h, 82px) + var(--sp-10) + var(--section-lead-h, 44px)
+    + var(--section-local-h, 0px) + var(--close-day-stack-gap)); }
+.close-day-stage + .close-day-stage { padding-top: var(--sp-10); border-top: var(--bw) solid var(--border); }
+.close-day-stage-head { display: grid; gap: var(--sp-2); padding-inline: 2px; }
+.close-day-stage-head h3 { margin: 0; color: var(--accent-strong-ink); font-size: 14px;
+  font-weight: 750; letter-spacing: -.01em; text-transform: none; }
+.close-day-stage-head p { max-width: 72ch; margin: 0; color: var(--ink-3);
+  font-size: 12.5px; line-height: 1.45; }
+.close-day-empty { width: fit-content; min-height: 32px; display: inline-flex; align-items: center;
+  margin: 0; padding: var(--sp-2) var(--sp-4); border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control); background: var(--surface-2); color: var(--ink-2);
+  font-size: 12.5px; font-weight: 650; line-height: 1.35; }
+.close-day-cards { display: grid; gap: var(--sp-8); min-width: 0; }
+.close-day-window { min-width: 0; overflow: clip; border: 0;
+  border-radius: var(--shape-panel); background: transparent; }
+.close-day-window-head-shell {
+  --close-day-cap-radius: var(--shape-panel);
+  position: sticky; z-index: 4; isolation: isolate;
+  top: calc(var(--hero-h, 82px) + var(--sp-10) + var(--section-lead-h, 44px)
+    + var(--section-local-h, 0px) + var(--close-day-stack-gap));
+}
+.close-day-window-head-shell::before,
+.close-day-window-head-shell::after {
+  content: ""; position: absolute; z-index: 0; pointer-events: none;
+  background: var(--bg-solid); background-attachment: fixed;
+}
+.close-day-window-head-shell::before {
+  left: 0; right: 0; top: calc(-1 * var(--close-day-stack-gap));
+  height: calc(var(--close-day-stack-gap) + var(--close-day-cap-radius));
+}
+.close-day-window-head-shell::after {
+  right: 0; top: 0; width: var(--close-day-cap-radius); height: var(--close-day-cap-radius);
+}
+body.gradient .close-day-window-head-shell::before,
+body.gradient .close-day-window-head-shell::after,
+[data-gradient="true"] body .close-day-window-head-shell::before,
+[data-gradient="true"] body .close-day-window-head-shell::after {
+  background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed;
+}
+.close-day-window-head { position: relative; z-index: 1;
+  min-height: 40px; display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-6);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--close-day-cap-radius) var(--close-day-cap-radius) 0 0;
+  background: var(--workbench-header); }
+.close-day-window-heading-row { min-width: 0; display: grid;
+  grid-template-columns: 18px minmax(120px, 1fr) auto; align-items: center; gap: var(--sp-4); }
+.close-day-window-body-frame { overflow: clip; border: var(--bw) solid var(--border);
+  border-top: 0; border-radius: 0 0 var(--shape-panel) var(--shape-panel);
+  background: var(--workbench-row); }
+.close-day-window-copy { min-width: 0; display: flex; align-items: baseline; gap: var(--sp-3); }
+.close-day-window-copy h4 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 700; flex: 0 1 auto; }
+.close-day-window-copy p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--workbench-tertiary); font-size: 11.5px; flex: 1 1 auto; }
+.close-day-window-copy p::before { content: "·"; margin-right: var(--sp-3); }
+.close-day-window-tools { min-width: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: var(--sp-3); }
+.close-day-replace { flex: none; }
+.close-day-replace-confirm, .close-day-replace-state { flex: none; display: flex; align-items: center;
+  justify-content: flex-end; gap: var(--sp-2); color: var(--ink-2); font-size: 11px; }
+.close-day-replace-confirm > span, .close-day-replace-state > span { font-weight: 650; color: var(--ink); }
+.close-day-replace-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.close-day-replace-confirm button, .close-day-replace-state button { min-height: 26px; padding: 2px 8px; }
+.close-day-window-bulk { min-width: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: var(--sp-2); flex-wrap: wrap; }
+.close-day-bulk-scope { min-width: 0; color: var(--workbench-tertiary); font-size: 10.5px;
+  font-weight: 650; white-space: nowrap; }
+.close-day-window-select, .close-day-row-select { width: 17px; height: 17px; margin: 0;
+  accent-color: var(--accent); cursor: pointer; }
+.close-day-window-select:disabled, .close-day-row-select:disabled { cursor: default; opacity: .45; }
+.close-day-bulk-actions { min-width: 0; display: flex; justify-content: flex-end;
+  gap: 2px; flex-wrap: nowrap; }
+.close-day-bulk-actions .close-day-action-option { width: 28px; min-height: 28px; flex: 0 0 28px; }
+.close-day-bulk-actions .close-day-action-option .ic { width: 16px; height: 16px; }
+.close-day-bulk-editor { flex: 1 0 100%; min-width: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+.close-day-bulk-input { min-width: 0; min-height: 32px; padding: 5px 9px;
+  border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.close-day-rows { min-width: 0; }
+.close-day-row { min-width: 0; min-height: 44px; display: grid;
+  grid-template-columns: 18px 24px minmax(0, 1fr) auto; align-items: center;
+  gap: var(--sp-4); padding: var(--sp-3) var(--sp-6);
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: var(--workbench-row); }
+.close-day-row:last-child { border-bottom: none; }
+.close-day-row:hover, .close-day-row:focus-within { background: var(--workbench-hover); }
+.close-day-row:not(.is-locked) { cursor: pointer; }
+.close-day-row.is-selected { background: color-mix(in srgb, var(--accent) 8%, var(--workbench-row)); }
+.close-day-row.is-locked { color: var(--ink-2); }
+.close-day-favicon { width: 20px; height: 20px; border-radius: 7px; object-fit: contain; }
+.close-day-favicon.fallback { display: block; border: var(--bw) solid var(--border); background: var(--surface-2); }
+.close-day-copy { min-width: 0; display: grid; gap: 2px; }
+.close-day-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ink); font-size: 13px; font-weight: 600; }
+.close-day-subline { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); overflow: hidden; }
+.close-day-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--workbench-tertiary); font-size: 11.5px; }
+.close-day-action-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--workbench-tertiary); font-size: 11.5px; }
+.close-day-action-copy strong { color: var(--accent-strong-ink); font-weight: 700; }
+.close-day-labels { min-width: 0; display: inline-flex; flex-wrap: nowrap; gap: 3px; overflow: hidden; }
+.close-day-labels .chip { flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.close-day-labels .chip.is-accented {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  color: var(--accent-strong-ink); font-weight: 700;
+}
+.close-day-choice { min-width: 0; display: grid; justify-items: end; gap: 2px; }
+.close-day-action-set { min-width: 0; display: flex; padding: 2px; gap: 2px;
+  border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  background: var(--surface); }
+.close-day-action-option { width: 28px; min-width: 28px; min-height: 28px; flex: 0 0 28px; display: inline-flex;
+  align-items: center; justify-content: center; padding: 0; border: var(--bw) solid transparent;
+  border-radius: var(--shape-control); background: transparent; color: var(--ink-2); cursor: pointer; }
+.close-day-action-option .ic { display: block; width: 18px; height: 18px; }
+.close-day-action-option:hover { border-color: var(--border); background: var(--nav-hover); color: var(--ink); }
+.close-day-action-option[aria-checked="true"] { border-color: var(--accent);
+  background: var(--accent-soft); color: var(--accent-soft-ink); }
+.close-day-action-option:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 0; }
+.close-day-destination, .close-day-inline-input { width: 100%; min-width: 0;
+  min-height: 32px; border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.close-day-destination { margin-top: var(--sp-2); padding: 4px 28px 4px 9px; }
+.close-day-inline-input { padding: 5px 9px; }
+.close-day-inline-editor { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2); margin-top: var(--sp-2); }
+.close-day-outcome { justify-self: end; display: inline-flex; align-items: center; gap: var(--sp-2);
+  color: var(--ink-3); font-size: 12px; font-weight: 600; }
+.close-day-stale { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5); border: var(--bw) solid var(--warn);
+  border-radius: var(--shape-control); background: var(--warn-bg); color: var(--ink); }
+.close-day-stale > div { display: grid; gap: 2px; font-size: 12.5px; }
+.close-day-summary { position: sticky; z-index: 9; isolation: isolate;
+  top: calc(var(--hero-h, 82px) + var(--sp-10) + var(--section-lead-h, 44px));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: var(--sp-4) var(--sp-6); padding: var(--sp-4) var(--sp-5);
+  border: var(--bw) solid var(--border); border-radius: var(--shape-panel);
+  background: var(--surface); box-shadow: var(--shadow-1); }
+.close-day-summary::after { content: ""; position: absolute; z-index: -1;
+  inset: calc(-1 * var(--close-day-stack-gap)); pointer-events: none;
+  border-radius: calc(var(--shape-panel) + var(--close-day-stack-gap));
+  background: var(--bg-solid); background-attachment: fixed; }
+.close-day-summary::before { content: ""; position: absolute; z-index: 2;
+  top: calc(100% - 1px); left: calc(-1 * var(--close-day-stack-gap));
+  width: calc(100% + var(--close-day-stack-gap) + var(--close-day-stack-gap));
+  height: calc(var(--close-day-stack-gap) + 3px);
+  background: var(--bg-solid); background-attachment: fixed; pointer-events: none; }
+body.gradient .close-day-summary::after,
+[data-gradient="true"] body .close-day-summary::after,
+body.gradient .close-day-summary::before,
+[data-gradient="true"] body .close-day-summary::before {
+  background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed; }
+.close-day-summary-grid { min-width: 0; display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-6); }
+.close-day-summary h3 { margin: 0 0 2px; color: var(--accent-strong-ink); font-size: 12px;
+  letter-spacing: 0; text-transform: none; }
+.close-day-summary ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none;
+  color: var(--ink-2); font-size: 11.5px; line-height: 1.35; }
+.close-day-summary-slot { visibility: hidden; }
+.close-day-summary li strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.close-day-warning { grid-column: 1 / -1; margin: 0; padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--shape-control); background: var(--warn-bg); color: var(--ink); font-size: 11.5px; }
+.close-day-final-actions { display: flex; align-items: center; justify-content: flex-end;
+  flex-wrap: wrap; gap: var(--sp-2); }
+.close-day-stage-nav { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center;
+  gap: var(--sp-5); overflow-x: auto; padding-top: var(--sp-2);
+  border-top: var(--bw) solid var(--border); scrollbar-width: none; }
+.close-day-stage-nav::-webkit-scrollbar { display: none; }
+.close-day-stage-link { flex: none; min-height: 28px; display: inline-flex; align-items: center;
+  gap: var(--sp-2); padding: 3px 1px 2px; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 0; background: transparent; color: var(--ink-2); font-size: 11.5px; }
+.close-day-stage-link:hover { border-bottom-color: var(--border); background: transparent; color: var(--ink); }
+.close-day-stage-link.is-active { border-bottom-color: var(--accent); color: var(--accent-strong-ink); }
+.close-day-stage-count { min-width: 1.2em; font-variant-numeric: tabular-nums; color: var(--workbench-tertiary); }
+.close-day-complete-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); }
+.close-day-commit { min-height: 32px; border-color: transparent; background: transparent;
+  color: var(--accent-text); font-weight: 750; }
+.close-day-commit:hover { border-color: var(--accent); background: var(--accent-soft);
+  color: var(--accent-soft-ink); }
+.close-day-commit.armed { background: var(--danger-bg); border-color: var(--danger); color: var(--ink); box-shadow: none; }
+.close-day-loading, .close-day-error { padding: var(--sp-10) 2px; color: var(--accent-strong-ink); }
+.close-day-complete { max-width: 680px; display: grid; justify-items: start; gap: var(--sp-4);
+  padding: var(--sp-12) 2px; }
+.close-day-complete-mark { width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: var(--shape-control); background: var(--accent); color: var(--accent-ink); }
+.close-day-complete h3, .close-day-complete p { margin: 0; }
+.close-day-complete h3 { color: var(--ink); font-size: 18px; }
+.close-day-complete p { max-width: 64ch; color: var(--ink-2); line-height: 1.5; }
+
+/* In the middle desktop range the two summary columns share space with the
+   final actions. Keep paired outcomes on two reserved lines instead of letting
+   one wording change wrap the sticky card and move the review underneath it. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .close-day-summary li:has(> .close-day-summary-separator) { display: grid; gap: 1px; }
+  .close-day-summary li > .close-day-summary-separator { display: none; }
+  .close-day-summary li:has(> .close-day-summary-separator) + .close-day-summary-slot {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .close-day-review { gap: var(--sp-10); }
+  .close-day-window-head { padding: var(--sp-2) var(--sp-5); }
+  .close-day-row { grid-template-columns: 18px 22px minmax(0, 1fr); gap: var(--sp-3); }
+  .close-day-choice, .close-day-outcome { grid-column: 3; justify-self: stretch; }
+  .close-day-action-set { width: 100%; }
+  .close-day-action-set .close-day-action-option { width: auto; min-width: 0; flex: 1 1 24px; }
+  .close-day-window-heading-row { grid-template-columns: 18px minmax(0, 1fr); align-items: center; }
+  .close-day-window-heading-row > .close-day-window-bulk { grid-column: 2 / -1; width: 100%; }
+  .close-day-window-copy .close-day-replace { width: auto; padding-inline: var(--sp-2); font-size: 0; }
+  .close-day-window-copy .close-day-replace::after { content: "Replace"; font-size: 11px; }
+  .close-day-replace-confirm, .close-day-replace-state {
+    flex: 1 0 100%; width: 100%; justify-content: space-between; }
+  .close-day-window-bulk { width: 100%; justify-content: flex-start; }
+  .close-day-bulk-actions { justify-content: flex-start; gap: 1px; }
+  .close-day-bulk-actions .close-day-action-option { width: 21px; min-width: 21px;
+    min-height: 26px; flex-basis: 21px; }
+  .close-day-bulk-scope { font-size: 9.5px; }
+  .close-day-summary { grid-template-columns: minmax(0, 1fr); padding: var(--sp-4); }
+  .close-day-summary-grid { gap: var(--sp-4); }
+  .close-day-final-actions { justify-content: stretch; }
+  .close-day-final-actions > button { flex: 1 1 120px; }
+  .close-day-complete-actions > button { flex: 1 1 180px; }
+}
+@media (max-width: 480px) {
+  .close-day-stage-nav { gap: var(--sp-4); }
+  .close-day-stage-link { gap: var(--sp-1); font-size: 10.5px; }
+}
+  .item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .item-title { font-weight: 600; flex: 1; min-width: 140px; }
+  .item-meta { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tabs-list { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; }
+  .tabs-list a { color: var(--accent-strong-ink); text-decoration: none; }
+  .tabs-list a:hover { text-decoration: underline; }
+  /* P2d — inbox triage: favicon'd tab rows reuse the .trow reveal pattern */
+  .inbox-rows { margin-top: 6px; }
+  /* P2e — unified list (createTabList): one card-body row wrapper for every section */
+  .tl-rows { margin-top: 6px; }
+  .trow .t a { color: inherit; text-decoration: none; }
+  .trow .t a:hover { text-decoration: underline; color: var(--accent-strong-ink); }
+  .row-labelbar { display: flex; gap: 6px; align-items: center; padding: 4px 10px 6px 42px; }
+  /* F29: overflow disclosure moved from a chip to a full row; its presentation
+     lives with the rows it belongs to, in css/tablist-d4.css. */
+  .inbox-zero { text-align: center; padding: 26px 12px; }
+  .inbox-zero .iz-title { font-family: var(--font-display); font-weight: 600; font-size: 16px;
+                          color: var(--ink); margin-bottom: 4px; font-style: normal; }
+  /* P2d-3 — keyboard two-step delete arm */
+  .trow.armed-del, .item.armed-del { outline: 2px solid var(--danger); outline-offset: -2px; }
+  .trow.armed-del { border-radius: 0; }
+  .item.armed-del { border-radius: var(--shape-card); }
+  /* N5 — inline validation note (dark ink on a danger tint → AA on every surface) */
+  .tag-note { color: var(--ink); background: var(--danger-bg); border-radius: var(--r-mini);
+              font-size: 12px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
+
+  button { padding: 6px 13px; border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+           background: var(--surface-2); color: var(--ink); cursor: pointer; font-size: 13px;
+           transition: background-color var(--motion-feedback) var(--ease-out),
+                       border-color var(--motion-feedback) var(--ease-out),
+                       box-shadow var(--motion-feedback) var(--ease-out),
+                       color var(--motion-feedback) var(--ease-out),
+                       filter var(--motion-feedback) var(--ease-out),
+                       transform var(--motion-feedback) var(--ease-out); }
+  button:hover { background: var(--accent-soft); color: var(--accent-soft-ink);
+                 border-color: var(--accent-soft); }
+  @media (hover: hover) and (pointer: fine) {
+    button:not(:disabled):not(.move-handle):active:not(:focus-visible) {
+      transform: translateY(1px);
+    }
+  }
+  /* danger affordance via red tint + border; text stays dark for AA */
+  button.danger { color: var(--ink); background: var(--danger-bg);
+                  border-color: color-mix(in srgb, var(--danger) 32%, transparent); }
+  button.danger:hover { background: color-mix(in srgb, var(--danger) 15%, var(--surface));
+                        color: var(--ink);
+                        border-color: color-mix(in srgb, var(--danger) 48%, transparent); }
+  button.mini { padding: 0 7px; font-size: 11px; margin-left: 6px; border-radius: var(--r-mini);
+                vertical-align: 1px; }
+
+  .empty, .placeholder { color: var(--ink-3); font-style: italic; }
+  /* D4-3c: a state reads from its marker AND its words. The three tints are
+     nearly indistinguishable in several schemes, so the tint alone was not
+     telling anyone whether the vault was fine or broken. */
+  .status { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px;
+            border-radius: 99px; font-size: 12px; margin-right: 8px; }
+  .status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%;
+                    background: var(--ink-3); box-shadow: 0 0 0 1px var(--status-marker-outline); }
+  .status.ok { background: var(--ok-bg); color: var(--ink); }
+  .status.ok::before { background: var(--ok); }
+  .status.warn { background: var(--warn-bg); color: var(--ink); }
+  .status.warn::before { background: var(--warn); }
+  .status.danger { background: var(--danger-bg); color: var(--ink); }
+  .status.danger::before { background: var(--danger); }
+  .status.unset { background: var(--surface-2); color: var(--ink-2); }
+  /* One outcome grammar. A failure must not read quieter than the boilerplate
+     beneath it, and a success should be legible without reading the sentence.
+     Marker plus full ink, never colour alone. */
+  .note.bad, .note.good, .item-meta.bad, .item-meta.good {
+    display: inline-flex; align-items: baseline; gap: 6px; color: var(--ink); }
+  .note.bad::before, .note.good::before,
+  .item-meta.bad::before, .item-meta.good::before {
+    content: ""; flex: none; align-self: center; width: 7px; height: 7px; border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--status-marker-outline); }
+  .note.bad::before, .item-meta.bad::before { background: var(--danger); }
+  .note.good::before, .item-meta.good::before { background: var(--ok); }
+  .vault-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .note { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+  /* D4-2b: the shared keeper dock replaces the former in-flow bulk bar. */
+  .inline-input, textarea, input[type="text"], input[type="number"], input[type="datetime-local"], select {
+    padding: 6px 9px; border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+    font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
+  .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .chip { border-radius: 99px; padding: 1px 9px; font-size: 11px; }
+  /* P2g-2 (N11): per-tab chips on rows — compact, always visible, "+N" expands.
+     Dark-ink-on-tint (accent-strong-ink on accent-soft) is AA by construction. */
+  .rowchips { flex: none; margin-left: 2px; }
+  .rowchips .chip { font-size: 10px; padding: 0 7px; }
+  .chip.more { border: none; cursor: pointer; font: inherit; font-size: 10px;
+               background: var(--surface-2); color: var(--ink-2); }
+  .chip.more:hover, .chip.more:focus-visible { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  /* P2g-2r2: the chip's text is a link to its card in the Labels section */
+  .chip .chiplink { border: none; background: none; padding: 0; font: inherit;
+                    color: inherit; cursor: pointer; }
+  .chip .chiplink:hover { text-decoration: underline; }
+  .window-block { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; }
+  textarea { width: 100%; margin-top: 10px; font: 12px/1.4 var(--font-mono); }
+  .hidden-file { display: none; }
+  /* L2c import: the "create labels" macro toggle in the controls bar. */
+  .imp-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink); cursor: pointer; }
+  .imp-toggle input[type="checkbox"] { width: 15px; height: 15px; }
+  /* L-nav: Labels-page index bar — filter + sort toggle + clickable jump chips.
+     On --surface (card), so --ink/--ink-2/--accent-strong-ink stay AA. */
+  .label-index { min-width: 0; display: flex; flex-direction: column;
+    align-items: stretch; gap: var(--sp-3); padding: 0 0 var(--sp-4); }
+  .label-index-bar { min-width: 0; display: flex; gap: 8px; align-items: center;
+    flex-wrap: nowrap; width: min(100%, 520px); margin: 0; }
+  .label-filter { flex: 1; min-width: 150px; padding: 6px 9px; border: var(--bw) solid var(--border);
+                  border-radius: var(--r-btn); font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
+  .label-sort { display: inline-flex; border: var(--bw) solid var(--border); border-radius: var(--r-btn); overflow: hidden; }
+  .seg { border: none; background: none; font: inherit; font-size: 12px; padding: 6px 10px; color: var(--ink-2); cursor: pointer; }
+  .seg + .seg { border-left: var(--bw) solid var(--border); }
+  .seg:hover:not(.on) { background: var(--surface-2); }
+  .seg.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  /* F46: the overflow control belongs WITH the chips, not pushed to the far
+     right where it read as unrelated page furniture. The viewport therefore
+     sizes to its content and the toggle follows it immediately; only the
+     expanded state takes the full line, because that is when it scrolls. */
+  .label-chip-line { min-width: 0; display: flex; align-items: flex-start; gap: var(--sp-3); }
+  .label-chip-viewport { min-width: 0; flex: 0 1 auto; overflow: visible; }
+  .label-chip-line.is-expanded .label-chip-viewport { flex: 1; }
+  .label-chips { min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .label-chip-line.has-more:not(.is-expanded) .label-chip-viewport { overflow: hidden; }
+  .label-chip-line.has-more:not(.is-expanded) .label-chips { flex-wrap: nowrap; }
+  .label-chip-line.is-expanded .label-chip-viewport { max-height: min(144px, 24vh); overflow-y: auto; }
+  /* It is a CONTROL, not one more label: bordered, rounded, and quieter type,
+     so it never reads as another jump chip in the same run. */
+  .label-index-toggle { flex: none; min-height: 26px; padding: 3px 10px;
+    border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+    background: var(--surface-2); color: var(--ink-2);
+    cursor: pointer; font: inherit; font-size: 11px; font-weight: 650;
+    white-space: nowrap; }
+  .label-index-toggle:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+  .label-chip { border: none; cursor: pointer; font: inherit; padding: 3px 10px;
+    font-size: 12px; white-space: nowrap; }
+  .label-chip:hover { text-decoration: underline; }
+  .label-chip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+
+  /* D4-3c: the search field, result overlay, ghost chips, and result rows are
+     shared roles in css/primitives.css. Only this host's scale stays here. */
+  .search-box { max-width: 680px; margin: 0 auto; }
+  .search-input { width: 100%; max-width: 680px; padding: 14px 20px; font: inherit; font-size: 16px;
+                  color: var(--ink); background: var(--surface);
+                  border: var(--bw) solid var(--border); border-radius: var(--r-search);
+                  box-shadow: var(--shadow-1); outline: none;
+                  transition: box-shadow var(--motion-feedback) var(--ease-out),
+                              border-color var(--motion-feedback) var(--ease-out); }
+  .search-input:focus { border-color: var(--focus-accent);
+                        box-shadow: 0 0 0 4px var(--focus-ring), var(--shadow-1); }
+
+  /* F4 — keyboard shortcuts: the `?` overlay + the same list mirrored in Settings */
+  .shortcuts-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+                       background: color-mix(in srgb, var(--ink) 40%, transparent);
+                       backdrop-filter: blur(4px);
+                       animation: toast-in var(--motion-continuity) var(--ease-out); }
+  .shortcuts-card { width: min(560px, 92vw); max-height: 86vh; overflow-y: auto;
+                    background: var(--surface); color: var(--ink);
+                    border: var(--bw) solid var(--border); border-radius: var(--r-card);
+                    box-shadow: 0 30px 90px rgba(0,0,0,.4); padding: 20px 24px; }
+  .shortcuts-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .shortcuts-head h3 { margin: 0; }
+  .shortcuts-close { border: none; background: none; color: var(--ink-2); font-size: 22px;
+                     line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: var(--r-btn); }
+  .shortcuts-close:hover { color: var(--ink); background: var(--surface-2); }
+  .shortcuts-close:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .shortcuts-group { margin-top: 14px; }
+  .shortcuts-group h4 { margin: 0 0 2px; font-size: 13px; color: var(--ink-2); }
+  .shortcuts-note { margin: 0 0 6px; font-size: 12px; color: var(--ink-3); }
+  .shortcut-row { display: flex; gap: 12px; align-items: baseline; padding: 4px 0; }
+  .shortcut-keys { flex: 0 0 38%; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .shortcut-unset { flex: 0 0 38%; color: var(--ink-3); font-size: 12px; font-style: italic; }
+  .shortcut-desc { flex: 1; color: var(--ink); font-size: 13px; }
+  .kbd-plus { color: var(--ink-3); font-size: 11px; }
+  kbd { display: inline-block; min-width: 18px; text-align: center; padding: 2px 6px;
+        font: 600 11px/1.2 var(--font-mono); color: var(--ink);
+        background: var(--surface-2); border: var(--bw) solid var(--border);
+        border-radius: 6px; box-shadow: 0 1px 0 var(--border); }
+  .settings-hint { color: var(--ink-3); font-size: 12px; margin: 0 0 8px; }
+  /* N3 — shared threshold slider (Suspend after / Auto-dump after) */
+  .setrow .slider { flex: 0 0 240px; }
+  .slider { width: 100%; }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-value { flex: 0 0 auto; min-width: 58px; text-align: right; font-size: 12px;
+                  color: var(--ink); font-variant-numeric: tabular-nums; }
+  .slider-ticks { display: flex; justify-content: space-between; margin-top: 3px;
+                  font-size: 10px; color: var(--ink-3); }
+  input.slider-range { -webkit-appearance: none; appearance: none; flex: 1; height: 22px;
+                       background: transparent; cursor: pointer; }
+  input.slider-range:focus { outline: none; }
+  input.slider-range::-webkit-slider-runnable-track { height: 5px; border-radius: 999px;
+    background: var(--surface-2); border: var(--bw) solid var(--border); }
+  input.slider-range::-moz-range-track { height: 5px; border-radius: 999px;
+    background: var(--surface-2); border: var(--bw) solid var(--border); }
+  input.slider-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; margin-top: -9px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--surface); box-shadow: var(--shadow-1); }
+  input.slider-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--surface); box-shadow: var(--shadow-1); }
+  input.slider-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
+  input.slider-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
+  @media (prefers-reduced-motion: reduce) {
+    input.slider-range::-webkit-slider-thumb { transition: none; }
+  }
+
+  .banner { display: flex; gap: 10px; align-items: center; background: var(--warn-bg);
+            border: var(--bw) solid color-mix(in srgb, var(--warn) 35%, transparent);
+            border-radius: var(--r-card); padding: 10px 14px; margin: 14px auto; max-width: 880px; }
+  .banner.hidden { display: none; }
+
+  /* ---- stats page ---- */
+  .statgrid { max-width: 880px; margin: 16px auto 0; display: grid;
+              grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .statgrid { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--surface); border: var(--bw) solid var(--border);
+          border-radius: var(--r-card); padding: 14px 16px; box-shadow: var(--shadow-1); }
+  .stat .v { font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+             font-variant-numeric: tabular-nums; color: var(--ink); }
+  .stat .l { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+
+  /* ---- settings page ---- */
+  /* D4-3c: the list is a container, so rows respond to the column they are in
+     rather than to the viewport. The heading shares the list's axis; it used to
+     sit on the wider .sections axis and read as misaligned with its own content. */
+  .setlist { max-width: 680px; margin: 6px auto 0; container-type: inline-size;
+             --settings-sticky-top: calc(var(--hero-h, 120px) + var(--sp-10)); }
+  body[data-page="settings"] .sections > section > .section-lead { max-width: 680px;
+    margin-left: auto; margin-right: auto; }
+  /* Settings uses the same local-navigation pattern as Labels/Sessions: its
+     filter and jump chips stay together on the list axis while settings rows
+     travel beneath. Its measured height feeds the jump clearance below, so
+     wrapped chips never cover the target heading. */
+  .settings-toolbar { position: sticky; z-index: 9;
+    top: var(--settings-sticky-top);
+    display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-3);
+    margin: 0; padding: 0 0 var(--sp-4);
+    background: var(--bg-solid); background-attachment: fixed; }
+  body.gradient .settings-toolbar,
+  [data-gradient="true"] body .settings-toolbar {
+    background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed;
+  }
+  .settings-filter { width: 100%; padding: 8px 12px; font: inherit; font-size: 13px;
+                     background: var(--surface); color: var(--ink);
+                     border: var(--bw) solid var(--border); border-radius: var(--r-btn); outline: none; }
+  .settings-filter:focus { border-color: var(--focus-accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+  .settings-nav { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-3); min-width: 0; }
+  .settings-nav-chip { padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer;
+                       color: var(--ink-2); background: var(--surface-2);
+                       border: var(--bw) solid var(--border); border-radius: 99px; }
+  .settings-nav-chip:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+  .settings-nav-chip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  /* Each group is a clearly separated block with a prominent header. The jump
+     target clears the sticky hero by its MEASURED height (F8-2: the active-Focus
+     strip makes the old fixed ~110px assumption wrong); --hero-h is published by
+     a ResizeObserver, with a safe fallback before first measurement. */
+  .settings-group { scroll-margin-top: calc(var(--hero-h, 120px) + var(--sp-10)
+                    + var(--settings-toolbar-h, 0px) + var(--sp-6)); margin-top: 22px; padding-top: 16px;
+                    border-top: var(--bw) solid var(--border); }
+  .settings-group:first-of-type { margin-top: var(--sp-12); padding-top: 0; border-top: none; }
+  /* F48r: a settings page is a stack of groups, so the seam BETWEEN groups has
+     to outweigh the hairline between rows inside one. Same colour, three times
+     the weight, plus real space.
+     Later seams leave 16px after the prior row before the rule, then 24px
+     from the rule to the next heading. The first group starts 24px below the
+     jump chips, so the page has the same calm opening rhythm. */
+  .settings-group + .settings-group {
+    margin-top: var(--sp-8);
+    padding-top: var(--sp-12);
+    border-top: 3px solid var(--border);
+  }
+  .settings-group h3 { font-size: 13px; margin: 0 0 var(--sp-4); color: var(--accent-strong-ink);
+                       text-transform: uppercase; letter-spacing: .08em; }
+  .setrow { display: flex; align-items: center; gap: 14px; padding: 13px 4px;
+            border-bottom: var(--bw) solid var(--border); }
+  .setrow:last-child { border-bottom: none; }
+  .setrow .tw { flex: 1; }
+  .setrow .t { font-weight: 500; }
+  .setrow .d { color: var(--ink-3); font-size: 12.5px; overflow-wrap: anywhere; }
+  .saved { color: var(--ink-2); font-size: 12.5px; min-height: 18px; text-align: center; }
+
+  /* Data follows the same information hierarchy as Settings. The ordinary
+     backup and restore paths stay open; third-party migration is available but
+     no longer competes with the safe default. */
+  .data-group { max-width: 860px; margin-inline: auto; }
+  .data-group .setrow > button { flex: none; min-height: var(--control-h-default); }
+  .data-restore-row { border-bottom: 0; padding-bottom: var(--sp-3); }
+  .data-interoperability > textarea { width: 100%; min-height: 120px; margin-top: var(--sp-4); }
+  .data-import-source { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+  .data-import-source > button { flex: none; min-height: var(--control-h-default); }
+  .data-import-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+  .data-import-controls .imp-toggle { grid-column: 1 / -1; }
+  .data-import-outcome { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }
+  @media (max-width: 760px) {
+    .data-import-controls { grid-template-columns: 1fr; align-items: stretch; }
+    .data-import-controls .imp-toggle { grid-column: auto; }
+    .data-import-outcome { align-items: stretch; flex-direction: column; }
+  }
+
+  /* F48: a list field owns the full column width under its own label. */
+  .setrow.setrow-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
+  .setrow.setrow-stacked textarea {
+    width: 100%; min-height: 92px; margin-top: 0; resize: vertical;
+  }
+
+  /* F8 — Focus settings: inline blocked-site editor + save-close warning */
+  .setrow.focus-block { flex-direction: column; align-items: stretch; gap: 8px; }
+  .focus-block > select { max-width: 300px; }
+  .focus-site-add { display: flex; gap: 8px; }
+  .focus-site-input { flex: 1; min-width: 0; }
+  .focus-site-list { display: flex; flex-direction: column; }
+  .focus-site-row { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+                    border-top: var(--bw) solid var(--border); }
+  .focus-site-row:first-child { border-top: none; }
+  .focus-site-domain { flex: 1; min-width: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
+  .focus-site-empty { color: var(--ink-3); font-size: 12.5px; padding: 2px 0; }
+  /* inline validation / duplicate notice: dark ink on a danger tint = AA on every surface */
+  .focus-site-notice:not(:empty) { color: var(--ink); background: var(--danger-bg);
+    border-radius: var(--r-mini); font-size: 12px; padding: 3px 9px; align-self: flex-start; }
+
+  /* ---- M6.1: accessibility, icons, dialogs, distilled bulk bar ---- */
+
+  /* screen-reader-only (page h1, inline status-marker labels) */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+             overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  /* project-wide keyboard focus ring in the scheme's accent — every focusable,
+     not just the three that had bespoke rings. :where() keeps specificity 0 so
+     the richer .trow / input overrides below still win. */
+  :where(a[role="button"], .twist, .navitem, .theme-opt):focus-visible {
+    outline: 2px solid var(--focus-accent); outline-offset: 2px; border-radius: var(--r-mini);
+  }
+  summary:focus-visible { outline-offset: -2px; } /* details marker sits inside */
+
+  /* line icons — inherit ink/accent from context; never carry color themselves */
+  .ic { flex: none; }
+  .navitem .ic { color: var(--ink-3); transition: color var(--motion-feedback) var(--ease-out); }
+  .navitem:hover .ic { color: var(--ink); }
+  .navitem.active .ic { color: var(--accent-strong-ink); }
+  .navtext { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .navitem .n { flex: none; }
+  .brand .mark .ic { color: var(--brand-accent); }
+  button.iconbtn { padding: 2px 6px; }
+  .gear { display: inline-grid; place-items: center; }
+  .gear .ic { color: var(--ink-3); }
+  .gear:hover .ic { color: var(--ink); }
+  .tmark { display: inline-flex; vertical-align: -2px; margin-right: 5px; color: var(--ink-3); }
+  .item-title.withicon { display: inline-flex; align-items: center; gap: 7px; }
+
+  /* placeholders are text: hold them to the same AA-passing ink as metadata */
+  input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: 1; }
+
+  /* long unbroken URLs/titles must wrap, never overflow the card */
+  .tabs-list { overflow-wrap: anywhere; }
+
+  /* distilled inbox bulk bar: primaries inline, rest in an in-flow overflow */
+  .bulk-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  details.overflow { position: relative; display: inline-block; }
+  details.overflow > summary { list-style: none; cursor: pointer; display: inline-flex;
+    align-items: center; gap: 4px; }
+  details.overflow > summary::-webkit-details-marker { display: none; }
+  details.overflow > summary::after { content: "▾"; font-size: 10px; color: var(--ink-3); }
+  .overflow-menu { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    margin-top: 8px; padding: 8px; background: var(--surface-2);
+    border: var(--bw) solid var(--border); border-radius: var(--r-btn); }
+
+  /* inline two-step confirm (Clear history) */
+  .confirm-inline { display: inline-flex; gap: 6px; align-items: center; }
+
+  /* D4-4: the themed tooltip lives in css/primitives.css. Its local copy here
+     ran at 170ms and silently outranked the shared 140ms reveal. */
+
+  /* ---- D4-3c: narrow-layout containment ----
+     Setting rows answer to their own column, not the viewport: below the width
+     where label and control can both stay usable, the control stacks beneath
+     the text. This replaces D4-3a's shell-level `[data-nav="header"]` guard. */
+  /* 560px, measured: the widest description ("One domain per line. Subdomains
+     are covered too.") wants ~300px and the widest control (the slider) wants
+     240px, plus the row gap. Below that the two stop coexisting comfortably. */
+  @container (max-width: 560px) {
+    .setrow { flex-direction: column; align-items: stretch; gap: 8px; }
+    .setrow .slider { flex: 1 1 auto; }
+    .setrow > select, .setrow > input[type="text"], .setrow > input[type="number"] {
+      width: 100%; max-width: none; }
+    .setrow > button { align-self: flex-start; }
+    /* A checkbox is small enough to stay beside its label; stacking it would
+       leave a lone 15px control floating on its own line. */
+    .setrow:has(> input[type="checkbox"]) { flex-direction: row; align-items: center; }
+  }
+  [data-nav="header"] .snooze-tablist a,
+  [data-nav="header"] .tagbox { max-width: 100%; }
+  @media (max-width: 620px) { .statgrid { grid-template-columns: 1fr; } }
+
+  /* ---- F23/F24: quiet Home + one active daily collection ---- */
+  /* F31: the hero panel owns the working axis now, so the field inside it just
+     fills. `.sections` keeps the same number, which is what makes the panel's
+     edges line up with the collections scrolling beneath it. */
+  body[data-workbench="true"] .sections { max-width: 1080px; }
+  body[data-workbench="true"] .hero .search-input { max-width: none; }
+  /* F34-4: the navigator used to carry the collection's name, so the section
+     heading was hidden. With the navigator gone the heading is the only thing
+     naming what you are looking at, so it comes back. */
+  body[data-workbench="true"] .sec-intro { margin-top: 0; }
+  /* The collection ends shortly after its final row. The old viewport-sized
+     runway let a short route scroll until every row had disappeared. Keep only
+     ordinary closing breathing room; sticky entrances no longer depend on an
+     artificial page tail. */
+  body[data-workbench="true"] .sections {
+    padding-bottom: var(--sp-12);
+  }
+  body[data-workbench="true"] .item,
+  body[data-workbench="true"] .tablist .trow {
+    /* F34-4: the navigator is gone, so the command box is the only sticky
+       chrome a jump has to clear. */
+    scroll-margin-top: calc(var(--hero-h, 108px) + var(--sp-3));
+  }
+
+  /* ---- F38: overlay Search + workspace-aligned utilities + push Starred rail ---- */
+  /* Search always ends with a slim lower boundary. The optional History grant
+     occupies the same row until permission is available, so enabling it never
+     removes the visual separation between Search and the underlying ledger. */
+  .hero-search-overlay > .search-footer {
+    display: flex;
+    align-items: center;
+    min-height: 30px;
+    padding: var(--sp-3) var(--cmd-inset, 14px);
+    border-top: var(--bw) solid var(--border);
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-search-overlay > .search-footer.is-empty:not(.has-history-invite) { display: none; }
+  .search-footer-hints { margin-inline-start: auto; }
+  .search-footer.has-history-invite .search-footer-count,
+  .search-footer.has-history-invite .search-footer-hints { display: none; }
+  .search-history-invite { width: auto; min-height: 28px; padding: 2px 0;
+    color: var(--accent-strong-ink); }
+  .search-footer .history-access-disclosure { width: 100%; }
+  @media (max-width: 560px) {
+    .search-footer-hints { display: none; }
+  }
+
+  .history-access-disclosure { display: grid; gap: var(--sp-2); padding: var(--sp-4);
+    border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+    background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .history-access-disclosure p { margin: 0; max-width: 72ch; }
+  .history-access-purpose { color: var(--ink); font-weight: 650; }
+  .history-access-trust { color: var(--accent-strong-ink); font-weight: 600; }
+  .history-access-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .history-access-status { color: var(--ink-3); }
+
+  /* Shared empty states. */
+  .pu-empty { margin: 0; padding: var(--sp-4); color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+  /* Shared Starred rows use the same flat ledger rhythm as the collections. */
+  .pu-star-row { position: relative; display: flex; align-items: center; min-width: 0;
+    border-radius: 0; }
+  .pu-star-row + .pu-star-row { border-top: var(--bw) solid var(--border); }
+  .pu-star-row:hover, .pu-star-row:focus-within { background: var(--nav-hover); }
+  .pu-star-row.leaving { opacity: 0; transform: scale(.98); pointer-events: none;
+    transition: opacity var(--motion-reveal) var(--ease-out),
+                transform var(--motion-reveal) var(--ease-out); }
+  .pu-star-link { min-width: 0; flex: 1; min-height: 34px; display: flex; align-items: center;
+    gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 0; background: transparent;
+    color: var(--ink-2); font-size: 12px; text-align: left; cursor: pointer; }
+  .pu-star-link > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pu-fav { width: 15px; height: 15px; flex: none; border-radius: 4px; object-fit: contain; }
+  .pu-row-actions { flex: none; display: inline-flex; padding-right: var(--sp-2); }
+  .pu-row-action { width: 26px; height: 26px; display: grid; place-items: center; padding: 0;
+    border: 0; border-radius: var(--r-mini); background: transparent; color: var(--ink-3);
+    cursor: pointer; opacity: .58; }
+  .pu-row-action:hover, .pu-row-action:focus-visible { opacity: 1; color: var(--accent-strong-ink);
+    background: var(--surface-2); }
+  .pu-row-action .ic { width: 13px; height: 13px; }
+  /* F45r: reorder by dragging the shortcut itself. The drop indicator is one
+     edge drawn on the row under the pointer, never an inserted node, so the
+     list cannot reflow under the cursor mid-gesture. */
+  /* F46: the launcher is a control you click, so it keeps the ordinary pointer
+     that every other row uses. The grab hand belongs to the row's own surface
+     around it, where dragging is the only thing that can happen. */
+  .pu-star-link { cursor: pointer; }
+  /* The favicon is the visible handle: it is the one part of the row that is
+     not a click target of its own, so the grab hand there is honest. A native
+     drag owns the cursor once it starts, which is why there is no `grabbing`
+     rule; the drop effect draws that. */
+  .pu-star-link .pu-fav { cursor: grab; }
+  .pu-star-row.dragging .pu-star-link { color: var(--ink-3); }
+
+  /* F46r2: Activity's controls are the section's local strip, the same role the
+     Labels and Sessions index bars fill. Its own spacing matches theirs, so the
+     first day card begins exactly where the first collection card does. */
+  .activity-controls { display: flex; align-items: center; gap: var(--sp-4);
+    flex-wrap: wrap; padding: 0 0 var(--sp-4); }
+  .activity-filter { display: inline-flex; padding: 2px; gap: 2px;
+    border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+    background: var(--surface-2); }
+  .activity-seg { min-height: 28px; padding: 0 var(--sp-6); border: 0;
+    border-radius: calc(var(--shape-control) - 2px); background: transparent;
+    color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 650;
+    cursor: pointer; white-space: nowrap;
+    transition: background-color var(--motion-feedback) var(--ease-out),
+                color var(--motion-feedback) var(--ease-out); }
+  .activity-seg:hover:not(.on) { color: var(--ink); background: var(--nav-hover); }
+  .activity-seg.on { background: var(--surface); color: var(--accent-strong-ink);
+    box-shadow: var(--shadow-1); }
+  .activity-count { color: var(--ink-3); font-size: 11.5px;
+    font-variant-numeric: tabular-nums; }
+
+  /* F46: Activity is a real collection now. Its second column carries the
+     origin mark where every other section carries a favicon, so an automatic
+     entry is recognisable before its words are read. */
+  /* F46r: history is a place you come to undo something, so its one action is
+     always visible and always named, whatever the Icons-only preference says.
+     F46r2: naming it is not enough — Icons-only also pins every action button to
+     a square `--control-h-compact`, so the label escaped the button and was
+     clipped by the card. The one button that keeps its word keeps its width. */
+  .tablist[data-tablist="activity"] .tacts {
+    opacity: 1; visibility: visible; pointer-events: auto; }
+  .tablist[data-tablist="activity"] .activity-undo-label { display: inline; }
+  .tablist[data-tablist="activity"] .tacts button[data-action-id="undo"] {
+    width: auto; min-width: 0; padding-inline: var(--sp-3); }
+  .tablist[data-tablist="activity"] .row-glyph-slot {
+    display: grid; place-items: center; color: var(--ink-3); }
+  .tablist[data-tablist="activity"] .row-glyph-slot .ic { width: 15px; height: 15px; }
+  .trow.activity-undone .t,
+  .trow.activity-undone .row-subline { color: var(--ink-3); }
+  .pu-star-row.dragging { opacity: .45; }
+  .pu-star-row.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+  .pu-star-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
+  .pu-star-row.renaming > :not(.pu-rename) { visibility: hidden; }
+  .pu-rename { position: absolute; inset: 3px; width: calc(100% - 6px); height: 30px;
+    padding: 0 var(--sp-3); border: var(--bw) solid var(--accent);
+    border-radius: var(--shape-control); background: var(--surface); color: var(--ink);
+    font-size: 12px; outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+  /* Focus is an action in the navigation, not utility-card content. */
+  /* Search and the working collection share one left edge. Search keeps its
+     readable 760px measure; lists are structured data and use the whole pane. */
+  .hero-top, .daily-stage { width: 100%; max-width: none; margin: 0; }
+  /* The reserve keeps Search's field clear of the fixed utility cluster: about
+     65px for the glyph-only Focus pair, more once its label is shown. */
+  .hero-top { position: relative; z-index: 1; display: block; padding-right: 76px; }
+  .hero-top .hero-panel,
+  body[data-workbench="true"] .hero .hero-panel {
+    width: 100%; max-width: 760px; margin: 0;
+  }
+  /* The sticky header begins one spacing token below Search. That offset is
+     painted once by the page shell so a passing row cannot become legible in
+     the gap. This is deliberately one shared layer, never a per-card mask. */
+  .hero::after { content: ""; position: absolute; z-index: 0; top: 100%;
+    left: 0; right: 0; height: var(--sp-10); pointer-events: none;
+    background: var(--bg-solid); background-attachment: fixed; }
+  body.gradient .hero::after,
+  [data-gradient="true"] body .hero::after {
+    background: var(--bg-grad, var(--bg-solid));
+    background-attachment: fixed;
+  }
+
+  /* Starred begins on the sticky-window axis, not the Search axis. Its right
+     stroke exits the viewport so the reduced state reads as an edge tab. On
+     wide panes the open 280px ledger and a 20px gap are matched by
+     `.daily-stage`'s inset, so rows yield real space instead of being covered. */
+  .starred-edge { position: absolute; z-index: 24;
+    top: calc(100% + var(--sp-10) + var(--section-lead-h, 44px)
+      + var(--section-local-h, 0px));
+    right: calc(-1 * var(--bw));
+    width: 58px; overflow: clip; text-align: left;
+    view-transition-name: starred-rail; }
+  .starred-edge-toggle { width: 100%; min-width: 50px; min-height: 42px;
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-3);
+    padding: 0 var(--sp-4); border: var(--bw) solid var(--border);
+    border-radius: var(--shape-panel); background: var(--surface); color: var(--ink-2);
+    box-shadow: none; font-size: 12px; font-weight: 650; cursor: pointer;
+    transition: color var(--motion-feedback) var(--ease-out),
+                border-color var(--motion-feedback) var(--ease-out); }
+  [data-mode="dark"] .starred-edge-toggle { background: var(--surface-2); }
+  .starred-edge-toggle:hover { color: var(--accent-strong-ink);
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); }
+  .starred-edge-toggle .ic { fill: currentColor; }
+  .starred-edge-count { min-width: 14px; color: var(--ink-3);
+    font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+  .starred-edge-collapse { color: var(--ink-3); font-size: 18px; line-height: 1; }
+  .starred-edge:not(.is-open) .starred-edge-label,
+  .starred-edge:not(.is-open) .starred-edge-collapse { display: none; }
+  .starred-edge:not(.is-open) .starred-edge-toggle {
+    border-right: 0;
+    border-radius: var(--shape-panel) 0 0 var(--shape-panel);
+  }
+  .starred-edge-body { display: none; }
+  .starred-edge.is-open { width: min(280px, calc(100vw - 2 * var(--sp-6)));
+    overflow: clip; border: var(--bw) solid var(--border); border-right: 0;
+    border-radius: var(--shape-panel) 0 0 var(--shape-panel); background: var(--surface);
+    box-shadow: none; }
+  [data-mode="dark"] .starred-edge.is-open { background: var(--surface-2); }
+  .starred-edge.is-open .starred-edge-toggle { width: 100%; justify-content: flex-start;
+    border: 0; border-bottom: var(--bw) solid var(--border); border-radius: 0;
+    background: transparent; box-shadow: none; }
+  .starred-edge.is-open .starred-edge-count { margin-left: auto; }
+  .starred-edge.is-open .starred-edge-body { display: block; }
+  .starred-edge-list { max-height: calc(100vh - var(--hero-h, 82px) - var(--sp-10)
+    - var(--section-lead-h, 44px) - var(--section-local-h, 0px));
+    overflow-y: auto; padding: 0; }
+
+  /* F44: one cluster owns the top-right utility axis. Needs you and Focus are
+     laid out by it in reading order rather than each anchoring itself, so they
+     can never collide and only one measurement exists. It is bounded on the
+     left so a long attention line can never reach Search's 760px field. */
+  .hero-utility { position: fixed; z-index: 22; top: var(--sp-10);
+    right: var(--utility-right);
+    max-width: calc(100vw - var(--nav-w, 204px) - var(--pad-x) - 780px
+      - var(--utility-right));
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: var(--sp-6); pointer-events: none; }
+  .hero-utility > * { pointer-events: auto; }
+
+  /* Focus is a control, not a surface: it opens nothing and takes no space
+     from the collection, so it stays a plain pair on the utility line rather
+     than an edge tab like Starred. Left part acts, right part jumps to its
+     settings. An active run takes the audited solid accent pair, and is then
+     the only End control on the page. */
+  .hero-focus { flex: none; display: inline-flex; align-items: center;
+    inline-size: 142px;
+    min-height: 42px; border: var(--bw) solid var(--border);
+    border-radius: var(--shape-panel); background: var(--surface);
+    overflow: clip; }
+  [data-mode="dark"] .hero-focus { background: var(--surface-2); }
+  .hero-focus-action, .hero-focus-settings {
+    min-height: 40px; display: inline-flex; align-items: center; gap: var(--sp-3);
+    margin: 0; padding: 0 var(--sp-4); border: 0; border-radius: 0;
+    background: transparent; color: var(--ink-2);
+    font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer;
+    transition: background-color var(--motion-feedback) var(--ease-out),
+                color var(--motion-feedback) var(--ease-out); }
+  .hero-focus-action { position: relative; isolation: isolate; overflow: hidden;
+    flex: 1 1 auto; display: grid; place-items: center; min-width: 0; }
+  .hero-focus-action::before { content: ""; position: absolute; z-index: 0; inset: 0;
+    background: var(--accent); transform: scaleX(0); transform-origin: left center;
+    transition: transform var(--motion-continuity) var(--ease-out); }
+  .hero-focus-state { position: relative; z-index: 1; grid-area: 1 / 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-3);
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--motion-feedback) var(--ease-out); }
+  .hero-focus-state .ic { opacity: 0; transform: rotate(-58deg) scale(.46);
+    flex: none;
+    transition: opacity var(--motion-feedback) var(--ease-out),
+                transform var(--motion-reveal) var(--ease-out); }
+  .hero-focus-state.is-current { opacity: 1; }
+  .hero-focus-state.is-current .ic { opacity: 1; transform: rotate(0) scale(1); }
+  .hero-focus.is-active .hero-focus-state.is-ready .ic {
+    transform: rotate(58deg) scale(.46); }
+  .hero-focus-settings { min-width: 32px; justify-content: center;
+    padding: 0 var(--sp-3); border-left: var(--bw) solid var(--border);
+    color: var(--ink-3); }
+  .hero-focus.is-setup .hero-focus-settings { visibility: hidden; }
+  .hero-focus-action:hover, .hero-focus-settings:hover {
+    background: var(--nav-hover); color: var(--accent-strong-ink); }
+  .hero-focus-action:disabled { opacity: 1; cursor: pointer; }
+  .hero-focus.is-active { border-color: var(--accent); }
+  .hero-focus.is-active .hero-focus-action::before { transform: scaleX(1); }
+  .hero-focus.is-active .hero-focus-action {
+    color: var(--accent-ink); }
+  .hero-focus.is-active .hero-focus-action:hover {
+    color: var(--accent-ink); filter: brightness(1.06); }
+  .hero-focus.is-active .hero-focus-settings { border-left-color: var(--accent); }
+  .hero-focus.is-hydrating .hero-focus-action::before,
+  .hero-focus.is-hydrating .hero-focus-state,
+  .hero-focus.is-hydrating .hero-focus-state .ic { transition: none; }
+  /* The label is hidden until the pane can hold it beside the 760px field. */
+  .hero-focus-label { display: none; }
+  /* Needs you keeps its one home: the free space to Search's right. It is
+     absent when that space cannot hold the line instead of falling below
+     Search. The cluster above owns its position. */
+  .page-attention { display: none; width: auto; min-width: 0; min-height: 42px;
+    margin: 0; align-items: center; justify-content: flex-end;
+    gap: var(--sp-4); color: var(--ink-2); font-size: 12px; text-align: center; }
+  .page-attention[hidden] { display: none; }
+  .page-attention-label { flex: none; display: inline-flex; align-items: center;
+    gap: var(--sp-3); font-weight: 650; white-space: nowrap; }
+  .page-attention-items { min-width: 0; flex: 0 1 auto; display: flex; align-items: center;
+    justify-content: flex-end; gap: var(--sp-4); flex-wrap: wrap; overflow: hidden; }
+  .page-attention-entry { min-width: 0; max-width: 190px; display: inline-flex;
+    align-items: center; flex: 0 1 auto; }
+  .page-attention-entry.is-automatic { max-width: 250px; }
+  .page-attention-link { min-height: 26px; display: inline-flex; align-items: center;
+    min-width: 0; max-width: 100%; gap: 4px; padding: 0; border: 0;
+    border-radius: var(--r-mini);
+    background: transparent; color: var(--ink-2); font-size: 12px; cursor: pointer; }
+  .page-attention-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .page-attention-age { flex: none; color: var(--ink-3); font-size: 11px;
+    font-variant-numeric: tabular-nums; }
+  .page-attention-link:hover, .page-attention-link:focus-visible {
+    color: var(--accent-strong-ink); background: transparent;
+    text-decoration: underline; text-underline-offset: 3px; }
+  .page-attention-undo { flex: none; min-height: 26px; margin-left: var(--sp-2);
+    padding: 0; border: 0; background: transparent; color: var(--accent-strong-ink);
+    font-size: 11px; cursor: pointer; }
+  .page-attention-undo:hover, .page-attention-undo:focus-visible {
+    background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+  .page-attention-undo:disabled { color: var(--ink-3); cursor: default;
+    text-decoration: none; }
+  .page-attention-activity { flex: none; min-height: 26px; margin-left: var(--sp-2); padding: 0;
+    border: 0; background: transparent; color: var(--accent-strong-ink);
+    font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+  .page-attention-activity:hover, .page-attention-activity:focus-visible {
+    color: var(--accent-strong-ink); background: transparent;
+    text-decoration: underline; text-underline-offset: 3px; }
+
+  .daily-stage { position: relative; min-width: 0; }
+  .daily-stage .sections { view-transition-name: starred-workspace; }
+  .page-attention { view-transition-name: attention-line; }
+  body[data-workbench="true"] .daily-stage .sections { max-width: none; }
+  body[data-workbench="true"] .sections > section { padding-top: 0; }
+  body[data-workbench="true"] .label-index,
+  body[data-workbench="true"] .activity-controls {
+    padding-right: calc(58px + var(--sp-4));
+  }
+
+  /* Canvas line: the section identity and any local index become one measured
+     sticky stack. They keep the page material, so rows roll under quiet canvas
+     instead of meeting a second card, shadow, or toolbar. */
+  body[data-workbench="true"] .section-lead {
+    position: sticky; z-index: 10;
+    top: calc(var(--hero-h, 82px) + var(--sp-10));
+    background: var(--bg-solid); background-attachment: fixed;
+  }
+  body[data-workbench="true"] .section-local-sticky {
+    position: sticky; z-index: 9;
+    top: calc(var(--hero-h, 82px) + var(--sp-10) + var(--section-lead-h, 44px));
+    background: var(--bg-solid); background-attachment: fixed;
+  }
+  body.gradient[data-workbench="true"] .section-lead,
+  body.gradient[data-workbench="true"] .section-local-sticky,
+  [data-gradient="true"] body[data-workbench="true"] .section-lead,
+  [data-gradient="true"] body[data-workbench="true"] .section-local-sticky {
+    background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed;
+  }
+  body[data-workbench="true"] .item {
+    scroll-margin-top: calc(var(--hero-h, 82px) + var(--sp-10)
+      + var(--section-lead-h, 44px) + var(--section-local-h, 0px) + var(--sp-6));
+  }
+
+  /* The push model turns on only when the remaining primary column stays
+     useful. Narrower layouts keep the same flat rail as an overlay fallback. */
+  @media (min-width: 1280px) {
+    .content:has(.starred-edge.is-open) .daily-stage {
+      padding-right: calc(300px - var(--pad-x));
+    }
+    .content:has(.starred-edge.is-open) .label-index { padding-right: 0; }
+  }
+
+  /* Needs you appears only when the free top-row measure is genuinely useful.
+     It is always right-aligned, and the sentinel withdraws it on scroll. */
+  @media (min-width: 1600px) {
+    .page-attention:not([hidden]) {
+      display: flex;
+      width: auto; min-height: 42px; max-width: none; margin: 0;
+      justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap;
+    }
+    .page-attention-items { flex-wrap: nowrap; }
+  }
+  @media (min-width: 1600px) and (max-width: 1919px) {
+    .page-attention-entry:nth-child(n + 3) { display: none; }
+  }
+  /* Below this the pane cannot hold a named control beside the 760px field, so
+     Focus keeps its glyph and its accessible name and drops the visible text. */
+  @media (min-width: 1280px) {
+    .hero-focus-label { display: inline; }
+    .hero-focus-state { width: 100%; justify-content: flex-start; }
+    .hero-top { padding-right: 190px; }
+  }
+  @media (max-width: 900px) {
+    .hero-top { padding-right: 72px; }
+  }
+  /* One discrete layout commit, then compositor-owned continuity between the
+     old and new workspace snapshots. Long lists are never reflowed per frame. */
+  ::view-transition-group(starred-workspace),
+  ::view-transition-group(starred-rail),
+  ::view-transition-group(attention-line) {
+    animation-duration: var(--motion-continuity);
+    animation-timing-function: var(--ease-out);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-focus-action::before,
+    .hero-focus-state,
+    .hero-focus-state .ic { transition: none; }
+    ::view-transition-group(starred-workspace),
+    ::view-transition-group(starred-rail),
+    ::view-transition-group(attention-line) { animation: none; }
+  }

@@ -1,0 +1,647 @@
+/* F14 side panel — compact chrome. Role tokens only (from css/tokens.css); the
+   panel keeps its own stylesheet because the dashboard's component CSS lives
+   inline in dashboard.html. tokens.css already themes <body> (bg/ink/font).
+   Compact list/row rules under [data-compact] arrive in F14-2d. */
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: var(--display-weight);
+             letter-spacing: var(--display-tracking); }
+
+:root {
+  --panel-gutter: 10px;
+  --panel-chrome-h: 88px;
+  --panel-section-lead-h: 40px;
+  --panel-local-h: 0px;
+}
+@media (min-width: 400px) { :root { --panel-gutter: 12px; } }
+
+/* The shell gets its own name instead of borrowing the shared workflow `.panel`
+   primitive. One gutter now owns Search, navigation, section identity, and rows. */
+.sidepanel-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--panel-gutter) var(--panel-gutter);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+/* sticky chrome: search + Focus strip + switcher stay pinned; opaque token bg so
+   list rows never show through as they scroll under it. */
+.panel-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--panel-gutter);
+  background: var(--bg-solid);
+  background-attachment: fixed;
+}
+body.gradient .panel-chrome,
+[data-gradient="true"] body .panel-chrome {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+.panel-chrome > .search-box { margin-bottom: var(--sp-4); }
+
+/* One connected navigation band replaces five competing pills and stays on one
+   row at 320px. Active location is text + a bottom rail, never a filled chip. */
+.switcher {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: var(--bw) solid var(--border);
+}
+.switcher-tabs {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.switch-tab, .switch-more {
+  position: relative;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--motion-feedback) var(--ease-out),
+              color var(--motion-feedback) var(--ease-out);
+}
+.switch-more { min-width: 46px; padding-inline: var(--sp-3); }
+.switch-tab:hover, .switch-more:hover { background: var(--nav-hover); color: var(--ink); }
+.switch-tab[aria-selected="true"], .switch-more.on {
+  color: var(--accent-strong-ink);
+  font-weight: 650;
+}
+.switch-tab[aria-selected="true"]::after, .switch-more.on::after {
+  content: "";
+  position: absolute;
+  inset: auto var(--sp-2) -1px;
+  height: 2px;
+  background: var(--accent);
+}
+.switch-tab:focus-visible, .switch-more:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: -2px;
+}
+
+/* Focus strip slot (the shared strip mounts here). Collapse the slot when empty
+   OR when it holds only a hidden strip, so the chrome's column gap doesn't leave a
+   blank row while no site-guard run is active. */
+.panel-focus:empty,
+.panel-focus:has(.focus-strip.hidden) { display: none; }
+.panel-focus:not(:empty):not(:has(.focus-strip.hidden)) { margin-bottom: var(--sp-4); }
+
+/* More menu (Float elevation; escapes the switcher row) */
+.panel-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    min-width: 160px; display: flex; flex-direction: column; padding: 4px;
+    background: var(--surface); border: var(--bw) solid var(--border);
+    border-radius: var(--shape-panel);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow-ink) 22%, transparent); }
+.menu-item { min-height: 28px; text-align: left; padding: 5px 10px; border: none; background: none;
+    color: var(--ink-2); font-size: 12.5px; border-radius: var(--shape-control); cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--accent-soft);
+    color: var(--accent-soft-ink); outline: none; }
+
+/* Dashboard's Canvas line, compacted: section identity stays pinned under the
+   navigation while group caps take the next measured slot below it. */
+.panel-section-lead {
+  position: sticky;
+  top: var(--panel-chrome-h);
+  z-index: 11;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px var(--sp-4);
+  background: var(--bg-solid);
+  background-attachment: fixed;
+}
+.panel-section-actions {
+  min-width: 0;
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.panel-section-actions:empty { display: none; }
+.panel-section-actions > button {
+  min-height: 28px;
+  padding: 3px var(--sp-3);
+  border: 0;
+  border-radius: var(--shape-control);
+  background: transparent;
+  color: var(--accent-strong-ink);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.panel-section-actions > button:hover,
+.panel-section-actions > button:focus-visible { background: var(--nav-hover); }
+.panel-section-actions .open-filter-control { width: clamp(112px, 34vw, 168px); }
+.panel-section-actions .action-icon { display: none; }
+.panel-section-actions .tagbox.cbx {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: min(190px, 61vw);
+  min-width: 0;
+  padding: 3px 6px;
+}
+.panel-section-actions .taginput {
+  min-width: 0;
+  width: 100%;
+  padding: 3px 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.panel-section-actions .tagmenu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
+  width: min(240px, calc(100vw - 2 * var(--panel-gutter)));
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.panel-section-actions .tagopt {
+  padding: 5px 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.panel-section-actions .tagopt:hover,
+.panel-section-actions .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+body.gradient .panel-section-lead,
+[data-gradient="true"] body .panel-section-lead {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+.panel-heading {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-body { flex: 1; min-height: 0; padding: 0 0 var(--sp-8); }
+.panel-section-host { min-width: 0; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+           overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* --- search box (createSearchBox), compact full-width variant --- */
+/* D4-3c: search material is shared (css/primitives.css); the panel keeps its
+   compact field height and type scale. */
+.search-field { min-height: 38px; }
+.search-field .search-input { padding: 8px 10px 8px 0; font-size: 13px; }
+.linklike { background: none; border: none; padding: 0; font: inherit;
+    color: var(--accent-strong-ink); text-decoration: underline; cursor: pointer; }
+
+/* =====================================================================
+   F14-2d: compact list skin for the side panel (spec §6 geometry).
+   The panel opts every list into createTabList presentation:"compact", so
+   the tablist root carries [data-compact]; these rules render that skin
+   from role tokens only (no new color values). Base component rules
+   (button/input/Focus strip/toast) are panel-wide because sidepanel.html
+   is a fresh document that does NOT load the dashboard's inline CSS; the
+   chrome's own .switch-* / .menu-item class rules keep their styling
+   (class beats element). No list renders in the panel yet (that wiring is
+   the next batch); this establishes the CSS so the render lands into ready
+   styling. Compact action-overflow menus + selection bar behavior follow.
+   ===================================================================== */
+
+/* --- base controls the list needs (panel has no dashboard component CSS) --- */
+[data-surface="sidepanel"] .tablist button,
+[data-surface="sidepanel"] .toast button {
+  padding: 5px 11px; border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  background: var(--surface-2); color: var(--ink); cursor: pointer; font-size: 12px;
+  transition: background-color var(--motion-feedback) var(--ease-out),
+              border-color var(--motion-feedback) var(--ease-out),
+              box-shadow var(--motion-feedback) var(--ease-out),
+              color var(--motion-feedback) var(--ease-out),
+              filter var(--motion-feedback) var(--ease-out); }
+[data-surface="sidepanel"] .tablist button:hover {
+  background: var(--accent-soft); color: var(--accent-soft-ink); border-color: var(--accent-soft); }
+[data-surface="sidepanel"] .tablist button.mini {
+  padding: 1px 8px; font-size: 11px; margin-left: 6px; border-radius: var(--shape-control); }
+[data-surface="sidepanel"] .tablist button.mini2 {
+  padding: 3px 10px; font-size: 12px; color: var(--ink-3); background: transparent; border-color: transparent; }
+[data-surface="sidepanel"] .tablist button.mini2:hover {
+  color: var(--accent-soft-ink); background: var(--accent-soft); }
+[data-surface="sidepanel"] .tablist button.danger {
+  color: var(--ink); background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent); }
+[data-surface="sidepanel"] .tablist .item-head-toggle {
+  min-height: 0;
+  margin: calc(-1 * var(--sp-3));
+  padding: var(--sp-3);
+  border: 0;
+  border-radius: var(--shape-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+[data-surface="sidepanel"] .tablist .item-head-toggle:hover {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+[data-surface="sidepanel"] .tablist :is(.tacts, .gacts) button.mini { margin: 0; }
+[data-surface="sidepanel"] .tablist input[type="text"],
+[data-surface="sidepanel"] .tablist input[type="datetime-local"],
+[data-surface="sidepanel"] .tablist select {
+  padding: 5px 8px; border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  font: inherit; font-size: 12px; background: var(--surface); color: var(--ink); }
+
+/* --- shared Focus strip: this host owns only compact spacing/type --- */
+.focus-strip { justify-content: flex-start; gap: 6px 10px; margin: 0; padding: 6px 10px;
+  border-radius: var(--shape-control); font-size: 12px; }
+.focus-strip .fs-counts-link { min-height: 0; padding: 0; border: 0; background: transparent;
+  color: inherit; font: inherit; cursor: pointer; }
+.focus-strip .fs-counts-link:hover,
+.focus-strip .fs-counts-link:focus-visible { color: inherit; background: transparent;
+  text-decoration: underline; text-underline-offset: 3px; }
+.focus-strip .mini { margin: 0; padding: 1px 8px; font-size: 11px;
+  border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+  background: var(--surface-2); color: var(--ink); cursor: pointer; }
+
+/* --- undo/notice toast (anchored to the panel bottom, full-width within gutters) --- */
+.toast { position: fixed; left: var(--panel-gutter); right: var(--panel-gutter); bottom: 12px; z-index: 80;
+  display: flex; gap: 10px; align-items: center; background: var(--surface); color: var(--ink);
+  border: var(--bw) solid var(--border); border-radius: var(--shape-panel);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-ink) 30%, transparent);
+  padding: 9px 13px; font-size: 12.5px; }
+body[data-surface="sidepanel"] .tablist > .bulk-bar.has-selection {
+  left: var(--panel-gutter);
+  right: var(--panel-gutter);
+}
+body[data-surface="sidepanel"] .tablist > .keeper-panel-slot:not(:empty) {
+  left: var(--panel-gutter);
+  right: var(--panel-gutter);
+}
+
+/* --- shared Dashboard ledger material, compact panel density ---
+   The same cap/body silhouette now serves both hosts. Only the compact row
+   anatomy and icon-only action lanes remain panel-specific. Each top-level
+   window/group cap sticks below the complete measured panel chrome and is
+   pushed away by the next group, exactly like Dashboard. */
+[data-surface="sidepanel"] .tablist[data-compact] {
+  display: grid;
+  gap: var(--sp-8);
+  overflow: visible;
+  isolation: isolate;
+  background: transparent;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: clip;
+  border: 0;
+  border-radius: var(--shape-panel);
+  background: transparent;
+  box-shadow: none;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell {
+  --cap-radius: var(--shape-panel);
+  min-width: 0;
+  position: sticky;
+  top: calc(var(--panel-chrome-h) + var(--panel-section-lead-h) + var(--panel-local-h));
+  z-index: 6;
+  isolation: isolate;
+  display: block;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::before,
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  width: var(--cap-radius);
+  height: var(--cap-radius);
+  background: var(--bg-solid);
+  background-attachment: fixed;
+  pointer-events: none;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::before { left: 0; }
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::after { right: 0; }
+body.gradient[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::before,
+body.gradient[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::after,
+[data-gradient="true"] body[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::before,
+[data-gradient="true"] body[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell::after {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-head-shell > .item-head {
+  position: relative;
+  z-index: 1;
+  margin-inline: 0;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--cap-radius) var(--cap-radius) 0 0;
+}
+[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-body-frame {
+  display: block;
+  min-width: 0;
+  overflow: clip;
+  border: var(--bw) solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--shape-panel) var(--shape-panel);
+  background: var(--workbench-row);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .item-head {
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px var(--sp-4);
+  border-bottom: var(--bw) solid var(--border);
+  border-radius: 0;
+  background: var(--workbench-header);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .item-title { min-width: 0; }
+[data-surface="sidepanel"] .tablist[data-compact] .tl-rows { margin-top: 0; }
+[data-surface="sidepanel"] .tablist[data-compact] .trow {
+  min-height: var(--row-h-ultra);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  background: var(--workbench-row);
+  scroll-margin-top: calc(var(--panel-chrome-h) + var(--panel-section-lead-h)
+    + var(--panel-local-h) + var(--row-h-ultra) + var(--sp-3));
+}
+[data-surface="sidepanel"] .tablist[data-compact] .trow:hover,
+[data-surface="sidepanel"] .tablist[data-compact] .trow:focus-within {
+  background: var(--workbench-hover);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .trow.sel {
+  background: color-mix(in srgb, var(--accent) 16%, var(--workbench-row));
+}
+[data-surface="sidepanel"] .tablist[data-compact] .trow.sel:hover,
+[data-surface="sidepanel"] .tablist[data-compact] .trow.sel:focus-within {
+  background: color-mix(in srgb, var(--accent) 20%, var(--workbench-row));
+}
+[data-surface="sidepanel"] .tablist[data-compact] .trow.sel::before {
+  width: 3px;
+  border-radius: 0;
+  opacity: 1;
+}
+/* Row actions hover above title/label content at compact widths. The tray and
+   its leading patch inherit the row's exact rest/hover/selected material, so
+   no text can show through its button gaps. Danger tint mixes with an opaque
+   ledger surface instead of transparent. */
+[data-surface="sidepanel"] .tablist[data-compact] .tacts {
+  position: absolute;
+  z-index: 2;
+  right: var(--sp-3);
+  isolation: isolate;
+  padding-left: var(--sp-2);
+  background: inherit;
+}
+[data-surface="sidepanel"] .tablist[data-compact] .tacts::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0 calc(-1 * var(--sp-3));
+  background: inherit;
+  pointer-events: none;
+}
+[data-surface="sidepanel"] .tablist[data-compact] .tacts > * {
+  position: relative;
+  z-index: 1;
+}
+/* Sessions can expose four row controls (move, star, label, remove). While
+   that tray is revealed, stop the long title before the tray rather than
+   asking its text to paint underneath all four controls. The reservation is
+   reveal-only, so resting rows keep the useful full-width title. */
+[data-surface="sidepanel"] .tablist[data-tablist="sessions"][data-compact] .trow {
+  --session-row-action-reserve: 136px;
+}
+[data-surface="sidepanel"] .tablist[data-tablist="sessions"][data-compact]
+  .trow:is(:hover, .sel, :focus-within, .kbd-reveal, .palette-source) .t {
+  padding-inline-end: var(--session-row-action-reserve);
+}
+[data-surface="sidepanel"] .tablist[data-tablist="sessions"][data-compact]
+  .trow:is(:hover, .sel, :focus-within, .kbd-reveal, .palette-source) .rowchips {
+  visibility: hidden;
+}
+[data-surface="sidepanel"] .tablist[data-compact] .tacts button.danger {
+  background: color-mix(in srgb, var(--danger) 14%, var(--workbench-row));
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+}
+[data-surface="sidepanel"] .tablist[data-compact] .tacts button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 20%, var(--workbench-row));
+}
+[data-surface="sidepanel"] .tablist[data-compact] .disclosure-row {
+  min-height: 32px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  background: var(--workbench-row);
+  color: var(--workbench-tertiary);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .disclosure-row:hover,
+[data-surface="sidepanel"] .tablist[data-compact] .disclosure-row:focus-visible {
+  background: var(--workbench-hover);
+  color: var(--ink);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .item-head > .item-meta,
+[data-surface="sidepanel"] .tablist[data-compact] .row-subline > * {
+  color: var(--workbench-tertiary);
+}
+[data-mode="dark"] body[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-body-frame {
+  border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+}
+[data-mode="dark"] body[data-surface="sidepanel"] .tablist[data-compact] .item-head {
+  border-bottom-color: color-mix(in srgb, var(--ink) 20%, var(--border));
+}
+[data-mode="dark"] body[data-surface="sidepanel"]
+  .tablist[data-compact] > .item > .item-head-shell > .item-head {
+  border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+}
+[data-mode="dark"] body[data-surface="sidepanel"]
+  .tablist[data-compact] .trow:not(.sel):not(:hover):not(:focus-within) {
+  border-bottom-color: color-mix(in srgb, var(--ink) 13%, var(--border));
+}
+[data-surface="sidepanel"] .tablist[data-compact]
+  .item:has(.window-block) > .item-body-frame > .tl-rows {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .window-block {
+  margin: 0;
+  overflow: clip;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--workbench-row);
+}
+[data-surface="sidepanel"] .tablist[data-compact] .window-block + .window-block { margin-top: 0; }
+[data-surface="sidepanel"] .tablist[data-compact]
+  > .item.is-folded > .item-head-shell > .item-head {
+  border-radius: var(--cap-radius);
+}
+
+/* D4-2b owns compact row/group/checkbox/action geometry in tablist-d4.css.
+   This host keeps only the narrow-surface drag states and inline-panel skins. */
+[data-compact] .trow.dragging { opacity: .45; }
+[data-compact] .trow.drop-target { box-shadow: inset 0 2.5px 0 var(--accent); }
+[data-compact] .item-head.drop-target { box-shadow: inset 0 -2.5px 0 var(--accent); }
+[data-compact] .trow[draggable="true"] { cursor: grab; }
+[data-compact] .move-handle { cursor: grab; }
+[data-compact] .kbd-slot { outline: 2px solid var(--focus-accent); outline-offset: 1px;
+  border-radius: var(--shape-focus); }
+[data-compact] .drop-zone-window-end { --drop-end-inset: 8px; min-height: 18px; padding-block: 0; }
+
+/* chips (row + card), each an AA dark-ink-on-tint pill */
+[data-compact] .chip { border-radius: var(--shape-pill); padding: 1px 8px; font-size: 10.5px; }
+[data-compact] .rowchips { flex: none; margin-left: 2px; }
+[data-compact] .rowchips .chip { font-size: 10px; padding: 0 6px; }
+[data-compact] .chip .x { cursor: pointer; margin-left: 3px; border: none; background: none;
+  color: inherit; font: inherit; line-height: 1; padding: 0 2px; border-radius: var(--shape-control); }
+[data-compact] .chip .x:hover { color: var(--ink); background: var(--danger-bg); }
+
+/* Local section controls take the same measured sticky slot as Dashboard's
+   Labels index. Group caps start below its real wrapped height. */
+[data-surface="sidepanel"] .section-local-sticky {
+  position: sticky;
+  top: calc(var(--panel-chrome-h) + var(--panel-section-lead-h));
+  z-index: 9;
+  background: var(--bg-solid);
+  background-attachment: fixed;
+}
+body.gradient[data-surface="sidepanel"] .section-local-sticky,
+[data-gradient="true"] body[data-surface="sidepanel"] .section-local-sticky {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+
+/* Labels' host-owned compact index (sibling of the tablist, so it cannot rely
+   on [data-compact]). At 320 px the filter and three-way sort each get a full
+   row; chips wrap naturally with no horizontal page scroll. */
+[data-surface="sidepanel"] .label-index { display: flex; flex-direction: column;
+  gap: 7px; margin: 0; padding-bottom: 10px; }
+[data-surface="sidepanel"] .label-index[hidden] { display: none; }
+[data-surface="sidepanel"] .label-index-bar { display: flex; align-items: center;
+  gap: 6px; flex-wrap: wrap; margin: 0; }
+[data-surface="sidepanel"] .label-filter { flex: 1 1 150px; min-width: 0; width: 100%;
+  min-height: 30px; padding: 5px 8px; border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control); background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 12px; outline: none; }
+[data-surface="sidepanel"] .label-filter:focus { border-color: var(--focus-accent);
+  box-shadow: 0 0 0 3px var(--focus-ring); }
+[data-surface="sidepanel"] .label-filter::placeholder { color: var(--ink-3); opacity: 1; }
+[data-surface="sidepanel"] .label-sort { display: inline-flex; max-width: 100%;
+  border: var(--bw) solid var(--border); border-radius: var(--shape-control); overflow: hidden; }
+[data-surface="sidepanel"] .label-sort .seg { min-height: 28px; padding: 4px 8px;
+  border: none; background: transparent; color: var(--ink-2); font: inherit;
+  font-size: 11.5px; cursor: pointer; }
+[data-surface="sidepanel"] .label-sort .seg + .seg { border-left: var(--bw) solid var(--border); }
+[data-surface="sidepanel"] .label-sort .seg:hover:not(.on) { background: var(--surface-2); }
+[data-surface="sidepanel"] .label-sort .seg.on { background: var(--accent-soft);
+  color: var(--accent-soft-ink); }
+[data-surface="sidepanel"] .label-chip-line { min-width: 0; display: flex;
+  align-items: flex-start; gap: 5px; }
+[data-surface="sidepanel"] .label-chip-viewport { min-width: 0; flex: 1; overflow: visible; }
+[data-surface="sidepanel"] .label-chips { display: flex; flex-wrap: wrap;
+  align-items: center; gap: 5px; }
+[data-surface="sidepanel"] .label-chip-line.has-more:not(.is-expanded) .label-chip-viewport { overflow: hidden; }
+[data-surface="sidepanel"] .label-chip-line.has-more:not(.is-expanded) .label-chips { flex-wrap: nowrap; }
+[data-surface="sidepanel"] .label-chip-line.is-expanded .label-chip-viewport {
+  max-height: 126px; overflow-y: auto; }
+[data-surface="sidepanel"] .label-chip { min-height: 28px; padding: 3px 8px;
+  border: none; border-radius: var(--shape-pill); background: var(--accent-soft);
+  color: var(--accent-soft-ink); font: inherit; font-size: 11px; cursor: pointer;
+  white-space: nowrap; }
+[data-surface="sidepanel"] .label-chip:hover { text-decoration: underline; }
+[data-surface="sidepanel"] .label-index-toggle { flex: none; min-height: 28px;
+  padding: 3px 7px; border: var(--bw) solid var(--border); border-radius: var(--shape-pill);
+  background: var(--surface-2); color: var(--ink-2); font: inherit; font-size: 10.5px;
+  white-space: nowrap; cursor: pointer; }
+[data-surface="sidepanel"] .label-index-toggle:hover { color: var(--accent-strong-ink);
+  border-color: var(--accent); }
+[data-surface="sidepanel"] .label-chips .item-meta,
+[data-surface="sidepanel"] .note { color: var(--ink-3); font-size: 11px; }
+
+[data-surface="sidepanel"] .organization-row { gap: 5px; padding-bottom: 6px; flex-wrap: wrap; }
+[data-surface="sidepanel"] .organization-row-label { font-size: 10.5px; }
+[data-surface="sidepanel"] .organization-lenses { flex: 1 0 100%; gap: 2px; }
+[data-surface="sidepanel"] .organization-lens { min-height: 28px; padding-inline: 6px; font-size: 11px; }
+[data-surface="sidepanel"] .organization-lens-name { max-width: 15ch; }
+[data-surface="sidepanel"] .organization-row-actions { flex: 1 0 100%; justify-content: flex-end; }
+[data-surface="sidepanel"] .organization-command { min-height: 28px; padding-inline: 6px;
+  font-size: 10.5px; }
+
+@media (max-width: 399px) {
+  [data-surface="sidepanel"] .label-sort { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+  [data-surface="sidepanel"] .label-sort .seg { padding-inline: 5px; }
+}
+
+/* overflow menu (More actions) */
+[data-compact] details.overflow { position: relative; display: inline-block; }
+[data-compact] details.overflow > summary { list-style: none; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 4px; }
+[data-compact] details.overflow > summary::-webkit-details-marker { display: none; }
+[data-compact] details.overflow > summary::after { content: "▾"; font-size: 10px; color: var(--ink-3); }
+[data-compact] .overflow-menu { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin-top: 6px; padding: 8px; background: var(--surface-2);
+  border: var(--bw) solid var(--border); border-radius: var(--shape-control); }
+
+/* inline panels + banners the Open surface mounts */
+[data-compact] .driftrow { display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap; margin: 0; padding: 6px 10px; font-size: 12px;
+  color: var(--accent-soft-ink); background: var(--accent-soft); border-radius: 0; }
+[data-compact] .group-nudge { display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap; margin: 6px 0 4px; padding: 6px 10px; font-size: 12px;
+  color: var(--accent-soft-ink); background: var(--accent-soft); border-radius: 0; }
+[data-compact] .idle-nudge { color: var(--ink); background: var(--warn-bg);
+  border-radius: var(--shape-control); font-size: 11px; padding: 0 7px; }
+[data-compact] .snoozebar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 4px 6px 8px; }
+[data-compact] .organizebar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 6px 8px; }
+[data-compact] .snoozebar .host, [data-compact] .organizebar .host { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+[data-compact] .drop-zone-new { display: none; margin: 6px 0; padding: 6px 10px;
+  border: 1.5px dashed var(--border); border-radius: var(--shape-card);
+  color: var(--ink-3); font-size: 11px; text-align: center; }
+[data-compact] .drop-zone-new.kbd-slot,
+body.tab-dragging [data-tablist="open"][data-compact] .drop-zone-new { display: block; }
+[data-compact] .drop-zone-new.on { border-color: var(--accent); color: var(--accent-soft-ink);
+  background: var(--accent-soft); }
+
+/* label combobox (inline label panel) */
+[data-compact] .tagbox { position: relative; display: inline-flex; align-items: center; gap: 4px;
+  flex-wrap: wrap; padding: 3px 6px; }
+[data-compact] .tagmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; z-index: 30;
+  max-height: 200px; overflow-y: auto; padding: 4px; }
+[data-compact] .tagopt { padding: 5px 9px; border-radius: var(--shape-control); font-size: 12px; color: var(--ink-2); cursor: pointer; }
+[data-compact] .tagopt:hover, [data-compact] .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+
+/* empty state (compacted by layout only, dashboard copy) */
+[data-compact] .empty { color: var(--ink-3); font-style: italic; padding: 16px 4px; }
+[data-compact] .inbox-zero { text-align: center; padding: 22px 10px; }
+[data-compact] .inbox-zero .iz-title { font-family: var(--font-display); font-weight: 600;
+  font-size: 15px; color: var(--ink); margin-bottom: 4px; font-style: normal; }

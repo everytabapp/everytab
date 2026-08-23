@@ -1,0 +1,138 @@
+/* One 2×2 portfolio model shared by embedded and standalone Settings. The
+   matrix rows are Light/Dark default and its columns are Soft/Vivid. */
+.scheme-favorites {
+  margin: 4px 4px 10px;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-card);
+}
+.scheme-favorites > summary { cursor: pointer; color: var(--ink); font-size: 13px; font-weight: 600; }
+.scheme-favorites .settings-hint { margin: 8px 0; }
+.scheme-favorites-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.scheme-category { min-width: 0; padding: var(--sp-3); }
+.scheme-category:nth-child(even) { border-left: var(--bw) solid var(--border); }
+.scheme-category:nth-child(n + 3) { border-top: var(--bw) solid var(--border); }
+.scheme-category-yours { grid-column: 1 / -1; border-left: 0; }
+.scheme-category-label { margin: 0 0 var(--sp-3); color: var(--accent-strong-ink);
+  font-size: 11px; font-weight: 750; line-height: 1.25; }
+.scheme-category-options { display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 7px 12px; }
+.scheme-favorite { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px;
+  color: var(--ink-2); background: var(--surface); border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.scheme-favorite:hover, .scheme-favorite.on { color: var(--accent-strong-ink); border-color: var(--accent); }
+.scheme-star {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+}
+.scheme-favorite.on .scheme-star { color: var(--accent-strong-ink); }
+.scheme-swatch { width: 11px; height: 11px; flex: none; border-radius: 50%; }
+.scheme-favorite-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* P11-09: compact custom colour-scheme library; editing lives on its own page. */
+.custom-schemes {
+  display: block;
+  margin: 10px 4px 14px;
+  padding: 14px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-card);
+}
+.custom-scheme-intro,
+.custom-scheme-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.custom-scheme-intro { align-items: flex-start; justify-content: space-between; }
+.custom-scheme-intro h4 { margin: 0; font-size: 14px; }
+.custom-scheme-intro p { margin: 3px 0 0; color: var(--ink-3); font-size: 12px; }
+.custom-scheme-top-actions,
+.custom-scheme-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.custom-scheme-top-actions { flex: none; }
+.custom-schemes button,
+.custom-schemes .button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  text-decoration: none;
+}
+.custom-schemes button:hover,
+.custom-schemes .button-link:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+.custom-schemes button:focus-visible,
+.custom-schemes .button-link:focus-visible,
+.custom-schemes input:focus-visible,
+.custom-schemes select:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: 2px;
+}
+.custom-schemes button.accent,
+.custom-schemes .button-link.accent {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.custom-schemes button.accent:hover,
+.custom-schemes .button-link.accent:hover { color: var(--accent-ink); filter: brightness(.96); }
+.custom-schemes button:disabled { cursor: default; opacity: .66; }
+.custom-schemes .danger-quiet:hover { color: var(--ink); background: var(--danger-bg); border-color: var(--danger); }
+.custom-scheme-live { min-height: 18px; margin: 8px 0 2px; color: var(--ink-2); font-size: 12px; }
+.custom-scheme-live.is-error { color: var(--ink); }
+.custom-scheme-draft-route {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--warn-bg);
+  font-size: 12px;
+}
+.custom-scheme-draft-route[hidden] { display: none; }
+.custom-scheme-library { border-top: var(--bw) solid var(--border); }
+.custom-scheme-empty { margin: 12px 0 0; color: var(--ink-3); font-size: 12.5px; }
+.custom-scheme-row { min-height: 48px; padding: 8px 0; border-bottom: var(--bw) solid var(--border); }
+.custom-scheme-row.is-active { box-shadow: inset 3px 0 0 var(--accent); padding-left: 9px; }
+.custom-scheme-swatch { width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: 0 0 0 1px var(--border); }
+.custom-scheme-copy { flex: 1; min-width: 100px; display: flex; flex-direction: column; }
+.custom-scheme-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-scheme-copy span { color: var(--ink-3); font-size: 11px; }
+
+.permission-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.permission-state-wrap { display: inline-flex; align-items: center; min-height: 20px;
+  padding-inline: 7px; border: var(--bw) solid var(--border);
+  border-radius: var(--shape-pill, 99px); color: var(--accent-strong-ink);
+  background: var(--accent-bg); font-size: 11px; font-weight: 650; }
+.history-permission-row .history-access-trust { margin-top: 3px;
+  color: var(--accent-strong-ink); font-weight: 600; }
+.history-permission-row .perm-note:not(:empty) { margin-top: 3px; color: var(--ink-2); }
+.history-permission-row > button { flex: none; }
+
+@media (max-width: 560px) {
+  .scheme-favorites-grid { grid-template-columns: minmax(0, 1fr); }
+  .scheme-category:nth-child(even) { border-left: 0; }
+  .scheme-category:nth-child(n + 2) { border-top: var(--bw) solid var(--border); }
+  .scheme-category-yours { grid-column: auto; }
+  .custom-scheme-intro { flex-direction: column; }
+  .custom-scheme-top-actions { justify-content: flex-start; }
+  .custom-scheme-row { align-items: flex-start; flex-wrap: wrap; }
+  .custom-scheme-actions { width: 100%; justify-content: flex-start; padding-left: 26px; }
+}

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
+      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark light">
+  <script src="js/boot.js"></script>
+  <title></title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/primitives.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+      padding: 40px 32px;
+      background: var(--surface);
+      border: var(--bw) solid var(--border);
+      border-radius: var(--r-card, 16px);
+      box-shadow: var(--shadow-1);
+    }
+    .mark { display: flex; justify-content: center; color: var(--brand-accent); margin-bottom: 18px; }
+    .brand {
+      font: 700 11px/1 var(--font-display);
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--ink-3); margin-bottom: 20px;
+    }
+    h1 {
+      font-family: var(--font-display);
+      font-weight: var(--display-weight);
+      letter-spacing: var(--display-tracking);
+      font-size: 22px; color: var(--ink); margin: 0 0 10px; line-height: 1.3;
+    }
+    .line { font-size: 13.5px; color: var(--ink-2); margin: 0 0 24px; word-break: break-word; }
+    .domain { font: 13px/1.4 var(--font-mono); color: var(--ink); }
+    /* Geometry only. Variant color, hover, and disabled behavior come from
+       css/primitives.css, so this page speaks the product's button vocabulary
+       instead of its own. */
+    button { border: var(--bw) solid var(--border); border-radius: var(--r-btn);
+             background: var(--surface); color: var(--ink); cursor: pointer; font: inherit;
+             transition: background-color var(--motion-feedback) var(--ease-out),
+                         border-color var(--motion-feedback) var(--ease-out),
+                         color var(--motion-feedback) var(--ease-out),
+                         filter var(--motion-feedback) var(--ease-out); }
+    .primary {
+      min-height: var(--control-h-default); padding: 10px 28px;
+      font-size: 14px; font-weight: 600;
+    }
+    .access {
+      margin-top: 22px; padding-top: 20px; border-top: var(--bw) solid var(--border);
+    }
+    .access-label { font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
+    .access-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .mini {
+      min-height: var(--control-h-compact); padding: 7px 14px;
+      background: var(--surface-2); font-size: 12.5px;
+    }
+    .mini:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-soft-ink); }
+    .quiet {
+      min-height: var(--control-h-compact); padding: 6px 8px; font-size: 12.5px;
+    }
+    /* Footer navigation: the shared link role, quiet until hover. */
+    .footer .linklike { font-size: 12.5px; padding: 6px 8px; text-decoration: none; }
+    .footer .linklike:hover { text-decoration: underline; color: var(--accent-strong-ink); }
+    /* P3 inline decision panel (never a modal). Material is the shared role. */
+    .panel { margin-top: 18px; padding: 16px; }
+    .panel-q { margin-bottom: 12px; }
+    .panel-actions { gap: 8px; }
+    .msg { margin-top: 14px; font-size: 12.5px; color: var(--ink); min-height: 16px; }
+    .msg:empty { display: none; }
+    .footer { margin-top: 22px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="card" id="card" role="main">
+    <div class="mark" id="mark-wrap"></div>
+    <div class="brand" id="brand"></div>
+    <h1 id="heading"></h1>
+    <p class="line" id="line"></p>
+    <div id="primary-wrap"></div>
+    <div class="access" id="access-wrap" hidden>
+      <div class="access-label" id="access-label"></div>
+      <div class="access-row" id="access-row"></div>
+    </div>
+    <div id="panel-wrap"></div>
+    <div class="msg" id="msg" role="alert" aria-live="assertive"></div>
+    <div class="footer"><a class="linklike" id="settings-link" href="dashboard.html#settings-focus"></a></div>
+  </div>
+  <div class="sr-only" id="live" role="status" aria-live="polite"></div>
+  <script type="module" src="js/ui/focus-page.js"></script>
+</body>
+</html>

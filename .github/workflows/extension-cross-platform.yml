@@ -1,0 +1,65 @@
+name: Extension cross-platform
+
+on:
+  pull_request:
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-cross-platform.yml"
+  push:
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-cross-platform.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-contracts:
+    name: Portable contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Core storage and UI contracts
+        run: |
+          node extension/test/smoke.mjs
+          node extension/test/vault.mjs
+          node extension/test/pre-localization-polish.mjs
+          node extension/test/search-domain-filter.mjs
+          node extension/test/perf.mjs
+
+  installed-chrome:
+    name: Installed Chrome (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+      - name: Real unpacked-extension New Tab sequence (Linux)
+        if: runner.os == 'Linux'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: xvfb-run -a node extension/test/theme-on-open-extension.mjs
+      - name: Real unpacked-extension New Tab sequence
+        if: runner.os != 'Linux'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: node extension/test/theme-on-open-extension.mjs

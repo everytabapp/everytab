@@ -1,0 +1,551 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-20T00:00:00Z",
+  "title": "Design System: EveryTab",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Warm Paper",
+        "canonical": "#f5efe3",
+        "tonalRamp": [
+          "#1c1710",
+          "#332c20",
+          "#4d4433",
+          "#6b6049",
+          "#8c8064",
+          "#ada183",
+          "#cfc4a6",
+          "#f5efe3"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Card Cream",
+        "canonical": "#fffdf6",
+        "tonalRamp": [
+          "#1e1c15",
+          "#37342a",
+          "#524e40",
+          "#706b58",
+          "#908a73",
+          "#b1aa90",
+          "#d8d2b8",
+          "#fffdf6"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Recessed Sand",
+        "canonical": "#efe8d8",
+        "tonalRamp": [
+          "#1b1810",
+          "#322d1f",
+          "#4b4531",
+          "#685f45",
+          "#887d5e",
+          "#a99d7d",
+          "#ccc2a4",
+          "#efe8d8"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline Tan",
+        "canonical": "#e2d8c0",
+        "tonalRamp": [
+          "#191509",
+          "#2f2915",
+          "#474023",
+          "#635a34",
+          "#827747",
+          "#a2955f",
+          "#c2b68d",
+          "#e2d8c0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Espresso Ink",
+        "canonical": "#3d3629",
+        "tonalRamp": [
+          "#16130d",
+          "#2a251b",
+          "#3d3629",
+          "#574e3d",
+          "#746a55",
+          "#948a72",
+          "#b7ae97",
+          "#ded7c4"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Secondary Umber",
+        "canonical": "#6b6350",
+        "tonalRamp": [
+          "#17140e",
+          "#2c281e",
+          "#443e2f",
+          "#5a5343",
+          "#6f6754",
+          "#918970",
+          "#b5ad93",
+          "#dbd5bf"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Meta Fawn",
+        "canonical": "#6f6756",
+        "tonalRamp": [
+          "#181510",
+          "#2e2a20",
+          "#474234",
+          "#615a48",
+          "#7d755e",
+          "#9c937d",
+          "#bfb7a1",
+          "#e2dcc9"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Terracotta",
+        "canonical": "#bc5f3c",
+        "tonalRamp": [
+          "#2e130a",
+          "#4d2012",
+          "#6e2f1b",
+          "#8f3f26",
+          "#bc5f3c",
+          "#d08663",
+          "#e2ad92",
+          "#f3d7c8"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "On-Terracotta Ink (AA-derived)",
+        "canonical": "#0b0604",
+        "tonalRamp": [
+          "#1f1812",
+          "#3a2f24",
+          "#584a3a",
+          "#786652",
+          "#99846c",
+          "#bba58a",
+          "#ddceb9",
+          "#fff8f2"
+        ]
+      },
+      "accent-strong": {
+        "role": "primary",
+        "displayName": "Fired Clay",
+        "canonical": "#a44f2f",
+        "tonalRamp": [
+          "#250f07",
+          "#40190d",
+          "#5e2715",
+          "#81391f",
+          "#a44f2f",
+          "#c07a58",
+          "#d9a68c",
+          "#efd3c5"
+        ]
+      },
+      "accent-strong-ink": {
+        "role": "primary",
+        "displayName": "Fired Clay Ink (accent text on neutral material)",
+        "canonical": "#944b2e",
+        "tonalRamp": [
+          "#210d06",
+          "#3a170b",
+          "#552113",
+          "#742d1a",
+          "#944b2e",
+          "#b57657",
+          "#d3a488",
+          "#eed2c3"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Terracotta Wash (derived, accent 12%)",
+        "canonical": "#bc5f3c1f",
+        "tonalRamp": [
+          "#bc5f3c08",
+          "#bc5f3c10",
+          "#bc5f3c1f",
+          "#bc5f3c2e",
+          "#bc5f3c42",
+          "#bc5f3c5c",
+          "#bc5f3c7a",
+          "#bc5f3c99"
+        ]
+      },
+      "accent-soft-ink": {
+        "role": "primary-derived",
+        "displayName": "Readable Ink on Accent Wash",
+        "canonical": "#3d3629",
+        "tonalRamp": [
+          "#3d3629"
+        ]
+      },
+      "focus-accent": {
+        "role": "primary-derived",
+        "displayName": "Contrast-safe Focus Terracotta",
+        "canonical": "#8e5035",
+        "tonalRamp": [
+          "#8e5035"
+        ]
+      },
+      "status-marker-outline": {
+        "role": "secondary-derived",
+        "displayName": "Status Marker Boundary",
+        "canonical": "#3d3629b3",
+        "tonalRamp": [
+          "#3d3629b3"
+        ]
+      },
+      "ok": {
+        "role": "secondary",
+        "displayName": "Moss Ok",
+        "canonical": "#5f7d43",
+        "tonalRamp": [
+          "#16200e",
+          "#29391b",
+          "#3d5429",
+          "#4f6b36",
+          "#5f7d43",
+          "#86a06a",
+          "#aec394",
+          "#d8e3c8"
+        ]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "Ochre Warn",
+        "canonical": "#9a6b12",
+        "tonalRamp": [
+          "#241804",
+          "#3e2a08",
+          "#5c400c",
+          "#7b550f",
+          "#9a6b12",
+          "#ba8c3a",
+          "#d5b171",
+          "#eed9b3"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Brick Danger",
+        "canonical": "#a83f2e",
+        "tonalRamp": [
+          "#260d09",
+          "#431712",
+          "#63241b",
+          "#852f24",
+          "#a83f2e",
+          "#c46a58",
+          "#dc9a8b",
+          "#f0cec6"
+        ]
+      },
+      "brand-cream": {
+        "role": "brand-fixed",
+        "displayName": "EveryTab Porcelain",
+        "canonical": "#f4f2ed",
+        "tonalRamp": [
+          "#f4f2ed"
+        ]
+      },
+      "brand-edge": {
+        "role": "brand-fixed",
+        "displayName": "EveryTab Tile Edge",
+        "canonical": "#d8d4cc",
+        "tonalRamp": [
+          "#d8d4cc"
+        ]
+      },
+      "brand-ink": {
+        "role": "brand-fixed",
+        "displayName": "EveryTab Warm Ink",
+        "canonical": "#26221c",
+        "tonalRamp": [
+          "#26221c"
+        ]
+      },
+      "brand-accent": {
+        "role": "brand-fixed",
+        "displayName": "EveryTab Deep Teal",
+        "canonical": "#1e4a49",
+        "tonalRamp": [
+          "#1e4a49",
+          "#286766",
+          "#378a89",
+          "#47adaa"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles (h1) in the sticky hero. Weight 800, -0.03em — the bold form's voice."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings; on Overview they double as collapse controls."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rows, descriptions, list items. 13.5–14px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Sidebar group labels and h3 — the only sanctioned uppercase tracked role."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Exports and code-flavored metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "whisper",
+        "value": "0 1px 3px color-mix(in srgb, #3d3629 8%, transparent)",
+        "purpose": "Cards and search at rest. Derived from ink so it deepens in dark modes."
+      },
+      {
+        "name": "float",
+        "value": "0 14px 38px rgba(0,0,0,.28)",
+        "purpose": "Popovers, menus, toasts — anything overlapping other content."
+      },
+      {
+        "name": "modal",
+        "value": "0 30px 90px rgba(0,0,0,.4)",
+        "purpose": "Onboarding card and full-attention overlays."
+      },
+      {
+        "name": "btn-glow",
+        "value": "0 4px 14px color-mix(in srgb, #bc5f3c 30%, transparent)",
+        "purpose": "Primary buttons only — an accent-colored signature."
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-feedback",
+        "value": "80ms",
+        "purpose": "Immediate feedback: colour, background, opacity, filter. Hover, press, selected, focus."
+      },
+      {
+        "name": "motion-reveal",
+        "value": "140ms",
+        "purpose": "Component reveal: opacity plus a 2-4px transform. Menu, tooltip, top-layer action palette, disclosure glyph."
+      },
+      {
+        "name": "motion-continuity",
+        "value": "180ms",
+        "purpose": "State continuity: opacity plus a 4-6px transform. Toast, pointer-started keeper dock, overlay entrance, and the manual left-pane material edge/content translation. A completed destination jump may compose three tokens into a non-blocking Ring and Wash locator with a 4px settle."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(.2, .8, .2, 1)",
+        "purpose": "The only easing. Decisive out-curve, no bounce, no elastic."
+      },
+      {
+        "name": "rejected",
+        "value": "routine layout animation, ambient looping motion, smooth scrolling, delayed state or focus",
+        "purpose": "D4-4 closed the vocabulary. The user-triggered Dashboard left pane publishes final layout once, then animates a flat material edge, content translation, and native-size sidebar opacity; disclosure folds, boot, responsive changes, and data rendering remain instant. P11-16 stages solid accent text before pending work, waits 180ms to avoid flashing on fast reads, and uses one 80ms compositor opacity reveal so main-thread pressure cannot suppress feedback. No pending state loops. test/smoke.mjs enforces it."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "nav-compact",
+        "value": "900px",
+        "purpose": "Navigation drops to the 60px icon rail. NAV_COMPACT_MAX in js/lib/nav-mode.js."
+      },
+      {
+        "name": "nav-header",
+        "value": "620px",
+        "purpose": "Navigation becomes the anchored header switcher and content takes the full width. NAV_HEADER_MAX."
+      },
+      {
+        "name": "setting-row-stack",
+        "value": "560px",
+        "purpose": "Container query on .setlist: a setting's control stacks beneath its label."
+      },
+      {
+        "name": "list-compact-actions",
+        "value": "720px",
+        "purpose": "Container query on .tablist: action labels collapse to accessible icons. Wide rows default to names; users may choose icons everywhere."
+      },
+      {
+        "name": "stats-collapse",
+        "value": "900px",
+        "purpose": "Stat grid drops from 4 to 2 columns."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "The workhorse action. Neutral at rest, shifts to the accent voice on hover.",
+      "html": "<button class=\"ds-btn\">Restore</button>",
+      "css": ".ds-btn { padding: 6px 13px; border: 1px solid var(--border, #e2d8c0); border-radius: var(--shape-control, 12px); background: var(--surface-2, #efe8d8); color: var(--ink, #3d3629); cursor: pointer; font-size: 13px; transition: background-color var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)), color var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)), border-color var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)); } .ds-btn:hover { background: var(--accent-soft, #bc5f3c1f); color: var(--accent-soft-ink, #3d3629); border-color: transparent; } .ds-btn:focus-visible { outline: none; border-color: var(--focus-accent, #8e5035); box-shadow: 0 0 0 3px var(--focus-ring, #8e50354d); }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One per view. Accent fill with the accent-colored glow — the only glowing element.",
+      "html": "<button class=\"ds-btn-primary\">Set up vault</button>",
+      "css": ".ds-btn-primary { padding: 6px 13px; border: 1px solid var(--accent, #bc5f3c); border-radius: var(--shape-control, 12px); background: var(--accent, #bc5f3c); color: var(--accent-ink, #0b0604); cursor: pointer; font-size: 13px; font-weight: 500; box-shadow: 0 4px 14px var(--focus-ring, #bc5f3c4d); transition: filter var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)); } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring, #bc5f3c42), 0 4px 14px #bc5f3c4d; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Destructive actions. Ink text on a danger tint plus danger border, so the state remains AA; always labeled with what it does.",
+      "html": "<button class=\"ds-btn-danger\">Delete</button>",
+      "css": ".ds-btn-danger { padding: 6px 13px; border: 1px solid var(--danger, #a83f2e); border-radius: var(--shape-control, 12px); background: var(--danger-bg, #a83f2e21); color: var(--ink, #3d3629); cursor: pointer; font-size: 13px; transition: background-color var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)), color var(--motion-feedback, 80ms) var(--ease-out, cubic-bezier(.2,.8,.2,1)); } .ds-btn-danger:hover { background: var(--danger-bg, #a83f2e21); color: var(--ink, #3d3629); }"
+    },
+    {
+      "name": "Hero Search",
+      "kind": "input",
+      "refersTo": "search-input",
+      "description": "The most important element on the page: one fixed-height 760px top-left sticky row aligned with the working collection. Results expand in a connected absolute overlay without moving collections or sticky headers. The interior is a continuous command ledger: square rows, a complete selection band, title then bounded source then plain-text outcome. Filter examples are borderless syntax targets; only an applied removable scope is a compact token. One inner listbox owns actionable rows; scopes and metadata truncate before controls, every focus state remains visible, and Minimal caps results to measured footer clearance.",
+      "html": "<input class=\"ds-search\" type=\"text\" placeholder=\"Search everything — open, snoozed, archived, history…\" />",
+      "css": ".ds-search { width: 100%; max-width: 680px; padding: 14px 20px; font-size: 16px; color: var(--ink, #3d3629); background: var(--surface, #fffdf6); border: 1px solid var(--border, #e2d8c0); border-radius: var(--shape-search, 18px); box-shadow: 0 1px 3px #3d362914; outline: none; transition: box-shadow 170ms cubic-bezier(.25,.7,.3,1), border-color 170ms; } .ds-search::placeholder { color: var(--ink-3, #9c937d); } .ds-search:focus { border-color: var(--focus-accent, #8e5035); box-shadow: 0 0 0 4px var(--focus-ring, #8e50354d), 0 1px 3px #3d362914; }"
+    },
+    {
+      "name": "Page Utilities",
+      "kind": "custom",
+      "refersTo": "card-item",
+      "description": "Settled F40 utilities: Needs you is fixed beside Search only when space permits; Search has symmetric 20px top and lower breathing room; count-free Focus is the first Start/End navigation action; filled-star Starred begins on the sticky-window axis as a flush-right edge tab and its flat 280px rail pushes fluid rows only while open.",
+      "html": "<div class=\"ds-page-utilities\"><p>Needs you · 3 duplicates · 14 in inbox</p><button class=\"ds-btn\">Starred 5</button></div>",
+      "css": ".ds-page-utilities { display: flex; align-items: center; justify-content: space-between; gap: 16px; } .ds-page-utilities > p { margin: 0; color: var(--ink-2, #6f6754); font-size: 12px; } .ds-page-utilities > button { min-height: 42px; }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar row with tabular count. Rest → hover → active is a three-step color shift.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-navitem ds-navitem-active\">Inbox <span class=\"ds-n\">24</span></button><button class=\"ds-navitem\">Sessions <span class=\"ds-n\">7</span></button><button class=\"ds-navitem\">Snoozed <span class=\"ds-n\">3</span></button></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 1px; width: 224px; } .ds-navitem { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--shape-nav, 8px); color: var(--ink-2, #6f6754); font-size: 13.5px; font-weight: 500; cursor: pointer; border: none; background: none; text-align: left; width: 100%; transition: background 170ms, color 170ms; } .ds-navitem:hover { background: #3d362912; color: var(--ink, #3d3629); } .ds-navitem-active { background: var(--accent-soft, #bc5f3c1f); color: var(--accent-soft-ink, #3d3629); font-weight: 600; } .ds-n { margin-left: auto; font-size: 12px; color: var(--ink-3, #9c937d); font-variant-numeric: tabular-nums; } .ds-navitem-active .ds-n { color: var(--accent-soft-ink, #3d3629); }"
+    },
+    {
+      "name": "Tab Row",
+      "kind": "custom",
+      "refersTo": "card-item",
+      "description": "The atom of the product: favicon + title + host, actions revealed on hover.",
+      "html": "<div class=\"ds-trow\"><span class=\"ds-fv\"></span><span class=\"ds-t\">How to build a local-first Chrome extension</span><span class=\"ds-host\">github.com</span><span class=\"ds-tacts\"><button class=\"ds-act\">snooze</button><button class=\"ds-act\">close</button></span></div>",
+      "css": ".ds-trow { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 0; transition: background 170ms; max-width: 560px; font-size: 13.5px; color: var(--ink, #3d3629); } .ds-trow:hover { background: var(--surface-2, #efe8d8); } .ds-fv { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, var(--accent, #bc5f3c), var(--accent-strong, #a44f2f)); flex: none; } .ds-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; } .ds-t:hover { color: var(--accent-strong-ink, #944b2e); } .ds-host { color: var(--ink-3, #9c937d); font-size: 12px; white-space: nowrap; } .ds-tacts { display: flex; gap: 4px; opacity: 0; transition: opacity 170ms; } .ds-trow:hover .ds-tacts { opacity: 1; } .ds-act { padding: 0 7px; font-size: 11px; border: 1px solid var(--border, #e2d8c0); border-radius: var(--shape-mini, 7px); background: var(--surface-2, #efe8d8); color: var(--ink, #3d3629); cursor: pointer; } .ds-act:hover { background: var(--accent-soft, #bc5f3c1f); color: var(--accent-soft-ink, #3d3629); }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Label tag — full-round pill in the accent wash.",
+      "html": "<span class=\"ds-chip\">research</span> <span class=\"ds-chip\">project-x</span>",
+      "css": ".ds-chip { display: inline-block; background: var(--accent-soft, #bc5f3c1f); color: var(--accent-soft-ink, #3d3629); border-radius: 99px; padding: 1px 9px; font-size: 11px; }"
+    },
+    {
+      "name": "Vault Pill",
+      "kind": "custom",
+      "refersTo": "chip",
+      "description": "Ambient sync status in the sidebar foot — the trust contract, always visible.",
+      "html": "<button class=\"ds-vault\"><span class=\"ds-dot\"></span>vault synced · 2 min</button>",
+      "css": ".ds-vault { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink, #3d3629); background: var(--ok-bg, #5f7d4321); border-radius: 99px; padding: 4px 10px; cursor: pointer; border: none; } .ds-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok, #5f7d43); box-shadow: 0 0 0 1px var(--status-marker-outline, #3d3629b3); }"
+    },
+    {
+      "name": "Item Card",
+      "kind": "card",
+      "refersTo": "card-item",
+      "description": "Session/inbox container: surface + hairline + whisper shadow. Selection is a color shift, not a lift.",
+      "html": "<div class=\"ds-item\"><div class=\"ds-item-head\"><span class=\"ds-item-title\">Friday research session</span><span class=\"ds-item-meta\">12 tabs · 2 days ago</span></div></div>",
+      "css": ".ds-item { background: var(--surface, #fffdf6); border: 1px solid var(--border, #e2d8c0); border-radius: var(--shape-card, 14px); padding: 10px 12px; box-shadow: 0 1px 3px #3d362914; max-width: 480px; transition: box-shadow 170ms cubic-bezier(.25,.7,.3,1); } .ds-item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .ds-item-title { font-weight: 600; flex: 1; min-width: 140px; color: var(--ink, #3d3629); font-size: 14px; } .ds-item-meta { color: var(--ink-3, #9c937d); font-size: 12px; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Undo Toast",
+      "kind": "custom",
+      "refersTo": "card-item",
+      "description": "Reversible-never-lossy as a component: every automatic action offers its undo here.",
+      "html": "<div class=\"ds-toast\">Window archived — 8 tabs to Inbox <button class=\"ds-toast-undo\">Undo</button></div>",
+      "css": ".ds-toast { display: inline-flex; gap: 10px; align-items: center; background: var(--surface, #fffdf6); color: var(--ink, #3d3629); border: 1px solid var(--border, #e2d8c0); border-radius: var(--shape-panel, 14px); box-shadow: 0 14px 38px rgba(0,0,0,.3); padding: 11px 16px; font-size: 13.5px; } .ds-toast-undo { padding: 3px 11px; font-size: 12px; color: var(--accent-soft-ink, #3d3629); background: var(--accent-soft, #bc5f3c1f); border: none; border-radius: var(--shape-control, 12px); cursor: pointer; font-weight: 600; } .ds-toast-undo:hover { filter: brightness(.95); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Editor Theme",
+    "overview": "EveryTab is styled the way a great code editor is: the layout, keybindings, density, and component anatomy are fixed and learnable once — and the color scheme is yours. A strict two-axis architecture (data-scheme × data-mode) redefines the same ~14 role tokens per scheme; every component is written once against those roles and never hard-codes a color. Each of 36 built-ins plus every validated custom scheme declares a canonical light or dark presentation for Scheme default; System and forced Light/Dark remain available. The working feel is precise, fast, keyboard-first — Raycast/Linear energy on a warm-paper default.",
+    "keyCharacteristics": [
+      "One fixed structure (full-bleed app shell, sidebar + sticky hero search), 36 built-ins plus validated local custom schemes",
+      "All color flows through role tokens; tints, focus rings, and shadows are derived via color-mix, never hand-picked per scheme",
+      "Free local custom schemes reuse the same roles: seven guided source colors or the full advanced role map, with strict Light and Dark validation",
+      "One fixed public identity layer (deep teal stack plus porcelain / warm ink support) stays recognizable across every product scheme",
+      "Crisp and immediate: interactive transitions finish within 180ms; the non-blocking destination locator may hold for 540ms after navigation has completed",
+      "Borders and surface tints carry depth; real shadows mean 'this floats'",
+      "System font stack only — zero webfont latency, native feel on every OS"
+    ],
+    "rules": [
+      {
+        "name": "The Scheme Contract Rule",
+        "body": "Components never hard-code a color value — only the ~14 scheme roles plus the fixed --brand-* identity roles. Tints, rings, and glows are derived with color-mix from roles. A new scheme is ~10 lines; fixed brand roles are never redefined.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fixed Identity Rule",
+        "body": "Public EveryTab marks use the fixed supplied deep-teal stack palette; porcelain and warm ink remain supporting identity colors. Product schemes personalize the interface; they never recolor toolbar or store identity.",
+        "section": "colors"
+      },
+      {
+        "name": "The Syntax Token Rule",
+        "body": "Multiple hues are welcome — this is an editor theme, not a monochrome brand system — but every hue must hold a role. Accent acts, accent-strong responds, ok/warn/danger mean. No hue is ever decoration-only in structure.",
+        "section": "colors"
+      },
+      {
+        "name": "The AA Everywhere Rule",
+        "body": "Every scheme × mode combination must hold WCAG AA. Verify text against bg-solid, surface, and surface-2; status graphics clear 3:1 and status text clears 4.5:1. Small text on status tints uses --ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Custom Scheme Boundary",
+        "body": "Guided custom schemes own seven source colors per Light and Dark mode; Advanced owns only the production color roles and gradient geometry. Both modes pass the strict component ledger before a UUID record enters Yours. Authoring lives on a dedicated responsive page whose current-theme chrome stays isolated from the draft preview. Built-ins open as exact protected Advanced maps; entering Guided explicitly re-derives roles. Native pickers, editable hex fields, and temporary solid-direct or dashed-derived use highlights do not widen the accepted runtime token boundary. Runtime paint accepts only the 15 allowlisted properties after a validation-seal check; CSS, fonts, images, layout, motion, shape, and brand-token overrides are never accepted.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Count Rule",
+        "body": "Every number that can change — sidebar counts, stats line, item meta — sets font-variant-numeric: tabular-nums. Counts must never make the layout breathe.",
+        "section": "typography"
+      },
+      {
+        "name": "The Float Rule",
+        "body": "If it doesn't overlap other content, it doesn't get a shadow beyond the whisper. Depth is information: shadow = floating.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do route every color decision through the ~14 role tokens and derive tints with color-mix — a new scheme must cost ~10 lines and zero component edits.",
+      "Do keep one failing custom draft local and resumable, but make only fully validated Light and Dark records usable, portable, shareable, or syncable.",
+      "Do use the fixed --brand-* roles for EveryTab identity surfaces and the responsive compact/full mark contract from brainstorm-d2-logo.md.",
+      "Do keep interactive transitions within the 80/140/180ms vocabulary with --ease-out; allow only the documented 540ms destination locator after state has completed; keep shared Loading as a solid one-shot reveal and respect prefers-reduced-motion on every animation.",
+      "Do keep the structure identical across all built-in and custom schemes: layout, density, hierarchy, and keyboard behavior never move when the palette changes.",
+      "Do give every list keyboard access (arrows + Enter, / focuses search) and every focusable a visible ring (--focus-ring, 3–4px). Hit targets ≥ 28px.",
+      "Do use font-variant-numeric: tabular-nums on every count, and verify --ink-3 contrast in both modes whenever a scheme is added or touched.",
+      "Do express trust in components: undo toast on every automatic action, vault pill always visible, restore always one click."
+    ],
+    "donts": [
+      "Don't build hero-metric tiles or put big numbers on the main page — the statsline is one quiet 12.5px line; the stat grid exists only on the dedicated Stats page.",
+      "Don't hard-code a color in a component, define per-scheme tints, or introduce an 11th color decision — that breaks the Scheme Contract.",
+      "Don't recolor the public toolbar/store mark to match a product scheme; recognition is the mark's job, personalization is the interface's job.",
+      "Don't use shadows for at-rest hierarchy. If it doesn't float above other content, it gets a hairline and at most the whisper.",
+      "Don't add webfonts, gradient text (background-clip: text), or decorative glassmorphism. The onboarding backdrop blur is the one sanctioned blur; the gradient atmosphere is an opt-in setting, not a default.",
+      "Don't use uppercase tracked labels anywhere except the h3/sidebar label role — never as eyebrows above headings.",
+      "Don't let a hue exist without a role, and never signal state with color alone — status pills carry text, the vault pill carries a label, danger buttons say what they do.",
+      "Don't ship a scheme that fails AA in either mode, and never move UI elements between schemes — 'the user's look follows them, the structure never leaves.'"
+    ]
+  }
+}

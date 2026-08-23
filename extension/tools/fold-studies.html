@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EveryTab — window fold affordance studies (F47r)</title>
+<style>
+  /* Cream light, the product's default scheme. Values copied from tokens.css so
+     this page opens straight from disk with no server. */
+  :root {
+    --sp-2:4px; --sp-3:6px; --sp-4:8px; --sp-6:12px; --sp-10:20px; --bw:1px;
+    --border:#d9d2c4; --surface:#fffdf8; --surface-2:#f4eee2;
+    --ink:#26221c; --ink-2:#5b5348; --ink-3:#8a8073;
+    --accent:#b84a32; --accent-ink:#fff; --accent-soft:#f0dcd4;
+    --accent-strong-ink:#8f3623; --nav-hover:#efe8da;
+    --workbench-row:#fffdf8; --workbench-header:#f7f2e7;
+    --shape-panel:10px; --cap-radius:10px; --r-mini:7px;
+    --motion-reveal:140ms; --ease-out:cubic-bezier(.2,0,0,1);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 60px; background:#f5efe2; color:var(--ink);
+    font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  h1 { margin:0 0 4px; font-size:19px; }
+  .sub { margin:0 0 26px; color:var(--ink-3); font-size:13px; max-width:70ch; }
+  .board { display:grid; gap:30px; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); max-width:1360px; }
+  .opt { background:rgba(255,253,248,.5); border:var(--bw) solid var(--border);
+    border-radius:14px; padding:18px 18px 14px; }
+  .opt h2 { margin:0 0 3px; font-size:14px; }
+  .opt .note { margin:0 0 14px; color:var(--ink-3); font-size:12px; min-height:34px; }
+  .opt .try { margin:10px 0 0; color:#a99f90; font-size:11px; }
+
+  /* ---- the shared card anatomy, as it ships ---- */
+  .item { position:relative; margin-bottom:8px; overflow:clip;
+    border:var(--bw) solid var(--border); border-radius:var(--shape-panel); background:var(--surface); }
+  .item-head { display:flex; align-items:center; gap:var(--sp-4); padding:9px 12px;
+    background:var(--workbench-header); border-bottom:var(--bw) solid var(--border);
+    border-radius:var(--cap-radius) var(--cap-radius) 0 0; }
+  .item.is-folded > .item-head { border-radius:var(--cap-radius); border-bottom:0; }
+  .item-title { font-weight:600; font-size:13px; }
+  .item-badge { color:var(--accent-strong-ink); font-size:12px; font-weight:650; }
+  .item-meta { margin-left:auto; color:var(--ink-3); font-size:12px; }
+  .trow { display:grid; grid-template-columns:17px 24px minmax(0,1fr); align-items:center;
+    gap:var(--sp-4); height:36px; padding:3px 8px 3px 10px;
+    border-bottom:var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+    background:var(--workbench-row); }
+  .trow:last-child { border-bottom:0; }
+  .cb { width:15px; height:15px; border:1.5px solid var(--border); border-radius:3px; background:var(--surface); }
+  .fv { width:15px; height:15px; border-radius:4px; background:#cbbfa8; }
+  .t { font-size:12.5px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item.is-folded .item-body { display:none; }
+
+  /* ---- A: chevron ---- */
+  .fold-chevron { width:22px; height:22px; display:grid; place-items:center; padding:0;
+    border:0; border-radius:var(--r-mini); background:transparent; color:var(--ink-3); cursor:pointer; }
+  .fold-chevron svg { transition:transform var(--motion-reveal) var(--ease-out); }
+  .item:not(.is-folded) .fold-chevron svg { transform:rotate(90deg); }
+  .fold-chevron:hover { color:var(--accent-strong-ink); background:var(--nav-hover); }
+
+  /* ---- B: the count is the control ---- */
+  .fold-count { margin-left:auto; padding:2px 0; border:0; background:transparent;
+    color:var(--ink-3); font:inherit; font-size:12px; cursor:pointer; }
+  .fold-count:hover { color:var(--accent-strong-ink); text-decoration:underline; text-underline-offset:3px; }
+
+  /* ---- C: typographic rule ---- */
+  .fold-rule { position:relative; width:22px; height:22px; padding:0; border:0;
+    border-radius:var(--r-mini); background:transparent; cursor:pointer; }
+  .fold-rule::before, .fold-rule::after { content:""; position:absolute; left:50%; top:50%;
+    background:var(--ink-3); transition:transform var(--motion-reveal) var(--ease-out), opacity var(--motion-reveal); }
+  .fold-rule::before { width:11px; height:1.5px; margin:-.75px 0 0 -5.5px; }
+  .fold-rule::after { width:1.5px; height:11px; margin:-5.5px 0 0 -.75px; opacity:0; transform:scaleY(.3); }
+  .item.is-folded .fold-rule::after { opacity:1; transform:scaleY(1); }
+  .fold-rule:hover::before, .fold-rule:hover::after { background:var(--accent-strong-ink); }
+
+  /* ---- D: favicon strip ---- */
+  .head-btn { flex:1; display:flex; align-items:center; gap:var(--sp-4); min-width:0;
+    margin:-9px -12px; padding:9px 12px; border:0; background:transparent;
+    font:inherit; color:inherit; text-align:left; cursor:pointer; }
+  .head-btn:hover { background:var(--nav-hover); }
+  .fold-strip { margin-left:auto; display:inline-flex; align-items:center; padding-right:2px; }
+  .fold-strip .fv { margin-left:-4px; box-shadow:0 0 0 2px var(--workbench-header); }
+  .fold-strip .fv:first-child { margin-left:0; }
+  .fold-strip .more { margin-left:var(--sp-3); color:var(--ink-3); font-size:11.5px; }
+
+  /* ---- E: left spine ---- */
+  .item.spine .item-head { padding-left:18px; }
+  .item.spine .trow { padding-left:18px; }
+  .spine-btn { position:absolute; left:0; top:0; bottom:0; width:12px; padding:0;
+    border:0; background:color-mix(in srgb, var(--accent) 20%, transparent); cursor:pointer; }
+  .spine-btn:hover { background:color-mix(in srgb, var(--accent) 45%, transparent); }
+  .item.spine.is-folded .spine-btn { background:color-mix(in srgb, var(--accent) 34%, transparent); }
+</style>
+</head>
+<body>
+<h1>Folding a window in Open tabs — five affordances</h1>
+<p class="sub">Every card below is live: click its control to fold and unfold. The fold itself is
+instant in all five, per the settled motion vocabulary; only a glyph may move.</p>
+<div class="board" id="board"></div>
+
+<script>
+const OPTIONS = [
+  { key: "A", name: "Chevron",
+    note: "The convention, and what ships today. Unambiguous, but it is one more glyph in a header that already carries a checkbox and an action lane.",
+    head: () => `<button class="fold-chevron" data-fold aria-label="Fold"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg></button>${NAME}<span class="item-meta">6 tabs</span>` },
+  { key: "B", name: "The count is the control",
+    note: "Nothing is added. The number already in the header becomes the button and names the state, so the affordance is a word you were already reading.",
+    head: (folded) => `${NAME}<button class="fold-count" data-fold>${folded ? "6 tabs, folded" : "6 tabs"}</button>` },
+  { key: "C", name: "Typographic rule",
+    note: "A minus that becomes a plus, drawn as rules rather than an icon, so it belongs to the type system instead of the icon set.",
+    head: () => `<button class="fold-rule" data-fold aria-label="Fold"></button>${NAME}<span class="item-meta">6 tabs</span>` },
+  { key: "D", name: "Favicon strip",
+    note: "Folding compresses instead of hiding: the folded header shows what is inside. The whole header is the toggle, so no control is added at all.",
+    head: (folded) => `<button class="head-btn" data-fold>${NAME}${folded
+      ? `<span class="fold-strip">${"<span class=\"fv\"></span>".repeat(6)}</span>`
+      : `<span class="item-meta">6 tabs</span>`}</button>` },
+  { key: "E", name: "Left spine",
+    note: "A thin accent edge along the card is the control. The most beautiful and the most out of the way, and the least discoverable: nothing says it can be clicked.",
+    head: () => `${NAME}<span class="item-meta">6 tabs</span>`, spine: true }
+];
+const NAME = `<span class="item-title">Window 2</span><span class="item-badge">This window</span>`;
+const ROWS = ["Design review notes", "Chromium bug 41284", "everytab.app — pricing"]
+  .map((t) => `<div class="trow"><span class="cb"></span><span class="fv"></span><span class="t">${t}</span></div>`).join("");
+
+function card(opt, folded) {
+  const el = document.createElement("div");
+  el.className = `item${opt.spine ? " spine" : ""}${folded ? " is-folded" : ""}`;
+  el.innerHTML = `${opt.spine ? '<button class="spine-btn" data-fold aria-label="Fold"></button>' : ""}
+    <div class="item-head">${opt.head(folded)}</div>
+    <div class="item-body">${ROWS}</div>`;
+  el.querySelector("[data-fold]").addEventListener("click", () => {
+    el.replaceWith(card(opt, !folded));
+  });
+  return el;
+}
+
+const board = document.getElementById("board");
+for (const opt of OPTIONS) {
+  const wrap = document.createElement("div");
+  wrap.className = "opt";
+  wrap.innerHTML = `<h2>${opt.key} — ${opt.name}</h2><p class="note">${opt.note}</p>`;
+  wrap.append(card(opt, false), card(opt, true));
+  wrap.insertAdjacentHTML("beforeend", '<p class="try">Open above, folded below. Both are clickable.</p>');
+  board.append(wrap);
+}
+</script>
+</body>
+</html>

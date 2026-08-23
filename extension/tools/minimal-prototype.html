@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- PROTOTYPE ONLY: five Minimal New Tab directions, selected with ?variant=A-E. -->
+<html lang="en" data-scheme="miaminights" data-mode="dark" data-gradient="true">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EveryTab Minimal directions</title>
+  <link rel="stylesheet" href="../css/tokens.css" />
+  <link rel="stylesheet" href="minimal-prototype.css" />
+</head>
+<body>
+  <main id="prototype"></main>
+  <nav class="prototype-switcher" aria-label="Prototype variants">
+    <button id="previous" type="button" aria-label="Previous direction">←</button>
+    <span id="variant-label"></span>
+    <button id="next" type="button" aria-label="Next direction">→</button>
+    <label>Scheme
+      <select id="scheme">
+        <option value="miaminights:dark">Miami Nights</option>
+        <option value="cream:light">Cream</option>
+        <option value="frozenllama:dark">Frozen Llama</option>
+        <option value="goodnight:light">Good Night</option>
+        <option value="ink:dark">Ink</option>
+      </select>
+    </label>
+  </nav>
+  <script type="module" src="minimal-prototype.js"></script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; }
+  #app { width: 100%; min-height: 100vh; margin: 0; padding: 0; }
+  .minimal-horizon #app { position: relative; display: flex; justify-content: center;
+                          align-items: flex-end; padding: 28px 18px 12vh; }
+  .minimal-clock { position: absolute; z-index: 0; top: 6vh; left: 50%;
+                   width: 100%; translate: -50% 0; text-align: center;
+                   pointer-events: none; user-select: none; }
+  .minimal-horizon .clock { font-family: var(--font-display); font-weight: 760;
+           letter-spacing: -.065em; font-size: clamp(176px, 35vw, 520px);
+           line-height: .82; color: var(--accent); opacity: .18;
+           font-variant-numeric: tabular-nums; text-wrap: nowrap; }
+  .minimal-horizon .date { position: static; margin: clamp(14px, 2vh, 24px) 0 0;
+          color: var(--accent-strong-ink); font-size: clamp(14px, 1.4vw, 18px);
+          font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .minimal-deck { position: relative; z-index: 2; width: min(820px, 90vw); padding: 18px;
+                  border: var(--bw) solid var(--border); border-radius: var(--shape-panel);
+                  background: color-mix(in srgb, var(--surface) 92%, transparent);
+                  box-shadow: 0 24px 70px color-mix(in srgb, var(--shadow-ink) 24%, transparent); }
+  .search-input { width: 100%; padding: 14px 20px; font: inherit; font-size: 16px;
+                  border: var(--bw) solid var(--border); border-radius: var(--r-search);
+                  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1);
+                  outline: none;
+                  transition: box-shadow var(--motion-feedback) var(--ease-out); }
+  .search-input:focus { border-color: var(--focus-accent);
+                        box-shadow: 0 0 0 4px var(--focus-ring), var(--shadow-1); }
+  /* S4/S5 — scope field + absolute dropdown overlay (no page-flow shift) */
+  /* D4-3c: search material is shared (css/primitives.css). Minimal keeps its
+     roomier field inset and its truncating ghost chips, which matter on a page
+     whose only content is the field. */
+  .search-field { padding-left: 12px; }
+  .search-field { min-height: 52px; }
+  .search-field .search-input { font-size: 16px; padding-block: 13px; }
+  .ghost-chip { max-width: min(180px, 100%); overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .chip { display: inline-flex; align-items: center; background: var(--accent-soft);
+          color: var(--accent-soft-ink); border-radius: 99px; padding: 2px 4px 2px 10px;
+          font-size: 12px; white-space: nowrap; }
+  .chip .x { cursor: pointer; margin-left: 2px; border: none; background: none;
+             color: inherit; font-size: 14px; line-height: 1; padding: 0 4px; }
+  .chip .x:hover { color: var(--ink); background: var(--danger-bg); border-radius: 99px; }
+  .chip .x:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .newtab-focus-access { margin-top: 10px; padding-inline: 2px; }
+  .minimal-launcher { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+                      gap: 6px; margin-top: 12px; }
+  .minimal-launcher:empty { display: none; }
+  .minimal-launch { min-width: 0; min-height: 42px; display: flex; align-items: center;
+                    gap: 9px; padding: 6px; border: 0; border-radius: var(--shape-control);
+                    background: transparent; color: var(--ink-2); text-align: left; cursor: pointer; }
+  .minimal-launch:hover { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .minimal-launch:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .minimal-fav { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 7px;
+                 object-fit: contain; }
+  .minimal-fav-fallback { display: grid; place-items: center; background: var(--accent-soft);
+                          color: var(--accent-soft-ink); font-size: 12px; font-weight: 750; }
+  .minimal-launch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* N25 — blank mode: a nearly-empty new tab, just the scheme background and a
+     faint corner mark. No clock, no search, nothing to grab focus. */
+  body.blank #app { max-width: none; margin: 0; padding: 0; }
+  .blank-mark { position: fixed; right: 18px; bottom: 14px; color: var(--ink);
+                opacity: .10; pointer-events: none; }
+  /* The utility links are a quiet footer rather than content after Search.
+     Results may grow upward without covering or shifting them, including at
+     200% zoom and on a device with a bottom safe area. */
+  .links { display: flex; justify-content: center; gap: 2px; margin-top: 16px;
+           padding-bottom: env(safe-area-inset-bottom); text-align: center; }
+  .links a, .links button { color: var(--ink-3); font-size: 13px; background: none; border: none;
+                            cursor: pointer; text-decoration: none; padding: 4px 10px; font: inherit; }
+  .links a:hover, .links button:hover { color: var(--accent-strong-ink); }
+
+  @media (max-height: 700px) {
+    .minimal-horizon #app { padding-bottom: 7vh; }
+    .minimal-horizon .clock { font-size: clamp(132px, 27vw, 300px); }
+    .minimal-clock { top: 4vh; }
+    .minimal-horizon .date { margin-top: 12px; }
+  }
+  @media (max-width: 720px) {
+    .minimal-horizon #app { padding-inline: 18px; padding-bottom: 92px; }
+    .minimal-deck { width: min(100%, 600px); padding: 14px; }
+    .minimal-launcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .minimal-launch:nth-child(n+4) { display: none; }
+  }
+  @media (max-width: 420px) {
+    .minimal-horizon #app { padding-inline: 14px; }
+    .minimal-horizon .clock { font-size: clamp(132px, 39vw, 176px); }
+    .minimal-horizon .date { font-size: 13px; }
+    .minimal-launch-name { font-size: 12px; }
+  }
+
+  /* shared themed tooltip (js/ui/tooltip.js) — parity with the dashboard for any
+     .mini/.mini2/.iconbtn/.gear control this surface gains. */
+  /* D4-4: the themed tooltip is a shared role in css/primitives.css. */

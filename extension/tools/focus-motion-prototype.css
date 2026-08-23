@@ -1,0 +1,159 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --page: #24103b;
+  --surface: #321553;
+  --surface-2: #3d1a63;
+  --ink: #f7eafb;
+  --ink-2: #c7add6;
+  --ink-3: #ab90bc;
+  --border: #5d3472;
+  --accent: #ff4fba;
+  --accent-ink: #26071b;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --cyan: #43d7e8;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #18121c; color: var(--ink); }
+button { font: inherit; }
+.stage { min-height: 100vh; padding: 28px 28px 104px; display: grid; place-items: center; }
+.dashboard {
+  width: min(1240px, calc(100vw - 56px)); height: min(730px, calc(100vh - 132px)); min-height: 560px;
+  overflow: hidden; display: grid; grid-template-columns: 220px 1fr;
+  border: 1px solid #3f3445; border-radius: 18px; background: var(--page);
+  box-shadow: 0 28px 80px rgba(0,0,0,.42);
+}
+.sidebar { padding: 16px 13px; border-right: 1px solid var(--border); background: #2a1245; }
+.brand { height: 38px; display: flex; align-items: center; gap: 9px; padding: 0 8px; font-weight: 780; }
+.mark { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font-size: 13px; }
+.nav-label { margin: 16px 9px 6px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.nav-row { height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 9px;
+  color: var(--ink-2); font-size: 13px; }
+.nav-row.active { color: var(--ink); background: var(--accent-soft); font-weight: 680; }
+.nav-row span:last-child { margin-left: auto; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.canvas { min-width: 0; overflow: auto; padding: 20px 28px 70px; }
+.utility-shell { position: relative; z-index: 4; transition: transform 300ms var(--ease); }
+.utility { min-height: 44px; display: flex; align-items: center; gap: 14px; }
+.search { width: min(700px, calc(100% - 300px)); height: 42px; display: flex; align-items: center;
+  padding: 0 17px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+  color: var(--ink-2); font-size: 13px; }
+.needs { margin-left: auto; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.focus-control { position: relative; flex: 0 0 146px; height: 42px; display: grid;
+  grid-template-columns: 1fr 34px; align-items: stretch; border: 1px solid var(--border); border-radius: 13px;
+  background: var(--surface); color: var(--ink-2); transition: border-color 150ms ease-out, box-shadow 180ms ease-out; }
+.focus-main, .focus-settings { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.focus-main { position: relative; min-width: 0; overflow: hidden; display: grid; place-items: center; padding: 0 10px;
+  border-radius: 12px 0 0 12px; font-size: 12px; font-weight: 700; isolation: isolate; }
+.focus-settings { border-left: 1px solid var(--border); border-radius: 0 12px 12px 0; font-size: 16px; }
+.focus-main:active { transform: scale(.98); }
+.focus-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 7px;
+  z-index: 1; white-space: nowrap; }
+.focus-label.on { opacity: 0; }
+.play { width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid currentColor; }
+.stop { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+.focus-on .focus-control { border-color: var(--accent); }
+.focus-on .focus-main { background: var(--accent); color: var(--accent-ink); }
+.focus-slot { position: relative; z-index: 3; height: 0; margin: 0 -28px; pointer-events: none; }
+.focus-slot-inner { position: absolute; top: -4px; right: 0; left: 0; height: 54px; overflow: hidden; }
+.focus-band { position: relative; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px 28px; border-block: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--page)); color: var(--ink); font-size: 12.5px;
+  font-variant-numeric: tabular-nums; opacity: 0; clip-path: inset(49% 0 49%); transform: scaleY(.14);
+  transform-origin: center; transition: opacity 120ms ease-out, clip-path 300ms var(--ease), transform 300ms var(--ease); }
+.focus-band strong { color: var(--accent); }
+.focus-band .timer { color: var(--cyan); font-weight: 760; }
+.focus-band button { border: 0; background: transparent; color: var(--accent); font-weight: 720; cursor: pointer; }
+.focus-band::before, .focus-band::after { content: ""; position: absolute; right: 0; left: 0; height: 2px;
+  pointer-events: none; background: var(--accent); opacity: 0; transform: scaleX(.04); transform-origin: center; }
+.focus-band::before { top: -1px; }
+.focus-band::after { bottom: -1px; }
+.workspace { padding-top: 30px; transition: transform 320ms var(--ease); will-change: transform; }
+.focus-on .utility-shell { transform: translateY(-4px); }
+.focus-on .workspace { transform: translateY(50px); }
+.focus-on .focus-slot { pointer-events: auto; }
+.focus-on .focus-band { opacity: 1; clip-path: inset(0); transform: scaleY(1); }
+.focus-on .focus-band::before,
+.focus-on .focus-band::after { animation: focus-rail-burst 500ms 45ms var(--ease) both; }
+.section-line { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.section-line h1 { margin: 0; font-size: 17px; }
+.section-line p { margin: 0; color: var(--ink-2); font-size: 12px; }
+.window { overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.window-head { height: 42px; display: flex; align-items: center; padding: 0 14px; background: var(--surface-2); font-size: 13px; font-weight: 740; }
+.window-head small { margin-left: 8px; color: var(--accent); font-size: 11px; }
+.row { height: 46px; display: grid; grid-template-columns: 18px 28px 1fr auto; align-items: center; gap: 10px;
+  padding: 0 14px; border-top: 1px solid var(--border); }
+.check { width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 3px; }
+.favicon { width: 25px; height: 25px; border-radius: 7px; background: var(--accent-soft); }
+.copy b, .copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy b { font-size: 12.5px; }.copy small,.age { color: var(--ink-3); font-size: 10.5px; }
+.note { position: absolute; right: 18px; bottom: 18px; max-width: 355px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--ink-2); font-size: 11.5px; line-height: 1.45; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.note strong { color: var(--ink); }
+.dashboard { position: relative; }
+
+/* A: the least opinionated fixed-frame state change. */
+.variant-a .focus-label { transition: opacity 145ms ease-out, transform 180ms var(--ease); }
+.variant-a .focus-label.on { transform: scale(.98); }
+.variant-a.focus-on .focus-label.off { opacity: 0; transform: scale(.98); }
+.variant-a.focus-on .focus-label.on { opacity: 1; transform: scale(1); }
+
+/* B: both labels follow one vertical path through the same slot. */
+.variant-b .focus-label { transition: opacity 120ms ease-out, transform 210ms var(--ease); }
+.variant-b .focus-label.on { transform: translateY(10px); }
+.variant-b.focus-on .focus-label.off { opacity: 0; transform: translateY(-10px); }
+.variant-b.focus-on .focus-label.on { opacity: 1; transform: translateY(0); }
+
+/* C: text stays quiet while the action symbol changes more explicitly. */
+.variant-c .focus-label { transition: opacity 110ms ease-out; }
+.variant-c .play, .variant-c .stop { transition: opacity 110ms ease-out, transform 220ms var(--ease); }
+.variant-c .stop { transform: rotate(-55deg) scale(.25); }
+.variant-c.focus-on .focus-label.off { opacity: 0; }
+.variant-c.focus-on .focus-label.on { opacity: 1; }
+.variant-c.focus-on .play { transform: rotate(55deg) scale(.25); }
+.variant-c.focus-on .stop { transform: rotate(0) scale(1); }
+
+/* D: the surface itself carries the change, then the copy resolves. */
+.variant-d .focus-main { background: transparent; color: var(--ink-2); }
+.variant-d .focus-main::before { content: ""; position: absolute; z-index: 0; inset: 0; background: var(--accent);
+  transform: scaleX(0); transform-origin: left; transition: transform 260ms var(--ease); }
+.variant-d .focus-label { transition: opacity 90ms 80ms ease-out; }
+.variant-d.focus-on .focus-main { color: var(--accent-ink); }
+.variant-d.focus-on .focus-main::before { transform: scaleX(1); }
+.variant-d.focus-on .focus-label.off { opacity: 0; }
+.variant-d.focus-on .focus-label.on { opacity: 1; }
+
+/* E: a direct swap followed by one contained completion pulse. */
+.variant-e .focus-label { transition: opacity 120ms ease-out; }
+.variant-e.focus-on .focus-label.off { opacity: 0; }
+.variant-e.focus-on .focus-label.on { opacity: 1; }
+.variant-e.focus-on .focus-control { animation: focus-button-pulse 420ms var(--ease) both; }
+
+@keyframes focus-rail-burst {
+  0% { opacity: 0; transform: scaleX(.04); box-shadow: 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  38% { opacity: 1; box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent); }
+  72% { opacity: .72; transform: scaleX(1); box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 38%, transparent); }
+  100% { opacity: 0; transform: scaleX(1); box-shadow: 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@keyframes focus-button-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  42% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 27%, transparent); }
+}
+
+.prototype-switcher { position: fixed; z-index: 20; left: 50%; bottom: 18px; transform: translateX(-50%);
+  min-width: 440px; height: 50px; display: grid; grid-template-columns: 48px 1fr 70px 48px; align-items: center;
+  overflow: hidden; border: 1px solid #5f5863; border-radius: 999px; background: #171419; color: #f8f3fa;
+  box-shadow: 0 14px 36px rgba(0,0,0,.45); }
+.prototype-switcher button { align-self: stretch; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.prototype-switcher button:hover { background: #2c2730; }
+#variant-name { padding: 0 14px; text-align: center; font-size: 12px; font-weight: 740; }
+@media (max-width: 820px) {
+  .stage { padding: 14px 14px 96px; }.dashboard { width: calc(100vw - 28px); grid-template-columns: 184px 1fr; }
+  .canvas { padding-inline: 18px; }.search { width: 58%; }.needs { display: none; }.focus-slot { margin-inline: -18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; transition-delay: 0ms !important; }
+  .focus-on .utility-shell { transform: none; }
+}

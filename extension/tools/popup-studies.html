@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-emphasis="bold"
+      data-checkbox-shape="round" data-corner-style="crisp" data-row-info="useful">
+<head>
+<meta charset="utf-8" />
+<title>Popup direction studies</title>
+<!--
+  D4-3d DIRECTION STUDY. Not production, not shipped behavior.
+
+  Three ways to compose the SAME settled popup journeys (J1-J8). Nothing here
+  adds, removes, or renames an action: only composition, hierarchy, density,
+  containment, and typography vary. Real tokens and real icons, so colors and
+  schemes are honest.
+
+    cd extension && python3 -m http.server 8765
+    http://localhost:8765/tools/popup-studies.html
+    ?scheme=cyberwave&mode=dark   to judge a direction in another scheme
+-->
+<script>
+  for (const n of ["tokens", "primitives"]) {
+    document.write('<link rel="stylesheet" href="../css/' + n + '.css?t=' + Date.now() + '" />');
+  }
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px; font: 13px/1.45 var(--font-body); background: var(--bg-solid); }
+  .board { display: flex; gap: 28px; align-items: flex-start; }
+  .col { width: 380px; }
+  .caption { font: 700 11px/1.4 var(--font-display); letter-spacing: .08em;
+             text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--ink-3); margin-bottom: 10px; min-height: 32px; }
+  .pop { background: var(--bg-solid); border: var(--bw) solid var(--border);
+         border-radius: var(--r-card); overflow: hidden; box-shadow: var(--shadow-1); }
+
+  /* ---------- shared atoms ---------- */
+  .sfield { display: flex; align-items: center; gap: 7px; padding: 0 10px;
+            background: var(--surface); border: var(--bw) solid var(--border);
+            border-radius: var(--r-btn); }
+  .sfield input { flex: 1; min-width: 0; border: none; background: none; outline: none;
+                  font: inherit; color: var(--ink); padding: 9px 0; }
+  .sfield .ic { color: var(--ink-3); flex: none; }
+  .stats { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--ink-2); font-weight: 650; }
+  .stats a { color: var(--accent-strong-ink); text-decoration: none; }
+  .fav { width: 16px; height: 16px; flex: none; display: grid; place-items: center;
+         color: var(--ink-3); }
+  .ttl { font-weight: 600; color: var(--ink); overflow: hidden;
+         text-overflow: ellipsis; white-space: nowrap; }
+  .host { color: var(--ink-3); font-size: 11.5px; }
+  .tag { background: var(--accent-soft); color: var(--accent-strong-ink);
+         border-radius: 99px; padding: 0 8px; font-size: 10.5px; }
+  .bigbtn { display: flex; align-items: center; justify-content: center; gap: 7px;
+            width: 100%; min-height: var(--control-h-default); border-radius: var(--r-btn);
+            border: none; background: var(--accent); color: var(--accent-ink);
+            font: inherit; font-weight: 650; cursor: pointer; box-shadow: var(--btn-glow); }
+  .focusline { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink); }
+  .fdot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+  .foot { display: flex; gap: 4px; }
+  .foot button { flex: 1; border: none; background: none; color: var(--ink-2);
+                 font: inherit; font-size: 12px; min-height: var(--control-h-compact);
+                 border-radius: var(--r-mini); cursor: pointer; }
+  .foot button:hover { background: var(--nav-hover); color: var(--ink); }
+  .rule { height: var(--bw); background: var(--border); }
+
+  /* ---------- A: quiet command surface ---------- */
+  .a-pad { padding: 10px 12px; }
+  .a-obj { display: flex; align-items: center; gap: 9px; padding: 2px 2px 8px; }
+  .a-meta { display: flex; align-items: center; gap: 6px; margin-top: 1px; }
+  .a-act { display: flex; align-items: center; gap: 10px; width: 100%;
+           padding: 0 8px; min-height: 32px; border: none; background: none;
+           border-radius: var(--shape-control); color: var(--ink); font: inherit;
+           text-align: left; cursor: pointer; }
+  .a-act .ic { color: var(--ink-3); flex: none; }
+  .a-act:hover { background: var(--surface-2); }
+  .a-act:hover .ic { color: var(--accent-strong-ink); }
+  .a-act .k { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+  .a-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+               text-transform: uppercase; color: var(--ink-3); padding: 0 2px 6px; }
+  .a-pair { display: flex; gap: 6px; }
+  .a-pair .a-act { width: auto; flex: 1; }
+
+  /* ---------- B: command first ---------- */
+  .b-pad { padding: 12px; }
+  .b-hero input { padding: 12px 0; font-size: 14px; }
+  .b-obj { display: flex; align-items: center; gap: 8px; padding: 12px 2px 10px; }
+  .b-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .b-tile { display: flex; flex-direction: column; align-items: center; gap: 5px;
+            padding: 10px 4px 8px; border: var(--bw) solid var(--border);
+            border-radius: var(--r-btn); background: var(--surface); color: var(--ink);
+            font: inherit; font-size: 11px; cursor: pointer; }
+  .b-tile .ic { color: var(--ink-2); }
+  .b-tile:hover { border-color: var(--accent); background: var(--accent-soft);
+                  color: var(--accent-strong-ink); }
+  .b-tile:hover .ic { color: var(--accent-strong-ink); }
+  .b-more { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-top: 8px; }
+  .b-more button { border: none; background: none; color: var(--ink-2); font: inherit;
+                   font-size: 12px; padding: 5px 7px; border-radius: var(--r-mini);
+                   cursor: pointer; min-height: var(--control-h-compact); }
+  .b-more button:hover { background: var(--surface-2); color: var(--ink); }
+
+  /* ---------- C: refined object cards ---------- */
+  .c-pad { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .c-card { background: var(--surface); border: var(--bw) solid var(--border);
+            border-radius: var(--r-card); padding: 11px 12px; }
+  .c-head { display: flex; align-items: center; gap: 8px; }
+  .c-sub { color: var(--ink-3); font-size: 11.5px; margin: 3px 0 9px; }
+  .c-inline { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-top: 9px; }
+  .c-inline button { border: none; background: none; color: var(--ink-2); font: inherit;
+                     font-size: 12px; padding: 5px 8px; border-radius: var(--r-mini);
+                     cursor: pointer; min-height: var(--control-h-compact); }
+  .c-inline button:hover { background: var(--accent-soft); color: var(--accent-strong-ink); }
+  .c-count { margin-left: auto; color: var(--ink-3); font-size: 11.5px;
+             font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="board" id="board"></div>
+<script type="module">
+import { icon } from "../js/ui/icons.js";
+const p = new URLSearchParams(location.search);
+const root = document.documentElement;
+for (const [k, a] of [["scheme","scheme"],["mode","mode"],["emphasis","emphasis"],["corner","cornerStyle"]]) {
+  if (p.get(k)) root.dataset[a] = p.get(k);
+}
+const I = (n, s = 15) => icon(n, s).outerHTML;
+const TITLE = "Calm Precision design system specification";
+const SEARCH = `<div class="sfield">${I("smartviews", 14)}
+  <input placeholder="Search everything…" /></div>`;
+const STATS = `<div class="stats"><b>147</b> tabs · <b>3</b> windows ·
+  <a><b>38</b> in inbox</a> · <a><b>4</b> due today</a></div>`;
+const FOOT = `<div class="foot"><button>Side panel</button><button>Dashboard</button>
+  <button>Settings</button></div>`;
+
+/* A — quiet command surface: no boxes inside boxes; actions are rows. */
+const A = `
+<div class="pop">
+  <div class="a-pad">${SEARCH}<div style="height:8px"></div>${STATS}</div>
+  <div class="rule"></div>
+  <div class="a-pad">
+    <div class="a-obj">
+      <span class="fav">${I("open", 16)}</span>
+      <span style="min-width:0">
+        <div class="ttl">${TITLE}</div>
+        <div class="a-meta"><span class="host">vercel.com</span><span class="tag">reading list</span></div>
+      </span>
+    </div>
+    <button class="a-act">${I("inbox")}Save to Inbox<span class="k">I</span></button>
+    <button class="a-act">${I("snooze")}Snooze…<span class="k">S</span></button>
+    <button class="a-act">${I("suspend")}Suspend<span class="k">Z</span></button>
+    <button class="a-act">${I("labels")}Label…<span class="k">L</span></button>
+  </div>
+  <div class="rule"></div>
+  <div class="a-pad">
+    <div class="a-eyebrow">This window · 12 tabs</div>
+    <button class="bigbtn">${I("inbox", 16)}Save window to Inbox</button>
+    <div style="height:6px"></div>
+    <div class="a-pair">
+      <button class="a-act">${I("snooze")}Snooze…</button>
+      <button class="a-act">${I("suspend")}Suspend others</button>
+    </div>
+    <div class="a-pair">
+      <button class="a-act">${I("sessions")}Session</button>
+      <button class="a-act">${I("organize")}Sort</button>
+      <button class="a-act">${I("copy")}Copy</button>
+    </div>
+  </div>
+  <div class="rule"></div>
+  <div class="a-pad">
+    <div class="focusline"><span class="fdot"></span><b>Focus is on</b>
+      <span class="host">42 min left · 7 sites</span>
+      <button class="a-act" style="width:auto;margin-left:auto;min-height:26px">End</button></div>
+  </div>
+  <div class="rule"></div>
+  <div class="a-pad">${FOOT}</div>
+</div>`;
+
+/* B — command first: search is the hero, actions are a compact tile grid. */
+const B = `
+<div class="pop">
+  <div class="b-pad">
+    <div class="sfield b-hero">${I("smartviews", 16)}
+      <input placeholder="Search tabs, inbox, sessions…" /></div>
+    <div style="height:8px"></div>${STATS}
+    <div class="b-obj"><span class="fav">${I("open", 16)}</span>
+      <span style="min-width:0;flex:1"><div class="ttl">${TITLE}</div></span>
+      <span class="host">vercel.com</span></div>
+    <div class="b-grid">
+      <button class="b-tile">${I("inbox", 17)}Inbox</button>
+      <button class="b-tile">${I("snooze", 17)}Snooze</button>
+      <button class="b-tile">${I("suspend", 17)}Suspend</button>
+      <button class="b-tile">${I("labels", 17)}Label</button>
+    </div>
+    <div style="height:12px"></div>
+    <button class="bigbtn">${I("inbox", 16)}Save window to Inbox</button>
+    <div class="b-more">
+      <button>Snooze window</button><button>Suspend others</button>
+      <button>Save as session</button><button>Sort</button><button>Copy</button>
+    </div>
+  </div>
+  <div class="rule"></div>
+  <div class="b-pad">
+    <div class="focusline"><span class="fdot"></span><b>Focus is on</b>
+      <span class="host">42 min left</span></div>
+    <div style="height:10px"></div>${FOOT}
+  </div>
+</div>`;
+
+/* C — refined object cards: two real objects, flat inside, quiet inline verbs. */
+const C = `
+<div class="pop">
+  <div class="c-pad">
+    ${SEARCH}${STATS}
+    <div class="c-card">
+      <div class="c-head"><span class="fav">${I("open", 16)}</span>
+        <span class="ttl" style="flex:1">${TITLE}</span></div>
+      <div class="c-sub">vercel.com <span class="tag">reading list</span></div>
+      <button class="bigbtn">${I("inbox", 16)}Save to Inbox</button>
+      <div class="c-inline"><button>Snooze…</button><button>Suspend</button>
+        <button>Label…</button></div>
+    </div>
+    <div class="c-card">
+      <div class="c-head"><span class="fav">${I("overview", 16)}</span>
+        <span class="ttl" style="flex:1">This window</span>
+        <span class="c-count">12 tabs</span></div>
+      <div style="height:9px"></div>
+      <button class="bigbtn">${I("inbox", 16)}Save window to Inbox</button>
+      <div class="c-inline"><button>Snooze…</button><button>Suspend others</button>
+        <button>Save as session</button><button>Sort</button><button>Copy</button></div>
+    </div>
+    <div class="focusline"><span class="fdot"></span><b>Focus is on</b>
+      <span class="host">42 min left · 7 sites</span></div>
+    ${FOOT}
+  </div>
+</div>`;
+
+document.getElementById("board").innerHTML = `
+  <div class="col"><div class="caption">A · Quiet command surface</div>
+    <div class="sub">No boxes inside boxes. Actions are rows, like the dashboard's own.</div>${A}</div>
+  <div class="col"><div class="caption">B · Command first</div>
+    <div class="sub">Search leads. Tab actions become a compact tile grid.</div>${B}</div>
+  <div class="col"><div class="caption">C · Refined object cards</div>
+    <div class="sub">Two real objects, flat inside, each with one primary.</div>${C}</div>`;
+</script>
+</body>
+</html>

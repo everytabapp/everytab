@@ -1,0 +1,1433 @@
+/* D4-2b: one Calm Precision list presentation for Dashboard and side panel.
+   Behavior remains in createTabList; hosts own only page/chrome geometry. */
+
+.tablist {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+/* Group rhythm. One settled presentation replaces the retired Space, Divider,
+   and Accent cap pilot variants. Stored values remain readable for back-compat,
+   but no longer alter the list. */
+.tablist > .item {
+  position: relative;
+  margin-top: var(--sp-12);
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tablist .item-head {
+  min-height: var(--row-h-default);
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  border-radius: 0;
+}
+.tablist .item-title {
+  flex: 1 1 auto;
+  min-width: 80px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist .item-head > .item-meta,
+.tablist .item-head-toggle > .item-meta {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tablist .tl-rows { margin-top: var(--sp-1); }
+.tablist .window-block + .window-block { margin-top: var(--sp-8); }
+.tablist .window-block > .item-head { min-height: 30px; }
+
+/* One checkbox rendering in every scheme and mode. Shape is a preference;
+   checked fill and check ink always come from the active scheme contract. */
+/* N41: the mark is CENTRED by the box, not placed with hand-tuned offsets.
+   The old absolute left/top values left uneven gaps, invisible inside a square
+   but plainly off inside a circle. One grid centring works for both shapes. */
+.tablist input[type="checkbox"] {
+  appearance: none;
+  position: relative;
+  display: inline-grid;
+  place-content: center;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  margin: 0;
+  border: 1.5px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+[data-checkbox-shape="round"] .tablist input[type="checkbox"] { border-radius: 50%; }
+[data-checkbox-shape="square"] .tablist input[type="checkbox"] { border-radius: 3px; }
+.tablist input[type="checkbox"]:checked,
+.tablist input[type="checkbox"]:indeterminate {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.tablist input[type="checkbox"]:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  /* A rotated tick's optical centre sits below its box centre, so it is nudged
+     up by one pixel before the rotation. */
+  transform: translateY(-1px) rotate(45deg);
+}
+.tablist input[type="checkbox"]:indeterminate::after {
+  content: "";
+  width: 9px;
+  height: 2px;
+  background: currentColor;
+}
+.tablist input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .45; }
+.tablist input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: 2px;
+}
+
+/* The shared structural wrappers stay behavior-neutral. Dashboard collections
+   receive the approved two-line ledger below; compact hosts keep this denser
+   anatomy. */
+.tablist .trow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  min-height: var(--row-h-default);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--shape-row);
+  background: transparent;
+  scroll-margin-top: var(--hero-h, 120px);
+  transition: background-color var(--motion-feedback) var(--ease-out),
+              color var(--motion-feedback) var(--ease-out);
+}
+.tablist .trow.selrow { cursor: pointer; }
+.tablist .trow:hover,
+.tablist .trow:focus-within { background: var(--nav-hover); }
+.tablist .trow.palette-source {
+  background: var(--nav-hover);
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
+}
+.tablist > .item.palette-source {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+  border-radius: var(--shape-card);
+}
+.tablist .trow.sel {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  box-shadow: none;
+}
+.tablist .trow.sel::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent);
+  pointer-events: none;
+}
+/* F29: consecutive selections read as one band. Only the seam BETWEEN two
+   selected rows is suppressed; the run's outer boundary, the accent rail, the
+   checkbox mark, focus indication, and row semantics are untouched. The empty
+   div between two rows is the inline-panel slot, so a row with an open panel is
+   correctly not treated as adjacent. */
+.tablist .trow.sel:has(+ div:empty + .trow.sel) {
+  border-bottom-color: transparent;
+}
+/* F29: overflow disclosure is a full row, not a chip. The whole row activates
+   it and hover/focus fill the row, matching the rows it reveals. */
+.tablist .disclosure-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--row-h-default);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-radius: var(--shape-row);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--text-control);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-feedback) var(--ease-out),
+              color var(--motion-feedback) var(--ease-out);
+}
+.tablist .disclosure-row:hover,
+.tablist .disclosure-row:focus-visible {
+  background: var(--nav-hover);
+  color: var(--ink);
+  border-color: transparent;
+}
+.tablist .disclosure-row:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: -2px;
+  border-radius: var(--shape-row);
+}
+.tablist .disclosure-section { margin-top: var(--sp-2); }
+
+.tablist .row-select-slot {
+  display: contents;
+}
+
+/* A pinned tab is a stable browser state, not an action or label. The word is
+   clearer than another small glyph and shares the current-window accent. */
+.tablist .pinned-state {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-strong-ink);
+  font-size: var(--text-meta);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Side panel action geometry may not depend on whether a row currently says
+   Suspend or Wake, nor on a profile-specific compact marker. */
+[data-surface="sidepanel"] .tablist :is(.tacts, .gacts) button.mini {
+  inline-size: var(--control-h-compact);
+  min-inline-size: var(--control-h-compact);
+  block-size: var(--control-h-compact);
+  padding-inline: 0;
+  justify-content: center;
+}
+.tablist .row-copy {
+  display: contents;
+}
+.tablist .trow .t {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist .trow .t a { color: inherit; text-decoration: none; }
+.tablist .trow .t a:hover {
+  color: var(--accent-strong-ink);
+  text-decoration: underline;
+}
+/* N38: a tab title is a link, not a pill. Its keyboard state uses a flat text
+   wash and a crisp underline instead of the generic rounded focus capsule. */
+.tablist .trow .t a:focus-visible {
+  outline: none;
+  border-radius: 0;
+  color: var(--accent-strong-ink);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.tablist .trow img.fv,
+.tablist .trow .fv-placeholder {
+  display: block;
+  width: 16px !important;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  object-fit: contain;
+}
+.tablist .row-subline {
+  display: contents;
+}
+.tablist .row-subline > * {
+  flex: 0 1 auto;
+  min-width: 32px;
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--text-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist .row-subline > * + *::before { content: none; }
+.tablist .row-recency { display: none; }
+[data-row-info="clean"] .tablist .row-subline { display: none; }
+[data-row-info="useful"] .tablist .row-subline > .item-meta { display: none; }
+[data-row-info="detailed"] .tablist .row-recency { display: inline; }
+.tablist .row-chip-slot {
+  display: contents;
+}
+
+/* F28: every Workbench collection uses the mock's crisp, two-line ledger
+   anatomy. Selection, favicon, copy, labels, and actions own stable columns,
+   so feedback paints strongly without moving a single control. */
+.tablist:not([data-compact]) .trow {
+  display: grid;
+  grid-template-columns: 17px 24px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-height: 40px;
+  height: 40px;
+  padding: 3px var(--sp-4);
+}
+.tablist:not([data-compact]) .row-select-slot {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  min-width: 17px;
+}
+.tablist:not([data-compact]) .row-copy {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+.tablist:not([data-compact]) .trow .t {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 620;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist:not([data-compact]) .trow img.fv,
+.tablist:not([data-compact]) .trow .fv-placeholder {
+  display: block;
+  width: 24px !important;
+  height: 24px;
+  padding: 4px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  object-fit: contain;
+}
+.tablist:not([data-compact]) .row-subline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: var(--text-micro);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.tablist:not([data-compact]) .row-subline > * {
+  flex: initial;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  color: inherit;
+  font-size: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist:not([data-compact]) .row-subline > * + *::before {
+  content: "·";
+  margin-right: 5px;
+  color: var(--ink-3);
+}
+
+/* Browser pin state is useful even when optional row detail is set to Clean.
+   Keep only that state in the subline, and place its accent rule after the
+   generic row-detail color so the cascade cannot silently mute it. */
+.tablist .row-subline > .pinned-state {
+  flex: none;
+  min-width: auto;
+  max-width: none;
+  color: var(--accent-strong-ink);
+}
+.tablist:not([data-compact]) .row-subline > .pinned-state {
+  color: var(--accent-strong-ink);
+}
+[data-row-info="clean"] .tablist .row-subline:has(> .pinned-state) > :not(.pinned-state) {
+  display: none;
+}
+[data-row-info="clean"] .tablist[data-compact] .row-subline:has(> .pinned-state) {
+  display: contents;
+}
+[data-row-info="clean"] .tablist:not([data-compact]) .row-subline:has(> .pinned-state) {
+  display: flex;
+}
+[data-row-info="clean"] .tablist:not([data-compact]) .row-subline { display: none; }
+[data-row-info="useful"] .tablist:not([data-compact]) .row-subline > .item-meta { display: none; }
+/* Window and tab position is the decision-making context in Duplicates, not
+   optional diagnostic detail, so it survives the default Useful density. */
+[data-row-info="useful"] .tablist[data-tablist="duplicates"] .row-subline > .item-meta {
+  display: inline;
+}
+.tablist:not([data-compact]) .row-chip-slot {
+  display: inline-flex;
+  min-width: 0;
+}
+.tablist:not([data-compact]) input[type="checkbox"]:checked::after {
+  width: 11px;
+  height: 9px;
+  border: 0;
+  background: currentColor;
+  clip-path: polygon(3% 43%, 20% 27%, 43% 50%, 79% 13%, 97% 31%, 43% 87%);
+  transform: none;
+}
+
+/* F22: the same compact action becomes a filled accent star when active. */
+.tablist .star-action.is-starred {
+  color: var(--accent-soft-ink);
+  background: var(--accent-soft);
+}
+.tablist .star-action.is-starred .ic { fill: currentColor; }
+
+/* F28: each saved bundle, live window, session, label, snooze, or duplicate is
+   its own calm ledger. The separation carries meaning without adding a new
+   card style, and single-tab Inbox items use the exact same grammar. */
+.tablist:not([data-compact]) {
+  display: grid;
+  gap: var(--sp-8);
+  overflow: visible;
+  isolation: isolate;
+  background: transparent;
+}
+.tablist:not([data-compact]) > .item {
+  margin: 0;
+  padding: 0;
+  /* `clip`, not `hidden`: both clip the child surfaces to the rounded shell,
+     but `hidden` makes this a scroll container, which would stop the sticky
+     window header below from ever sticking to the viewport. */
+  overflow: clip;
+  /* F34-15: this scrolling containing block owns NO frame. An ancestor border
+     is painted at its clip edge and cannot be reliably occluded by the sticky
+     child. The cap and the lower body frame own the visible boundary instead. */
+  border: 0;
+  border-radius: var(--shape-panel);
+  background: transparent;
+  box-shadow: none;
+}
+/* F34-8/F34-17/F36: the window header keeps a deliberate 12px breath below
+   Search while its own rows pass underneath, then the next window pushes it
+   out. F36 removes the opaque hero shelf from that gap, so scrolling text is
+   visible directly beneath Search without restoring a per-card curtain. */
+.tablist:not([data-compact]) > .item > .item-head-shell {
+  --cap-radius: var(--shape-panel);
+  position: sticky;
+  top: calc(var(--hero-h, 108px) + var(--sp-10)
+    + var(--section-lead-h, 44px) + var(--section-local-h, 0px));
+  z-index: 6;
+  isolation: isolate;
+}
+/* The patches sit BEHIND the cap, never above its border. At rest the cap is
+   therefore indistinguishable from any ordinary rounded panel (compare the
+   command box); while sticky, the two small squares fill only its transparent
+   outer cutouts so a passing row or side frame cannot bleed through. */
+.tablist:not([data-compact]) > .item > .item-head-shell::before,
+.tablist:not([data-compact]) > .item > .item-head-shell::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  width: var(--cap-radius);
+  height: var(--cap-radius);
+  background: var(--bg-solid);
+  background-attachment: fixed;
+  pointer-events: none;
+}
+.tablist:not([data-compact]) > .item > .item-head-shell::before { left: 0; }
+.tablist:not([data-compact]) > .item > .item-head-shell::after { right: 0; }
+body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::before,
+body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
+[data-gradient="true"] body .tablist:not([data-compact]) > .item > .item-head-shell::before,
+[data-gradient="true"] body .tablist:not([data-compact]) > .item > .item-head-shell::after {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+.tablist:not([data-compact]) > .item > .item-head-shell > .item-head {
+  position: relative;
+  z-index: 1;
+  /* A window header is the ledger's cap, never a floating pill: only its top
+     corners round. Square lower corners keep the first row from showing
+     through and preserve the connected-ledger grammar. */
+  margin-inline: 0;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--cap-radius) var(--cap-radius) 0 0;
+  /* F34-15: this is the ONLY upper frame. There is no parent border behind it
+     to mask, align, or expose while the containing block scrolls. */
+}
+.tablist:not([data-compact]) > .item > .item-body-frame {
+  overflow: clip;
+  border: var(--bw) solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--shape-panel) var(--shape-panel);
+  background: var(--workbench-row);
+}
+.tablist:not([data-compact]) .item-head {
+  min-height: 32px;
+  padding: 5px 10px;
+  border-bottom: var(--bw) solid var(--border);
+  border-radius: 0;
+  background: var(--workbench-header);
+}
+.tablist:not([data-compact]) .tl-rows {
+  margin-top: 0;
+}
+.tablist:not([data-compact]) .trow {
+  min-height: 40px;
+  height: 40px;
+  padding: 3px 8px 3px 10px;
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  background: var(--workbench-row);
+}
+.tablist:not([data-compact]) .trow:hover,
+.tablist:not([data-compact]) .trow:focus-within {
+  background: var(--workbench-hover);
+}
+.tablist:not([data-compact]) .trow.sel {
+  background: color-mix(in srgb, var(--accent) 16%, var(--workbench-row));
+}
+.tablist:not([data-compact]) .trow.sel:hover,
+.tablist:not([data-compact]) .trow.sel:focus-within {
+  background: color-mix(in srgb, var(--accent) 20%, var(--workbench-row));
+}
+.tablist:not([data-compact]) .trow.sel::before {
+  content: "";
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 0;
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* The disclosure row is a member of the ledger, so it takes the ledger's row
+   material, its square geometry, and the same divider weight. */
+.tablist:not([data-compact]) .disclosure-row {
+  min-height: 34px;
+  padding: 3px 10px;
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  background: var(--workbench-row);
+  color: var(--workbench-tertiary);
+}
+.tablist:not([data-compact]) .disclosure-row:hover,
+.tablist:not([data-compact]) .disclosure-row:focus-visible {
+  background: var(--workbench-hover);
+  color: var(--ink);
+}
+.tablist:not([data-compact]) .disclosure-row:focus-visible {
+  border-radius: 0;
+}
+.tablist:not([data-compact]) .disclosure-section {
+  border-bottom: 0;
+  border-radius: var(--shape-row);
+  background: transparent;
+}
+
+/* Dark schemes need a clearer material step than light schemes. Lift every
+   collection ledger and its group caps while keeping it token-driven. */
+[data-mode="dark"] .tablist:not([data-compact]) > .item > .item-body-frame {
+  border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+  background: var(--workbench-row);
+}
+[data-mode="dark"] .tablist:not([data-compact]) .item-head {
+  border-bottom-color: color-mix(in srgb, var(--ink) 20%, var(--border));
+  background: var(--workbench-header);
+}
+[data-mode="dark"] .tablist:not([data-compact]) > .item > .item-head-shell > .item-head {
+  border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+}
+[data-mode="dark"] .tablist:not([data-compact])
+  .trow:not(.sel):not(:hover):not(:focus-within) {
+  border-bottom-color: color-mix(in srgb, var(--ink) 13%, var(--border));
+  background: var(--workbench-row);
+}
+[data-mode="dark"] .tablist:not([data-compact])
+  .disclosure-row:not(.disclosure-section):not(:hover):not(:focus-visible) {
+  border-bottom-color: color-mix(in srgb, var(--ink) 13%, var(--border));
+  background: var(--workbench-row);
+}
+
+.tablist:not([data-compact]) .item-head > .item-meta,
+.tablist:not([data-compact]) .row-subline > * {
+  color: var(--workbench-tertiary);
+}
+
+/* Sessions and snapshots add an inner window level. Keep that level legible
+   without giving it a competing material: same neutral cap, same row surface. */
+.tablist:not([data-compact])
+  .item:has(.window-block) > .item-body-frame > .tl-rows {
+  display: grid;
+  gap: var(--sp-8);
+  padding: var(--sp-8);
+}
+.tablist:not([data-compact]) .window-block {
+  margin: 0;
+  overflow: hidden;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+}
+.tablist:not([data-compact]) .window-block + .window-block {
+  margin-top: 0;
+}
+.tablist[data-compact] > .item > .item-head-shell,
+.tablist[data-compact] > .item > .item-body-frame { display: contents; }
+/* The survivor is kept-copy state, which the system reserves accent for, so it
+   takes the solid audited accent pair rather than the soft tint it shared with
+   ordinary chips. */
+.tablist .dup-role {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--shape-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--text-micro);
+  font-weight: 750;
+  letter-spacing: .01em;
+}
+/* Which window a copy is in is context, not status: a quiet neutral chip that
+   never competes with the accented survivor. */
+.tablist .dup-window {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--shape-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* F30: the static Duplicates toolbar. It explains the sweep on the left and
+   separates the quiet rescan from the destructive action on the right. */
+.tablist .dup-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-panel);
+  background: var(--workbench-header);
+}
+.tablist .dup-toolbar-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.tablist .dup-toolbar-copy strong {
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: 650;
+}
+.tablist .dup-toolbar-copy span {
+  color: var(--workbench-detail);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+.tablist .dup-toolbar-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: none;
+  margin-left: auto;
+}
+.tablist .dup-toolbar-acts button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h-default);
+  white-space: nowrap;
+}
+
+.tablist .chips {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: var(--sp-2);
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.tablist .chip {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+}
+
+/* Stable direct-action lanes. Dashboard gets short labels while compact and
+   narrower containers retain the same one-click controls as icon buttons. */
+.tablist .tacts,
+.tablist .gacts {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+.tablist .tacts {
+  grid-column: 5;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--motion-reveal) var(--ease-out);
+}
+/* N39: `.kbd-reveal` is the KEYBOARD arrival state. A resting row hides this
+   lane with `visibility: hidden`, and a visibility-hidden control cannot take
+   focus, so `:focus-within` alone is circular: focus can never enter the lane
+   it is supposed to reveal. The shared ↑/↓ handler adds this class to the
+   destination row BEFORE focusing an action, and `:focus-within` takes over
+   the moment focus lands. */
+.tablist .trow:hover .tacts,
+.tablist .trow.sel .tacts,
+.tablist .trow:focus-within .tacts,
+.tablist .trow.kbd-reveal .tacts,
+.tablist .trow.palette-source .tacts {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+/* F47r: the accented mark beside a card's name is TEXT, nothing else. No pill,
+   no fill, no border — the colour alone carries it. `--accent-strong-ink` is
+   the scheme's audited accent INK (AA on every surface); `--accent` is a fill
+   and is not safe for small text. */
+.tablist .item-badge {
+  flex: none;
+  color: var(--accent-strong-ink);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* F47r: the card's name area IS the fold control, so no glyph is added to a
+   header that already carries a checkbox and an action lane. It stretches to
+   fill the free space between the name and the actions, and reaches into the
+   header's own padding, so the target is the whole quiet part of the header.
+   The fold is INSTANT — D4-4 removed every disclosure animation because
+   animating `grid-template-rows` animates layout on routine rendering. */
+.tablist .item-head-toggle {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3));
+  padding: var(--sp-3);
+  border: 0;
+  border-radius: var(--r-mini);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* F47r3: no wash. A full-width fill on the header read as a row hover and
+   competed with the rows below it, which is the one place that language is
+   meant to mean "this row". The name taking accent ink says "this is
+   interactive" as clearly and much more quietly; keyboard focus still gets a
+   real ring, because that has to be unmissable. */
+.tablist .item-head-toggle:hover .item-title { color: var(--accent-strong-ink); }
+.tablist .item-head-toggle:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: -2px;
+}
+/* The name must NOT take the free space, or the accented mark that qualifies it
+   is pushed across the header and reads as part of the count. The toggle's own
+   growth is what fills the header; the summary claims the far edge. */
+.tablist .item-head-toggle > .item-title { flex: 0 1 auto; }
+.tablist .item-head-toggle .item-meta,
+.tablist .item-head-toggle .fold-summary { margin-left: auto; }
+
+/* Folding COMPRESSES rather than hides: a folded card still shows what is in
+   it. The overlap is deliberate — it reads as one stack, not eight objects. */
+.tablist .fold-summary { flex: none; display: inline-flex; align-items: center; }
+.tablist .fold-strip { display: inline-flex; align-items: center; }
+.tablist .fold-count {
+  display: none;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* F47r4: the fold state is said beside the NAME, quietly. It is a state, not a
+   count, so it takes the meta ink and a slightly smaller size and never
+   competes with the title it qualifies. */
+.tablist .item-folded-mark {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* F47r3: the strip sizes its own favicons. The row rules are scoped to `.trow`,
+   so these reached NONE of them and every icon rendered at whatever size the
+   site served — 16, 32, or 64px — which is why the stack looked ragged. This is
+   the browser tab-strip size, deliberately smaller than a row's 24px badge:
+   the strip is a summary, not a list. */
+.tablist .fold-strip img.fv,
+.tablist .fold-strip .fv-placeholder {
+  display: block;
+  flex: none;
+  width: 16px !important;
+  height: 16px;
+  margin-left: -5px;
+  padding: 0;
+  border-radius: 3px;
+  object-fit: contain;
+  box-shadow: 0 0 0 2px var(--workbench-header);
+}
+.tablist .fold-strip .fv-placeholder { background: var(--surface-2); }
+.tablist .fold-strip > :first-child { margin-left: 0; }
+
+/* A folded card is one closed object: the header owns the whole silhouette. */
+.tablist:not([data-compact]) > .item.is-folded > .item-head-shell > .item-head {
+  border-radius: var(--cap-radius);
+}
+
+.tablist .tacts button,
+.tablist .gacts button {
+  min-height: var(--control-h-compact);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 2px 7px;
+  border-radius: var(--shape-control);
+  white-space: nowrap;
+}
+.tablist .action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.tablist .action-label { font-size: var(--text-meta); }
+[data-action-labels="icons"] .tablist .action-label { display: none; }
+[data-action-labels="icons"] .tablist .tacts button,
+[data-action-labels="icons"] .tablist .gacts button {
+  width: var(--control-h-compact);
+  min-width: var(--control-h-compact);
+  padding-inline: 0;
+}
+/* Confirmation is a temporary decision, not a permanent action slot. Let both
+   choices name themselves even in the clean icon presentation. */
+[data-action-labels="icons"] .tablist .gacts .confirm-inline.armed button,
+.tablist[data-compact] .gacts .confirm-inline.armed button {
+  width: auto;
+  min-width: var(--control-h-compact);
+  padding-inline: 7px;
+}
+[data-action-labels="icons"] .tablist .gacts .confirm-inline.armed .action-label,
+.tablist[data-compact] .gacts .confirm-inline.armed .action-label {
+  display: inline;
+}
+/* P11-03: arming a whole-window close temporarily turns the header into the
+   decision. This keeps the blast radius beside the action without adding a
+   modal or squeezing a warning into the permanent action lane. */
+.tablist .item-head:has(.window-close-confirm.armed) {
+  min-height: var(--row-h-default);
+  padding-block: var(--sp-2);
+}
+.tablist .item-head:has(.window-close-confirm.armed) > :not(.gacts),
+.tablist .item-head:has(.window-close-confirm.armed) > .gacts > :not(.window-close-confirm) {
+  display: none;
+}
+.tablist .item-head:has(.window-close-confirm.armed) > .gacts {
+  width: 100%;
+  min-width: 0;
+}
+.tablist .window-close-confirm.armed {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3) var(--sp-4);
+}
+.tablist .window-close-confirm .confirm-copy {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+.tablist .window-close-confirm .confirm-primary {
+  color: var(--ink);
+  font-weight: 650;
+}
+.tablist .window-close-confirm .confirm-detail {
+  color: var(--ink-2);
+  font-weight: 550;
+}
+.tablist .window-close-confirm .confirm-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.tablist[data-compact] .window-close-confirm.armed { flex-wrap: wrap; }
+.tablist[data-compact] .window-close-confirm .confirm-copy { flex-basis: 100%; }
+/* Wake and Suspend replace one another in the same slot. Reserve the longer
+   named width so that state changes never shuffle the actions before them. */
+:root:not([data-action-labels="icons"]) .tablist:not([data-compact]) :is(.tacts, .gacts)
+  :is([data-action-id="suspend"], [data-action-id="wake"]) {
+  width: 76px;
+  min-width: 76px;
+}
+.tablist[data-compact] .action-label { display: none; }
+.tablist[data-compact] .tacts button,
+.tablist[data-compact] .gacts button {
+  width: var(--control-h-compact);
+  min-width: var(--control-h-compact);
+  padding-inline: 0;
+}
+.tablist[data-compact] .tacts {
+  position: absolute;
+  z-index: 2;
+  right: var(--sp-3);
+}
+.tablist[data-compact] .item-head > .item-meta { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Selection stays where it started. One-card picks replace that card's usual
+   actions; only a cross-card selection needs the global keeper dock. */
+.tablist .header-bulk-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(72%, 620px);
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tablist .header-bulk-actions::-webkit-scrollbar { display: none; }
+.tablist .header-bulk-count {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tablist .header-bulk-actions > button {
+  flex: none;
+  width: var(--control-h-compact);
+  min-width: var(--control-h-compact);
+  min-height: var(--control-h-compact);
+  margin: 0;
+  padding-inline: 0;
+}
+.tablist .header-bulk-actions .action-label { display: none; }
+.tablist[data-compact] .header-bulk-count { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+
+/* A named Session owns seven real card actions. At the 520px/200% pressure
+   case the side panel has about 240 CSS px of content: one horizontal row
+   cannot contain the title plus every 28px target. Give crowded compact card
+   headers a second, right-aligned action line instead of clipping or hiding an
+   operation. DOM and keyboard order are unchanged. */
+.tablist[data-tablist="sessions"][data-compact]
+  .item-head:has(> .gacts > :nth-child(6)) {
+  flex-wrap: wrap;
+}
+.tablist[data-tablist="sessions"][data-compact]
+  .item-head:has(> .gacts > :nth-child(6)) > .gacts {
+  flex: 1 0 100%;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-left: 0;
+}
+
+/* D4 purposeful motion: list workflows live in Chrome's top layer. The list
+   never reflows, nested label suggestions stay above every row, and the small
+   stem preserves the relationship to the invoking action. */
+.action-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 20px);
+  padding: 0;
+  overflow: visible;
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-panel);
+  box-shadow: 0 22px 54px color-mix(in srgb, var(--shadow-ink) 20%, transparent),
+              0 2px 8px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
+  transform-origin: var(--palette-stem-x) top;
+  animation: action-popover-in var(--motion-reveal) var(--ease-out) both;
+}
+.action-popover[data-side="top"] { transform-origin: var(--palette-stem-x) bottom; }
+.action-popover::backdrop { background: transparent; }
+.action-popover-stem {
+  position: absolute;
+  top: -5px;
+  left: calc(var(--palette-stem-x) - 5px);
+  width: 9px;
+  height: 9px;
+  border-top: var(--bw) solid var(--border);
+  border-left: var(--bw) solid var(--border);
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+.action-popover[data-side="top"] .action-popover-stem {
+  top: auto;
+  bottom: -5px;
+  transform: rotate(225deg);
+}
+.action-popover-header {
+  display: grid;
+  grid-template-columns: var(--control-h-default) minmax(0, 1fr) var(--control-h-default);
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+.action-popover-header:not(:has(.action-popover-icon)) {
+  grid-template-columns: minmax(0, 1fr) var(--control-h-default);
+}
+.action-popover-icon {
+  width: var(--control-h-default);
+  height: var(--control-h-default);
+  display: grid;
+  place-items: center;
+  border-radius: var(--shape-control);
+  color: var(--accent-soft-ink);
+  background: var(--accent-soft);
+}
+.action-popover-heading { min-width: 0; }
+.action-popover-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+.action-popover-heading p {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+.action-popover-close {
+  width: var(--control-h-default);
+  height: var(--control-h-default);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 18px;
+  line-height: 1;
+}
+.action-popover-close:hover {
+  border-color: transparent;
+  background: var(--nav-hover);
+  color: var(--ink);
+}
+.action-popover-body { padding: var(--sp-5); }
+.action-popover button {
+  width: auto;
+  margin: 0;
+}
+.action-popover-body > .panel {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.action-popover .palette-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-5);
+  padding: 0;
+}
+.action-popover .palette-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.action-popover .palette-field-label {
+  color: var(--ink-2);
+  font-size: var(--text-control);
+  font-weight: 650;
+  line-height: 1.25;
+}
+.action-popover .palette-help {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+.action-popover .palette-label-field .tagbox {
+  width: 100%;
+  max-width: none;
+  min-height: var(--control-h-default);
+  padding: var(--sp-2) var(--sp-4);
+}
+.action-popover .palette-label-field .taginput {
+  min-height: 25px;
+  font-size: 13px;
+}
+.action-popover .palette-commit {
+  min-height: var(--control-h-default);
+  align-self: flex-end;
+  min-width: 132px;
+}
+.action-popover .move-destinations {
+  max-height: min(300px, 42vh);
+  overflow-y: auto;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+}
+.action-popover .move-destination {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h-default);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.action-popover .move-destination + .move-destination {
+  border-top: var(--bw) solid var(--border);
+}
+.action-popover .move-destination:is(:hover, :focus-visible) {
+  background: var(--nav-hover);
+}
+.action-popover .move-destination-copy {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-popover .move-destination-meta {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+/* P11-14 organization palettes reuse the exact anchored top-layer shell. The
+   body is one compact connected choice ledger, not a second chip/card system. */
+.action-popover .organization-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.action-popover .organization-picker { min-width: 0; display: flex; flex-direction: column;
+  gap: var(--sp-3); }
+.action-popover :is(.organization-search, .organization-name-input) { width: 100%; min-width: 0;
+  min-height: 32px; padding: 6px 9px; border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn); background: var(--surface); color: var(--ink); font: inherit;
+  font-size: 13px; outline: none; }
+.action-popover :is(.organization-search, .organization-name-input):focus { border-color: var(--focus-accent);
+  box-shadow: 0 0 0 3px var(--focus-ring); }
+.action-popover :is(.organization-search, .organization-name-input)::placeholder {
+  color: var(--ink-3); opacity: 1; }
+.action-popover .organization-checks { max-height: min(272px, 38vh); overflow-y: auto;
+  border: var(--bw) solid var(--border); border-radius: var(--r-btn); background: var(--surface); }
+.action-popover .organization-check { min-width: 0; min-height: 34px; display: flex; align-items: center;
+  gap: var(--sp-3); padding: 5px 8px; color: var(--ink); cursor: pointer; }
+.action-popover .organization-check + .organization-check { border-top: var(--bw) solid var(--border); }
+.action-popover .organization-check:hover { background: var(--nav-hover); }
+.action-popover .organization-check input { flex: none; width: 16px; height: 16px; accent-color: var(--accent); }
+.action-popover .organization-check span { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.action-popover .organization-empty,
+.action-popover .organization-feedback { margin: 0; color: var(--ink-3); font-size: 12px; }
+.action-popover .organization-feedback:not([hidden]) { color: var(--danger); }
+.action-popover .organization-new-trigger { align-self: flex-start; border: none; background: transparent;
+  color: var(--accent-strong-ink); padding: 3px 0; font: inherit; font-size: 12px; cursor: pointer; }
+.action-popover .organization-new-trigger:hover { text-decoration: underline; }
+.action-popover .organization-new-group[hidden] { display: none; }
+.action-popover .organization-form-actions { display: flex; align-items: center; justify-content: flex-end;
+  gap: var(--sp-3); padding-top: var(--sp-3); border-top: var(--bw) solid var(--border); }
+.action-popover .organization-form-actions button { min-height: 30px; }
+.action-popover .palette-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.action-popover .palette-choice-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.action-popover .snoozebar .palette-choice-grid > button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.action-popover .palette-choice-grid button {
+  min-width: 0;
+  min-height: var(--control-h-default);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2);
+  font-size: var(--text-control);
+  font-weight: 550;
+  text-align: center;
+}
+.action-popover .palette-choice-grid button:hover,
+.action-popover .palette-choice-grid button:focus-visible {
+  border-color: var(--accent);
+}
+.action-popover .palette-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+}
+.action-popover :is(.snooze-custom, .snooze-recur) {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h-default);
+  margin: 0;
+  font-size: var(--text-control);
+}
+.action-popover .palette-control-row button {
+  min-height: var(--control-h-default);
+  margin: 0;
+}
+.action-popover .palette-field-inline {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-4);
+}
+.action-popover .organize-hint {
+  padding-top: var(--sp-2);
+  border-top: var(--bw) solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+.action-popover .tagmenu {
+  width: 100%;
+  max-height: min(240px, 34vh);
+  padding: var(--sp-2);
+}
+.action-popover .tagopt {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+}
+.action-popover[data-compact] {
+  max-width: calc(100vw - 12px);
+}
+.action-popover[data-compact] .action-popover-header,
+.action-popover[data-compact] .action-popover-body {
+  padding-inline: var(--sp-4);
+}
+.action-popover[data-compact] .palette-field-inline {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+@keyframes action-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.985);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Keeper dock. Its normal-flow placeholder is hidden; the selected state floats
+   above the surface. Extra bottom reachability appears only while the dock exists
+   and does not move any row inside the list. */
+.tablist > .bulk-bar.is-empty { display: none; }
+/* F43: an empty keeper panel is still a grid item unless explicitly removed.
+   On Dashboard that zero-height item consumed the list's 16px group gap before
+   the first collection, so Window 1 began below Starred and scrolled into its
+   sticky coordinate. A populated slot is fixed below and remains unaffected. */
+.tablist > .keeper-panel-slot:empty { display: none; }
+.tablist:has(> .bulk-bar.has-selection) { padding-bottom: 68px; }
+.tablist > .bulk-bar.has-selection {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: var(--sp-8);
+  width: min(840px, calc(100vw - 48px));
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border: var(--bw) solid var(--focus-accent);
+  border-radius: var(--shape-keeper);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px var(--focus-ring),
+    0 12px 36px color-mix(in srgb, var(--shadow-ink) 22%, transparent);
+  transform: translateX(-50%);
+}
+.tablist > .bulk-bar .keeper-count {
+  flex: none;
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tablist > .bulk-bar button,
+.tablist > .bulk-bar .tagbox {
+  min-height: var(--control-h-default);
+  flex: none;
+}
+/* The keeper's controls are the same icon/label pair the rows use, so they
+   need the same centering. Without it the icon sits on the text baseline of an
+   empty label and reads off-centre once the label is hidden. */
+.tablist > .bulk-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+/* Only a genuine icon+label control collapses to a square. A keeper button that
+   is plain text (Restore, Copy, Cancel selected) has no icon to show instead,
+   so squaring it would clip its only label. */
+[data-action-labels="icons"] .tablist > .bulk-bar button:has(> .action-icon) {
+  width: var(--control-h-default);
+  min-width: var(--control-h-default);
+  padding-inline: 0;
+}
+.tablist > .bulk-bar .danger { margin-left: auto; }
+/* F29: only the keeper's own marked slot floats. Matching "the div after a
+   .bulk-bar" also caught the first content block of any section whose static
+   toolbar carries .bulk-bar, which is what pinned the first Duplicates group
+   to the bottom of the viewport. */
+.tablist > .keeper-panel-slot:not(:empty) {
+  position: fixed;
+  z-index: 61;
+  left: 50%;
+  bottom: 72px;
+  width: min(840px, calc(100vw - 48px));
+  padding: var(--sp-4);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-panel);
+  background: var(--surface);
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+  transform: translateX(-50%);
+}
+
+/* Compact dock stays within side-panel gutters and keeps controls one click
+   away. Horizontal overflow is confined to the dock, never the page. */
+[data-surface="sidepanel"] .tablist > .bulk-bar.has-selection {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: auto;
+  min-width: 0;
+  transform: none;
+}
+
+.tablist > .bulk-bar.keeper-enter {
+  transition: opacity var(--motion-continuity) var(--ease-out),
+              transform var(--motion-continuity) var(--ease-out);
+}
+@starting-style {
+  .tablist > .bulk-bar.keeper-enter {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  [data-surface="sidepanel"] .tablist > .bulk-bar.keeper-enter {
+    transform: translateY(6px);
+  }
+}
+
+[data-surface="sidepanel"] .tablist > .keeper-panel-slot:not(:empty) {
+  left: 12px;
+  right: 12px;
+  bottom: 68px;
+  width: auto;
+  transform: none;
+}
+[data-surface="sidepanel"] .tablist > .bulk-bar .keeper-count {
+  position: sticky;
+  left: 0;
+  padding-right: var(--sp-2);
+  background: var(--surface);
+}
+[data-surface="sidepanel"] { overflow-x: hidden; }
+[data-surface="sidepanel"] .tablist > .bulk-bar button:has(> .action-icon) {
+  width: var(--control-h-default);
+  min-width: var(--control-h-default);
+  padding-inline: 0;
+}
+
+@container (max-width: 720px) {
+  .tablist:not([data-compact]) .action-label { display: none; }
+  .tablist:not([data-compact]) .tacts button,
+  .tablist:not([data-compact]) .gacts button {
+    width: var(--control-h-compact);
+    min-width: var(--control-h-compact);
+    padding-inline: 0;
+  }
+  .tablist .row-subline > .item-meta { display: none; }
+}
+@container (max-width: 390px) {
+  .tablist .row-subline,
+  .tablist .rowchips,
+  .tablist .item-head > .item-meta { display: none; }
+  .tablist .item-head,
+  .tablist .trow { column-gap: var(--sp-3); padding-inline: var(--sp-3); }
+  .tablist .trow { min-height: 36px; height: 36px; }
+  /* Q1 pressure result: the full eight-icon stack collides with four compact
+     header actions at this established narrow state. Keep the fixed cap in the
+     data/DOM contract, but deterministically show its textual count here. The
+     current-window badge remains in the accessible label and yields visually;
+     the folded marker and every action stay present. */
+  .tablist .item-head-toggle > .item-title { min-width: 0; }
+  .tablist .item-head-toggle .item-badge { display: none; }
+  .tablist .item-head-toggle .fold-strip { display: none; }
+  .tablist .item-head-toggle .fold-count { display: inline; }
+}
+@container (max-width: 260px) {
+  /* At 200% zoom a 520px physical panel has roughly this CSS-pixel lane.
+     The control's accessible name already says it is folded, so that repeated
+     visual word yields before the count or any action does. */
+  .tablist .item-head-toggle { gap: var(--sp-2); }
+  .tablist .item-head-toggle .item-folded-mark { display: none; }
+}
+
+@media (hover: none) {
+  .tablist .trow:not(.sel):not(:focus-within):not(.kbd-reveal) .tacts {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tablist .trow,
+  .tablist .tacts { transition: none; }
+}

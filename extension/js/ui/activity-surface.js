@@ -1,0 +1,209 @@
+import { listActions, JOURNAL_CAP, isVisibleActivityEntry } from "../lib/journal.js";
+import { buildRestoreCheckpointExport } from "../lib/portable-state.js";
+import { el, coalesce } from "./dom.js";
+import { icon } from "./icons.js";
+import { requestClearJournal, requestUndo } from "./undo-client.js";
+import { activityEntryLabel } from "./activity-copy.js";
+import { shellSectionCountTitle } from "./shell-copy.js";
+
+/** Day buckets, newest first, so a long history stays scannable. */
+export function activityDayLabel(at, now = Date.now()) {
+  const day = (time) => new Date(time).setHours(0, 0, 0, 0);
+  const difference = Math.round((day(now) - day(at)) / 86_400_000);
+  if (difference <= 0) return "Today";
+  if (difference === 1) return "Yesterday";
+  return new Date(at).toLocaleDateString(undefined,
+    { weekday: "long", month: "short", day: "numeric" });
+}
+
+/**
+ * Owns Activity filtering, journal actions, recovery download, focus continuity,
+ * and list presentation. The Dashboard host supplies only stable DOM slots and
+ * the refresh/notice effects that cross section boundaries.
+ */
+export function createActivitySurface({
+  getBody, getHeading, setHeading, showNotice, queueRefresh, download
+}) {
+  const modifierLabel = navigator.platform?.toLowerCase().includes("mac") ? "⌘" : "Ctrl";
+  let filter = localStorage.getItem("tvActivityFilter") ?? "all";
+  const render = coalesce(renderInner);
+
+  function focusEntry(id) {
+    const row = getBody().querySelector(
+      `[data-activity-entry-id="${CSS.escape(id)}"]`
+    );
+    const action = row?.querySelector("button:not([disabled])");
+    (action ?? row ?? getHeading()).focus?.();
+  }
+
+  async function downloadRestoreRecovery(entry) {
+    try {
+      const text = await buildRestoreCheckpointExport(entry.restoreCheckpointId);
+      if (!text) {
+        showNotice("That Restore checkpoint is no longer available.");
+        await render();
+        focusEntry(entry.id);
+        return;
+      }
+      download(
+        `everytab-restore-recovery-${new Date(entry.at).toISOString().slice(0, 10)}.json`,
+        text,
+        "application/json"
+      );
+    } catch {
+      showNotice("The affected earlier data could not be prepared. Nothing was changed.");
+      await render();
+      focusEntry(entry.id);
+    }
+  }
+
+  async function renderInner() {
+    const all = (await listActions()).filter(isVisibleActivityEntry);
+    const entries = filter === "all"
+      ? all
+      : all.filter((entry) => (filter === "auto") === (entry.auto === true));
+    setHeading(shellSectionCountTitle("activity", all.length));
+
+    const filterButton = (id, label, tip) => el("button", {
+      class: `activity-seg${filter === id ? " on" : ""}`,
+      type: "button",
+      "aria-pressed": filter === id ? "true" : "false",
+      "data-tip": tip,
+      onclick: async () => {
+        if (filter === id) return;
+        filter = id;
+        localStorage.setItem("tvActivityFilter", id);
+        await render();
+      }
+    }, label);
+
+    const toolbar = el("div", { class: "activity-controls section-local-sticky" },
+      el("div", { class: "activity-filter", role: "group", "aria-label": "Filter activity" },
+        filterButton("all", "All", "Everything that happened"),
+        filterButton("auto", "Automatic", "Only what EveryTab did on its own"),
+        filterButton("manual", "Yours", "Only actions you took")),
+      el("span", {
+        class: "activity-count",
+        "data-tip": `EveryTab keeps the last ${JOURNAL_CAP} actions. ${modifierLabel}+Z undoes the most recent.`
+      }, `${entries.length} shown`),
+      el("span", { style: "flex:1" }),
+      (() => {
+        const wrap = el("span", { class: "confirm-inline" });
+        const ask = el("button", { class: "mini2", onclick: arm }, "Clear history");
+        const cancel = el("button", { class: "mini2", onclick: reset }, "Cancel");
+        const confirm = el("button", { class: "mini2 danger", onclick: async () => {
+          if (!await requestClearJournal()) return;
+          await render();
+        } }, "Delete undo history");
+        function arm() { wrap.replaceChildren(confirm, cancel); confirm.focus(); }
+        function reset() { wrap.replaceChildren(ask); }
+        reset();
+        return wrap;
+      })()
+    );
+
+    if (entries.length === 0) {
+      getBody().replaceChildren(toolbar, el("div", { class: "empty" },
+        all.length === 0
+          ? "Actions you can undo will appear here."
+          : "Nothing here under this filter."));
+      return;
+    }
+
+    const restoreUndoCopy = (entry) => entry.restoreUndoStatus === "stale"
+      ? "Restore Undo unavailable after later saved-data changes"
+      : "Restore Undo unavailable because its checkpoint was replaced";
+    const genericUndoCopy = (entry) => entry.undoStatus === "stale"
+      ? "Newer changes were kept. This action was not undone."
+      : entry.undoStatus === "incomplete"
+        ? "Undo could not finish every browser action."
+        : "This action can no longer be undone.";
+    const genericUndoChip = (entry) => entry.undoStatus === "stale"
+      ? "changed later"
+      : entry.undoStatus;
+
+    const activityRow = (entry) => {
+      const entryLabel = activityEntryLabel(entry);
+      return el("div", {
+        class: `trow${entry.undone || entry.undoStatus ? " activity-undone" : ""}`,
+        tabindex: "-1",
+        "data-activity-entry-id": entry.id
+      },
+      el("span", { class: "row-select-slot" }),
+      el("span", { class: "row-glyph-slot", "aria-hidden": "true" },
+        entry.auto ? icon("refresh", 15) : null),
+      el("span", { class: "row-copy" },
+        el("span", { class: "t" }, entryLabel),
+        el("span", { class: "row-subline" },
+          el("span", { class: "host" }, new Date(entry.at).toLocaleTimeString(undefined,
+            { hour: "numeric", minute: "2-digit" })),
+          el("span", { class: "item-meta" }, entry.restoreUndoStatus
+            ? restoreUndoCopy(entry)
+            : entry.undoStatus
+              ? genericUndoCopy(entry)
+              : entry.auto ? "EveryTab did this" : "you did this"))),
+      el("span", { class: "row-chip-slot" },
+        entry.undone
+          ? el("span", { class: "chip" }, "undone")
+          : entry.restoreUndoStatus
+            ? el("span", { class: "chip" }, entry.restoreUndoStatus)
+            : entry.undoStatus
+              ? el("span", { class: "chip" }, genericUndoChip(entry))
+              : null),
+      el("span", { class: "tacts" },
+        entry.undone
+          ? null
+          : entry.restoreUndoStatus
+            ? entry.restoreCheckpointAvailable
+              ? el("button", {
+                class: "mini",
+                "data-action-id": "download-recovery",
+                title: "Download affected earlier data",
+                "aria-label": `Download affected earlier data for ${entryLabel}`,
+                onclick: () => downloadRestoreRecovery(entry)
+              }, el("span", { class: "activity-undo-label" }, "Download earlier data"))
+              : null
+            : entry.undoStatus
+              ? null
+              : el("button", {
+                class: "mini",
+                "data-action-id": "undo",
+                title: `Undo ${entryLabel}`,
+                "aria-label": `Undo ${entryLabel}`,
+                onclick: async () => {
+                  await requestUndo(entry.id);
+                  await render();
+                  focusEntry(entry.id);
+                  queueRefresh(["open", "inbox", "archive", "labels", "sessions"]);
+                }
+              },
+              el("span", { class: "action-icon" }, icon("refresh", 14)),
+              el("span", { class: "activity-undo-label" }, "Undo")))
+      );
+    };
+
+    const days = [];
+    for (const entry of entries) {
+      const label = activityDayLabel(entry.at);
+      const last = days[days.length - 1];
+      if (last && last.label === label) last.entries.push(entry);
+      else days.push({ label, entries: [entry] });
+    }
+
+    const list = el("div", { class: "tablist", "data-tablist": "activity" },
+      ...days.map((day) => el("div", {
+        class: "item", "data-tablist-card": `day::${day.label}`
+      },
+      el("div", { class: "item-head-shell" },
+        el("div", { class: "item-head" },
+          el("span", { class: "item-title" }, day.label),
+          el("span", { class: "item-meta" },
+            `${day.entries.length} action${day.entries.length === 1 ? "" : "s"}`))),
+      el("div", { class: "item-body-frame" },
+        el("div", { class: "tl-rows" }, ...day.entries.map(activityRow))))));
+
+    getBody().replaceChildren(toolbar, list);
+  }
+
+  return { render };
+}

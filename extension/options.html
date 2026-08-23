@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
+      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+<head>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="dark light" />
+<script src="js/boot.js"></script>
+<title>EveryTab settings</title>
+<link rel="stylesheet" href="css/tokens.css" />
+<link rel="stylesheet" href="css/onboarding.css" />
+<link rel="stylesheet" href="css/settings-schemes.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  #app { max-width: 640px; margin: 0 auto; padding: 28px 18px 60px; }
+  h1 { font-family: var(--font-display); font-weight: var(--display-weight);
+       letter-spacing: var(--display-tracking); font-size: 22px; }
+  h3 { font-size: 12px; margin: 22px 0 4px; color: var(--ink-3); text-transform: uppercase;
+       letter-spacing: .06em; }
+  .setrow { display: flex; align-items: center; gap: 14px; padding: 13px 4px;
+            border-bottom: var(--bw) solid var(--border); }
+  .setrow .tw { flex: 1; }
+  .setrow .t { font-weight: 500; }
+  .setrow .d { color: var(--ink-3); font-size: 12.5px; }
+  /* settings filter + jump nav */
+  .settings-toolbar { position: sticky; top: 0; z-index: 10;
+    display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 0 10px;
+    background: var(--bg-solid); background-attachment: fixed; }
+  body.gradient .settings-toolbar, [data-gradient="true"] body .settings-toolbar {
+    background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed; }
+  .settings-filter { width: 100%; padding: 8px 12px; font-size: 13px; border-radius: var(--r-btn); }
+  .settings-filter:focus { border-color: var(--focus-accent); box-shadow: 0 0 0 3px var(--focus-ring); outline: none; }
+  .settings-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  .settings-nav-chip { padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer;
+                       color: var(--ink-2); background: var(--surface-2);
+                       border: var(--bw) solid var(--border); border-radius: 99px; }
+  .settings-nav-chip:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+  .settings-nav-chip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+  .settings-group { scroll-margin-top: calc(var(--settings-toolbar-h, 0px) + 16px);
+                    margin-top: 22px; padding-top: 16px;
+                    border-top: var(--bw) solid var(--border); }
+  .settings-group:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
+  .settings-group h3 { font-size: 13px; margin: 0 0 6px; color: var(--accent-strong-ink);
+                       letter-spacing: .08em; }
+  input, select, textarea { padding: 6px 9px; border: var(--bw) solid var(--border);
+    border-radius: var(--r-btn); font: inherit; font-size: 13px;
+    background: var(--surface); color: var(--ink); }
+  textarea { width: 240px; font: 12px/1.4 var(--font-mono); }
+  .saved { color: var(--ink-2); margin-top: 12px; min-height: 18px; }
+  /* F8 — Focus settings: inline blocked-site editor + save-close warning */
+  .setrow.focus-block { flex-direction: column; align-items: stretch; gap: 8px; }
+  .focus-block > select { max-width: 300px; }
+  .focus-site-add { display: flex; gap: 8px; }
+  .focus-site-input { flex: 1; min-width: 0; }
+  .focus-site-list { display: flex; flex-direction: column; }
+  .focus-site-row { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+                    border-top: var(--bw) solid var(--border); }
+  .focus-site-row:first-child { border-top: none; }
+  .focus-site-domain { flex: 1; min-width: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
+  .focus-site-empty { color: var(--ink-3); font-size: 12.5px; padding: 2px 0; }
+  /* inline validation / duplicate notice: dark ink on a danger tint = AA on every surface */
+  .focus-site-notice:not(:empty) { color: var(--ink); background: var(--danger-bg);
+    border-radius: var(--r-mini); font-size: 12px; padding: 3px 9px; align-self: flex-start; }
+  /* F4 — shortcuts list (mirrors the dashboard overlay; one source in shortcuts.js) */
+  .settings-hint { color: var(--ink-3); font-size: 12px; margin: 0 0 8px; }
+  .shortcuts-group { margin-top: 12px; }
+  .shortcuts-group h4 { margin: 0 0 2px; font-size: 13px; color: var(--ink-2); text-transform: none;
+                        letter-spacing: 0; }
+  .shortcuts-note { margin: 0 0 6px; font-size: 12px; color: var(--ink-3); }
+  .shortcut-row { display: flex; gap: 12px; align-items: baseline; padding: 4px 0; }
+  .shortcut-keys { flex: 0 0 40%; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .shortcut-unset { flex: 0 0 40%; color: var(--ink-3); font-size: 12px; font-style: italic; }
+  .shortcut-desc { flex: 1; color: var(--ink); font-size: 13px; }
+  .kbd-plus { color: var(--ink-3); font-size: 11px; }
+  kbd { display: inline-block; min-width: 18px; text-align: center; padding: 2px 6px;
+        font: 600 11px/1.2 var(--font-mono); color: var(--ink);
+        background: var(--surface-2); border: var(--bw) solid var(--border);
+        border-radius: 6px; box-shadow: 0 1px 0 var(--border); }
+  /* N3 — shared threshold slider */
+  .setrow .slider { flex: 0 0 240px; }
+  .slider { width: 100%; }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-value { flex: 0 0 auto; min-width: 58px; text-align: right; font-size: 12px;
+                  color: var(--ink); font-variant-numeric: tabular-nums; }
+  .slider-ticks { display: flex; justify-content: space-between; margin-top: 3px;
+                  font-size: 10px; color: var(--ink-3); }
+  input.slider-range { -webkit-appearance: none; appearance: none; flex: 1; height: 22px;
+                       background: transparent; cursor: pointer; padding: 0; border: none; }
+  input.slider-range:focus { outline: none; }
+  input.slider-range::-webkit-slider-runnable-track { height: 5px; border-radius: 999px;
+    background: var(--surface-2); border: var(--bw) solid var(--border); }
+  input.slider-range::-moz-range-track { height: 5px; border-radius: 999px;
+    background: var(--surface-2); border: var(--bw) solid var(--border); }
+  input.slider-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; margin-top: -9px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--surface); box-shadow: var(--shadow-1); }
+  input.slider-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--surface); box-shadow: var(--shadow-1); }
+  input.slider-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
+  input.slider-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
+</style>
+</head>
+<body>
+  <span class="orb o1"></span><span class="orb o2"></span>
+  <div id="app"></div>
+  <script type="module" src="./js/ui/options.js"></script>
+</body>
+</html>

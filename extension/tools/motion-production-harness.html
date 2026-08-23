@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-action-labels="named">
+<head>
+  <meta charset="utf-8" />
+  <title>EveryTab production motion harness</title>
+  <link rel="stylesheet" href="../css/tokens.css" />
+  <link rel="stylesheet" href="../css/primitives.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <link rel="stylesheet" href="../css/tablist-d4.css" />
+  <style>
+    body { min-height: 100vh; padding: 48px; background: var(--bg-solid); }
+    main { max-width: 980px; margin: 0 auto; }
+    body.compact { padding: 20px; }
+    body.compact main { max-width: 400px; }
+    .tagbox { position: relative; display: flex; flex: 1; padding: 6px 8px; }
+    .tagbox input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; }
+    .tagmenu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; padding: 5px; }
+    .tagmenu button { width: 100%; }
+    .tl-rows .trow:first-child .tacts { opacity: 1; visibility: visible; pointer-events: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Production motion harness</h1>
+    <p class="note">Real list component and palette controller with fixture data.</p>
+    <button id="cue-arrival" type="button">Preview Ring and Wash</button>
+    <div id="fixture"></div>
+  </main>
+  <script type="module">
+    import { createTabList } from "../js/ui/tablist.js?motion=208";
+    import { el } from "../js/ui/dom.js?motion=208";
+    import { initTooltips } from "../js/ui/tooltip.js?motion=208";
+
+    const params = new URLSearchParams(location.search);
+    const compact = params.has("compact");
+    if (params.get("scheme")) document.documentElement.dataset.scheme = params.get("scheme");
+    if (params.get("mode")) document.documentElement.dataset.mode = params.get("mode");
+    document.body.classList.toggle("compact", compact);
+    const labelPanel = () => {
+      const menu = el("div", { class: "tagmenu", hidden: "" },
+        el("div", { class: "tagopt", role: "option" }, "reading"),
+        el("div", { class: "tagopt", role: "option" }, "research"));
+      return el("div", { class: "row-labelbar palette-form" },
+        el("div", { class: "palette-field palette-label-field" },
+          el("span", { class: "palette-field-label" }, "Add labels"),
+          el("div", { class: "tagbox" }, el("input", {
+            "aria-label": "Labels",
+            placeholder: "Labels…",
+            onfocus: () => { menu.hidden = false; }
+          }), menu),
+          el("span", { class: "palette-help" }, "Enter adds a label. Enter again applies.")),
+        el("button", { class: "mini primary palette-commit", type: "button" }, "Add labels"));
+    };
+    const snoozePanel = () => el("div", { class: "snoozebar palette-form" },
+      el("div", { class: "palette-field" },
+        el("span", { class: "palette-field-label" }, "Quick choices"),
+        el("div", { class: "palette-choice-grid" },
+          ...["Later today", "Tomorrow, 9:00", "This weekend", "Next week", "Custom time"].map((label) =>
+            el("button", { class: "mini", type: "button" }, label)))),
+      el("label", { class: "palette-field palette-field-inline" },
+        el("span", { class: "palette-field-label" }, "Repeat"),
+        el("select", { class: "snooze-recur", "aria-label": "Repeat" },
+          el("option", {}, "Never"), el("option", {}, "Every weekday"))));
+    const organizePanel = () => el("div", { class: "organizebar palette-form" },
+      el("div", { class: "palette-field" },
+        el("span", { class: "palette-field-label" }, "Sort by"),
+        el("div", { class: "palette-choice-grid palette-choice-grid-three" },
+          ...["Domain", "Title", "Recent"].map((label) =>
+            el("button", { class: "mini", type: "button", title: `Sort by ${label}` }, label)))),
+      el("label", { class: "palette-field palette-field-inline" },
+        el("span", { class: "palette-field-label" }, "Gather"),
+        el("select", { class: "snooze-recur", "aria-label": "Gather a domain" },
+          el("option", {}, "example.com · 2 tabs"))),
+      el("p", { class: "palette-help organize-hint" }, "Pinned tabs stay in place."));
+
+    const refs = [
+      { title: "Calm Precision design system specification", url: "https://example.com/design" },
+      { title: "A long tab title that leaves room for actions", url: "https://example.com/research" },
+      { title: "Chrome side panel reference", url: "https://developer.chrome.com/docs/extensions/reference/api/sidePanel" }
+    ];
+    document.getElementById("fixture").append(createTabList({
+      section: "motion-production-harness",
+      presentation: compact ? "compact" : "default",
+      groups: [{ id: "window-1", title: "Window 1", meta: "3 tabs", refs }],
+      rowActions: [
+        { id: "label", label: "Label", icon: "labels", key: "l",
+          run: (ctx) => ctx.panel.toggle(labelPanel, "label") },
+        { id: "snooze", label: "Snooze", icon: "snooze", key: "s",
+          run: (ctx) => ctx.panel.toggle(snoozePanel, "snooze") },
+        { id: "suspend", label: "Suspend", icon: "suspend", run: () => {} },
+        { id: "close", label: "Close", glyph: "×", danger: true, run: () => {} }
+      ],
+      groupActions: [
+        { id: "organize", label: "Organize", icon: "organize",
+          run: (ctx) => ctx.panel.toggle(organizePanel, "organize") }
+      ]
+    }));
+    initTooltips();
+    document.getElementById("cue-arrival").addEventListener("click", () => {
+      const card = document.querySelector(".tablist > .item");
+      card.classList.remove("jump-arrival");
+      card.getBoundingClientRect();
+      card.classList.add("jump-arrival");
+      card.addEventListener("animationend", () => card.classList.remove("jump-arrival"), { once: true });
+    });
+  </script>
+</body>
+</html>
