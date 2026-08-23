@@ -83,7 +83,7 @@ class CdpClient {
     });
   }
 
-  async send(method, params = {}) {
+  async send(method, params = {}, sessionId = undefined) {
     await this.ready;
     const id = this.nextId++;
     const result = new Promise((resolve, reject) => {
@@ -93,12 +93,27 @@ class CdpClient {
       }, 15_000);
       this.pending.set(id, { resolve, reject, timer });
     });
-    this.socket.send(JSON.stringify({ id, method, params }));
+    this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     return result;
   }
 
   close() {
     this.socket.close();
+  }
+}
+
+class CdpSession {
+  constructor(client, sessionId) {
+    this.client = client;
+    this.sessionId = sessionId;
+  }
+
+  send(method, params = {}) {
+    return this.client.send(method, params, this.sessionId);
+  }
+
+  close() {
+    this.client.close();
   }
 }
 
@@ -129,13 +144,18 @@ async function detectInstalledExtensionId(debugUrl, fallback) {
 }
 
 async function newTarget(debugUrl, url) {
-  const endpoint = new URL(debugUrl);
-  const response = await fetch(`http://${endpoint.host}/json/new?${encodeURIComponent(url)}`, {
-    method: "PUT"
-  });
-  if (!response.ok) throw new Error(`Could not create target (${response.status})`);
-  const target = await response.json();
-  return new CdpClient(target.webSocketDebuggerUrl);
+  const client = new CdpClient(debugUrl);
+  try {
+    const { targetId } = await client.send("Target.createTarget", { url });
+    const { sessionId } = await client.send("Target.attachToTarget", {
+      targetId,
+      flatten: true
+    });
+    return new CdpSession(client, sessionId);
+  } catch (error) {
+    client.close();
+    throw error;
+  }
 }
 
 const schemeTraceScript = `(() => {
