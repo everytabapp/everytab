@@ -36,6 +36,7 @@ const liveTabCount = Math.max(0, Number.parseInt(process.env.EVERYTAB_LIVE_TAB_C
 const liveWindowCount = Math.max(1, Number.parseInt(process.env.EVERYTAB_LIVE_WINDOW_COUNT ?? "1", 10) || 1);
 const useStableExtensionTarget = process.env.EVERYTAB_STABLE_EXTENSION_TARGET === "1";
 const useHeadlessChrome = process.env.EVERYTAB_CHROME_HEADLESS === "1";
+const workerBootstrapOnly = process.env.EVERYTAB_WORKER_BOOTSTRAP_ONLY === "1";
 
 function debuggingUrl(process) {
   return new Promise((resolve, reject) => {
@@ -123,7 +124,7 @@ async function detectInstalledExtensionId(debugUrl, fallback) {
     const deadline = performance.now() + 5000;
     while (performance.now() < deadline) {
       const { targetInfos = [] } = await client.send("Target.getTargets");
-      const everyTabTarget = targetInfos.find(({ url = "" }) => {
+      const matchesEveryTab = ({ url = "" }) => {
         if (!url.startsWith("chrome-extension://")) return false;
         try {
           const pathname = new URL(url).pathname;
@@ -133,13 +134,35 @@ async function detectInstalledExtensionId(debugUrl, fallback) {
         } catch {
           return false;
         }
-      });
-      if (everyTabTarget) return new URL(everyTabTarget.url).host;
+      };
+      const workerTarget = targetInfos.find(({ url = "" }) =>
+        matchesEveryTab({ url }) && new URL(url).pathname.endsWith("/js/background.js"));
+      const everyTabTarget = workerTarget ?? targetInfos.find(matchesEveryTab);
+      if (everyTabTarget) {
+        return {
+          extensionId: new URL(everyTabTarget.url).host,
+          workerTargetId: workerTarget?.targetId ?? null
+        };
+      }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    return fallback;
+    return { extensionId: fallback, workerTargetId: null };
   } finally {
     client.close();
+  }
+}
+
+async function attachTarget(debugUrl, targetId) {
+  const client = new CdpClient(debugUrl);
+  try {
+    const { sessionId } = await client.send("Target.attachToTarget", {
+      targetId,
+      flatten: true
+    });
+    return new CdpSession(client, sessionId);
+  } catch (error) {
+    client.close();
+    throw error;
   }
 }
 
@@ -147,11 +170,8 @@ async function newTarget(debugUrl, url) {
   const client = new CdpClient(debugUrl);
   try {
     const { targetId } = await client.send("Target.createTarget", { url });
-    const { sessionId } = await client.send("Target.attachToTarget", {
-      targetId,
-      flatten: true
-    });
-    return new CdpSession(client, sessionId);
+    client.close();
+    return await attachTarget(debugUrl, targetId);
   } catch (error) {
     client.close();
     throw error;
@@ -243,8 +263,15 @@ const clients = [];
 try {
   const debugUrl = await debuggingUrl(chrome);
   console.log("EveryTab installed gate: Chrome debugging ready");
-  extensionId = await detectInstalledExtensionId(debugUrl, extensionId);
+  const detectedExtension = await detectInstalledExtensionId(debugUrl, extensionId);
+  extensionId = detectedExtension.extensionId;
   console.log(`EveryTab installed gate: extension ${extensionId.slice(-6)} detected`);
+  if (workerBootstrapOnly) {
+    if (!detectedExtension.workerTargetId) {
+      throw new Error("EveryTab MV3 service worker was not available");
+    }
+    console.log(`PASS: installed EveryTab MV3 worker ${detectedExtension.workerTargetId}`);
+  } else {
   const seed = await newTarget(debugUrl,
     `chrome-extension://${extensionId}/suspend.html?originalUrl=https%3A%2F%2Fexample.com`);
   clients.push(seed);
@@ -511,6 +538,7 @@ try {
     `singleton keeper ${singletonState.keeperTabId} after ${singletonState.rapidCreated} rapid tabs ` +
     `in window ${singletonState.windowId} in ${singletonState.elapsedMs.toFixed(1)}ms; ` +
     `${newTabMode} content ${observed.map(({ contentReadyAt }) => contentReadyAt.toFixed(1)).join("/")}ms`);
+  }
 } finally {
   for (const client of clients) client.close();
   // Chrome for Testing can leave its stderr pipe open after a polite signal,

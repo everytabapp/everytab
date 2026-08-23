@@ -63,11 +63,17 @@ jobs:
           EVERYTAB_CHROME_NO_SANDBOX: "1"
           EVERYTAB_STABLE_EXTENSION_TARGET: "1"
         run: xvfb-run -a node extension/test/theme-on-open-extension.mjs
-      - name: Installed extension and native New Tab singleton
-        if: runner.os != 'Linux'
+      - name: Installed extension and native New Tab singleton (Windows)
+        if: runner.os == 'Windows'
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           EVERYTAB_STABLE_EXTENSION_TARGET: "1"
-          EVERYTAB_CHROME_HEADLESS: ${{ runner.os == 'macOS' && '1' || '0' }}
-          EVERYTAB_CHROME_NO_SANDBOX: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: node extension/test/theme-on-open-extension.mjs
+      - name: Installed extension worker bootstrap (macOS)
+        if: runner.os == 'macOS'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          EVERYTAB_CHROME_HEADLESS: "1"
+          EVERYTAB_CHROME_NO_SANDBOX: "1"
+          EVERYTAB_WORKER_BOOTSTRAP_ONLY: "1"
         run: node extension/test/theme-on-open-extension.mjs
