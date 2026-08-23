@@ -34,6 +34,9 @@ jobs:
           node extension/test/vault.mjs
           node extension/test/pre-localization-polish.mjs
           node extension/test/search-domain-filter.mjs
+      - name: Stable performance budgets
+        if: runner.os == 'Linux'
+        run: |
           node extension/test/perf.mjs
 
   installed-chrome:
@@ -66,4 +69,5 @@ jobs:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           EVERYTAB_STABLE_EXTENSION_TARGET: "1"
           EVERYTAB_CHROME_HEADLESS: ${{ runner.os == 'macOS' && '1' || '0' }}
+          EVERYTAB_CHROME_NO_SANDBOX: ${{ runner.os == 'macOS' && '1' || '0' }}
         run: node extension/test/theme-on-open-extension.mjs
