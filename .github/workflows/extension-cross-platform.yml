@@ -65,4 +65,5 @@ jobs:
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           EVERYTAB_STABLE_EXTENSION_TARGET: "1"
+          EVERYTAB_CHROME_HEADLESS: ${{ runner.os == 'macOS' && '1' || '0' }}
         run: node extension/test/theme-on-open-extension.mjs

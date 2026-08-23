@@ -35,6 +35,7 @@ const maxSingletonMs = Number(process.env.EVERYTAB_MAX_SINGLETON_MS ?? 0);
 const liveTabCount = Math.max(0, Number.parseInt(process.env.EVERYTAB_LIVE_TAB_COUNT ?? "0", 10) || 0);
 const liveWindowCount = Math.max(1, Number.parseInt(process.env.EVERYTAB_LIVE_WINDOW_COUNT ?? "1", 10) || 1);
 const useStableExtensionTarget = process.env.EVERYTAB_STABLE_EXTENSION_TARGET === "1";
+const useHeadlessChrome = process.env.EVERYTAB_CHROME_HEADLESS === "1";
 
 function debuggingUrl(process) {
   return new Promise((resolve, reject) => {
@@ -206,6 +207,7 @@ async function waitFor(client, expression, label, timeout = 3000) {
 const profile = await mkdtemp(`${tmpdir()}/everytab-theme-on-open-`);
 const chrome = spawn(chromeBin, [
   ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
+  ...(useHeadlessChrome ? ["--headless=new"] : []),
   "--disable-gpu",
   "--disable-background-networking",
   "--disable-component-update",
