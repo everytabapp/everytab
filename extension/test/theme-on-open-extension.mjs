@@ -135,10 +135,7 @@ async function newTarget(debugUrl, url) {
   });
   if (!response.ok) throw new Error(`Could not create target (${response.status})`);
   const target = await response.json();
-  const client = new CdpClient(target.webSocketDebuggerUrl);
-  await client.send("Page.enable");
-  await client.send("Runtime.enable");
-  return client;
+  return new CdpClient(target.webSocketDebuggerUrl);
 }
 
 const schemeTraceScript = `(() => {
