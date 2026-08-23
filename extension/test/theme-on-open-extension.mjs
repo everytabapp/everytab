@@ -69,15 +69,29 @@ class CdpClient {
       const request = this.pending.get(message.id);
       if (!request) return;
       this.pending.delete(message.id);
+      clearTimeout(request.timer);
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
+    });
+    this.socket.addEventListener("close", () => {
+      for (const [id, request] of this.pending) {
+        clearTimeout(request.timer);
+        request.reject(new Error(`Chrome DevTools target closed during command ${id}`));
+      }
+      this.pending.clear();
     });
   }
 
   async send(method, params = {}) {
     await this.ready;
     const id = this.nextId++;
-    const result = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    const result = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        reject(new Error(`Chrome DevTools command ${method} timed out`));
+      }, 15_000);
+      this.pending.set(id, { resolve, reject, timer });
+    });
     this.socket.send(JSON.stringify({ id, method, params }));
     return result;
   }
@@ -209,7 +223,9 @@ const chrome = spawn(chromeBin, [
 const clients = [];
 try {
   const debugUrl = await debuggingUrl(chrome);
+  console.log("EveryTab installed gate: Chrome debugging ready");
   extensionId = await detectInstalledExtensionId(debugUrl, extensionId);
+  console.log(`EveryTab installed gate: extension ${extensionId.slice(-6)} detected`);
   const seed = await newTarget(debugUrl,
     `chrome-extension://${extensionId}/suspend.html?originalUrl=https%3A%2F%2Fexample.com`);
   clients.push(seed);
@@ -247,6 +263,7 @@ try {
       .schemeRotationPrepared;
     return cache?.preparedTheme && prepared?.next ? true : null;
   })()`, "warm prepared rotation cache", 10_000);
+  console.log("EveryTab installed gate: rotation baseline ready");
 
   if (liveTabCount > 0) {
     await evaluate(seed, `(async () => {
@@ -340,6 +357,7 @@ try {
     }
     observed.push(result);
   }
+  console.log(`EveryTab installed gate: ${directOpenCount} New Tab paints verified`);
 
   const wrongBootPaint = observed.find(({ bootPainted, stored }) =>
     bootPainted && bootPainted !== stored
@@ -407,6 +425,7 @@ try {
     throw new Error(`Traced New Tab caused ${finalWrites} total scheme writes; ` +
       `expected ${expectedWrites}`);
   }
+  console.log("EveryTab installed gate: traced paint verified");
   await evaluate(seed, `(async () => {
     const stored = (await chrome.storage.local.get("settings")).settings;
     await chrome.storage.local.set({ settings: {
@@ -467,6 +486,7 @@ try {
     throw new Error(`New Tab singleton needed ${singletonState.elapsedMs.toFixed(1)}ms; ` +
       `budget ${maxSingletonMs.toFixed(1)}ms`);
   }
+  console.log("EveryTab installed gate: native singleton verified");
   console.log(`PASS: installed New Tab rotation ${schemes.join(" -> ")}; ` +
     `clean trace ${tracedResult.trace.map(({ scheme }) => scheme).join(" -> ")}; ` +
     `singleton keeper ${singletonState.keeperTabId} after ${singletonState.rapidCreated} rapid tabs ` +
