@@ -58,7 +58,7 @@ check(listConfigs.includes("restoreBeforeCommit: true") &&
   listConfigs.indexOf("title.textContent = clean") < listConfigs.indexOf("await renameSession"),
   "Session rename updates visible state before the Vault-backed commit settles");
 check(workflow.includes("ubuntu-latest") && workflow.includes("windows-latest") &&
-  workflow.includes("macos-latest") && workflow.includes("theme-on-open-extension.mjs"),
+  workflow.includes("macos-15") && workflow.includes("theme-on-open-extension.mjs"),
   "Windows, macOS, and Linux run portable plus installed Chrome gates in CI");
 check(newtabCss.includes(".minimal-horizon") &&
   /\.minimal-horizon \.clock\s*\{[^}]*clamp\(176px,\s*35vw,\s*520px\)/s.test(newtabCss) &&
