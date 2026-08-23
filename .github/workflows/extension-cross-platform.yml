@@ -58,9 +58,11 @@ jobs:
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           EVERYTAB_CHROME_NO_SANDBOX: "1"
+          EVERYTAB_STABLE_EXTENSION_TARGET: "1"
         run: xvfb-run -a node extension/test/theme-on-open-extension.mjs
-      - name: Real unpacked-extension New Tab sequence
+      - name: Installed extension and native New Tab singleton
         if: runner.os != 'Linux'
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          EVERYTAB_STABLE_EXTENSION_TARGET: "1"
         run: node extension/test/theme-on-open-extension.mjs

@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.dirname(here);
-const extensionId = createHash("sha256").update(extensionRoot).digest("hex").slice(0, 32)
+let extensionId = createHash("sha256").update(extensionRoot).digest("hex").slice(0, 32)
   .replace(/[0-9a-f]/g, (nibble) => String.fromCharCode(97 + Number.parseInt(nibble, 16)));
 const chromeCandidates = [
   process.env.CHROME_BIN,
@@ -34,6 +34,7 @@ const maxContentReadyMs = Number(process.env.EVERYTAB_MAX_CONTENT_READY_MS ?? 0)
 const maxSingletonMs = Number(process.env.EVERYTAB_MAX_SINGLETON_MS ?? 0);
 const liveTabCount = Math.max(0, Number.parseInt(process.env.EVERYTAB_LIVE_TAB_COUNT ?? "0", 10) || 0);
 const liveWindowCount = Math.max(1, Number.parseInt(process.env.EVERYTAB_LIVE_WINDOW_COUNT ?? "1", 10) || 1);
+const useStableExtensionTarget = process.env.EVERYTAB_STABLE_EXTENSION_TARGET === "1";
 
 function debuggingUrl(process) {
   return new Promise((resolve, reject) => {
@@ -83,6 +84,32 @@ class CdpClient {
 
   close() {
     this.socket.close();
+  }
+}
+
+async function detectInstalledExtensionId(debugUrl, fallback) {
+  const client = new CdpClient(debugUrl);
+  try {
+    const deadline = performance.now() + 5000;
+    while (performance.now() < deadline) {
+      const { targetInfos = [] } = await client.send("Target.getTargets");
+      const everyTabTarget = targetInfos.find(({ url = "" }) => {
+        if (!url.startsWith("chrome-extension://")) return false;
+        try {
+          const pathname = new URL(url).pathname;
+          return pathname.endsWith("/js/background.js") ||
+            pathname.endsWith("/dashboard.html") ||
+            pathname.endsWith("/newtab.html");
+        } catch {
+          return false;
+        }
+      });
+      if (everyTabTarget) return new URL(everyTabTarget.url).host;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return fallback;
+  } finally {
+    client.close();
   }
 }
 
@@ -182,6 +209,7 @@ const chrome = spawn(chromeBin, [
 const clients = [];
 try {
   const debugUrl = await debuggingUrl(chrome);
+  extensionId = await detectInstalledExtensionId(debugUrl, extensionId);
   const seed = await newTarget(debugUrl,
     `chrome-extension://${extensionId}/suspend.html?originalUrl=https%3A%2F%2Fexample.com`);
   clients.push(seed);
@@ -259,13 +287,16 @@ try {
   }
 
   const observed = [];
+  const inspectedNewTabUrl = useStableExtensionTarget
+    ? `chrome-extension://${extensionId}/newtab.html?focus=search`
+    : "chrome://newtab/";
   const baselineOperational = await evaluate(seed, `(async () => ({
     cache: JSON.parse(localStorage.getItem("tvTheme") || "null"),
     prepared: (await chrome.storage.local.get("schemeRotationPrepared")).schemeRotationPrepared,
     state: (await chrome.storage.local.get("schemeRotationState")).schemeRotationState
   }))()`);
   for (let index = 0; index < directOpenCount; index += 1) {
-    const tab = await newTracedTarget(debugUrl, "chrome://newtab/");
+    const tab = await newTracedTarget(debugUrl, inspectedNewTabUrl);
     clients.push(tab);
     let result;
     try {
@@ -342,7 +373,7 @@ try {
   // pre-paint-to-settled timeline of one more New Tab. Multiple extension pages
   // share one localStorage cache, so final-state-only assertions cannot catch a
   // visible next-scheme -> following-scheme -> authoritative-scheme flash.
-  const traced = await newTracedTarget(debugUrl, "chrome://newtab/");
+  const traced = await newTracedTarget(debugUrl, inspectedNewTabUrl);
   clients.push(traced);
   const tracedResult = await waitFor(traced, `(async () => {
     if (!location.href.startsWith("chrome-extension://${extensionId}/newtab.html")) return null;
@@ -436,7 +467,7 @@ try {
     throw new Error(`New Tab singleton needed ${singletonState.elapsedMs.toFixed(1)}ms; ` +
       `budget ${maxSingletonMs.toFixed(1)}ms`);
   }
-  console.log(`PASS: real chrome://newtab/ rotation ${schemes.join(" -> ")}; ` +
+  console.log(`PASS: installed New Tab rotation ${schemes.join(" -> ")}; ` +
     `clean trace ${tracedResult.trace.map(({ scheme }) => scheme).join(" -> ")}; ` +
     `singleton keeper ${singletonState.keeperTabId} after ${singletonState.rapidCreated} rapid tabs ` +
     `in window ${singletonState.windowId} in ${singletonState.elapsedMs.toFixed(1)}ms; ` +
