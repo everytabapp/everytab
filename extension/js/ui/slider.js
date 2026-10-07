@@ -1,17 +1,20 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * N3 — one shared horizontal-slider component for the two threshold settings
  * (Suspend after · Auto-dump after), used by both the main Settings form and the
  * popup's quick settings. The slider always runs over an array of discrete stops
  * (index-based), so native arrow keys move exactly one stop and the non-linear
- * auto-dump scale works the same way as the linear suspend one.
+ * longer durations work the same way as short suspension intervals.
  *
  * The stop tables + the pure value→settings-patch mappings live here too, so the
  * off-semantics and the minute↔stop round-trip are unit-testable without a DOM.
  */
 import { el } from "./dom.js";
 
-/** Suspend-after stops: 0 (Off) … 120 min in 5-min steps. */
-export const SUSPEND_STOPS = Array.from({ length: 25 }, (_, i) => i * 5); // 0,5,…,120
+/** Five-minute suspension steps up to 2h, then the longer first-run choices. */
+export const SUSPEND_STOPS = [...Array.from({ length: 25 }, (_, i) => i * 5), 240, 720];
 
 /** Auto-dump stops: [minutes, human label]. 0 = Off; non-linear up to 31 days. */
 export const AUTO_DUMP_STOPS = [
@@ -27,6 +30,7 @@ export const AUTO_DUMP_STOPS = [
   [14400, "10 days"],
   [20160, "14 days"],
   [30240, "21 days"],
+  [43200, "30 days"],
   [44640, "31 days"]
 ];
 

@@ -1,20 +1,29 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * N1 — the single static New Tab host.
  *
- * Dashboard mode imports the same dashboard.js used by dashboard.html; Minimal and
+ * Dashboard imports the same dashboard.js used by dashboard.html; Minimal and
  * Blank import newtab.js. No iframe and no copied behavior. Address-bar mode mounts
  * inside Chrome's override document. Search mode makes one full, marked navigation
  * first so Chrome transfers browser focus into the page.
  */
-import { getSettings, readStoreMap } from "../lib/store.js";
+import { getSettings, listItems, readStoreMap } from "../lib/store.js";
 import { STORE_KEYS } from "../lib/types.js";
 import { newTabEntryPlan } from "../lib/newtab-focus.js";
-import { msg } from "../lib/i18n.js";
+import { applyUiLanguage, msg } from "../lib/i18n.js";
 import {
-  SESSION_IDENTITY_INDEX_KEY, readSessionIdentities
+  SESSION_IDENTITY_INDEX_KEY
 } from "../lib/session-identity-index.js";
+import { readSessionIdentities } from "../lib/session-identity-store.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
+import { createNewTabOpenPrefetch } from "../lib/newtab-open-prefetch.js";
 
 const settings = await getSettings();
+// The chosen interface language rides on the same Settings read that picks the
+// surface, so Dashboard, Minimal and Blank all render in it from their first frame.
+await applyUiLanguage(settings.uiLanguage);
 const plan = newTabEntryPlan(settings, location.search);
 
 document.documentElement.dataset.newTabHost = "true";
@@ -27,7 +36,7 @@ if (plan.needsFocusNavigation) {
   const dashboardCss = document.getElementById("newtab-dashboard-css");
   if (minimalCss) minimalCss.disabled = plan.stylesheet !== "minimal";
   if (dashboardCss) dashboardCss.disabled = plan.stylesheet !== "dashboard";
-  document.title = plan.mode === "dashboard" ? msg("manifest_name") : msg("newtab_title");
+  document.title = plan.module === "dashboard" ? msg("manifest_name") : msg("newtab_title");
 
   // Start singleton retirement as soon as the override entry document is
   // ready. Waiting for Dashboard data, Vault-backed surfaces, or the Minimal
@@ -44,32 +53,40 @@ if (plan.needsFocusNavigation) {
     // `boot.js` started the first live query before CSS. The small Session and
     // binding maps stay behind E3-3's invalidated funnel; full Inbox/Archive
     // label enrichment is intentionally after first paint. During the dashboard
-    // module's evaluation gap these listeners replace the primary promise if
-    // its live/identity state changes; dashboard.js then takes over.
+    // module's evaluation gap, event bursts share one live query and at most one
+    // trailing refresh. dashboard.js then takes over.
     let firstWindows = globalThis.__everyTabEarlyOpenWindows ?? null;
+    const openPrefetch = createNewTabOpenPrefetch({
+      load: () => {
+        const windows = firstWindows ??
+          chrome.windows.getAll({ populate: true }).catch(() => null);
+        firstWindows = null;
+        return Promise.all([
+          windows,
+          readSessionIdentities(),
+          readStoreMap("sessionWindows")
+        ]).then(([liveWindows, sessions, bindings]) => {
+          if (!liveWindows) return null;
+          return [
+            liveWindows,
+            sessions,
+            bindings
+          ];
+        }).catch(() => null);
+      },
+      publish: (snapshot) => {
+        globalThis.__everyTabOpenPrefetch = snapshot;
+        globalThis.__everyTabWarmOpen?.(snapshot);
+      }
+    });
     const startOpenPrefetch = () => {
-      const windows = firstWindows ??
-        chrome.windows.getAll({ populate: true }).catch(() => null);
-      firstWindows = null;
-      const snapshot = Promise.all([
-        windows,
-        readSessionIdentities(),
-        readStoreMap("sessionWindows")
-      ]).then(([liveWindows, sessions, bindings]) => {
-        if (!liveWindows) return null;
-        return [
-          liveWindows,
-          sessions,
-          bindings
-        ];
-      }).catch(() => null);
-      globalThis.__everyTabOpenPrefetch = snapshot;
-      globalThis.__everyTabWarmOpen?.(snapshot);
+      openPrefetch.request();
     };
     startOpenPrefetch();
 
     const earlyTabsChanged = () => startOpenPrefetch();
     const earlyStorageChanged = (changes, area) => {
+      changes = expandStorageChanges(changes);
       if (area === "local" &&
           [STORE_KEYS.sessions, SESSION_IDENTITY_INDEX_KEY, "sessionWindows"]
             .some((key) => key in changes)) {
@@ -103,10 +120,21 @@ if (plan.needsFocusNavigation) {
     // Hand that immutable snapshot to Minimal/Blank so their first useful paint
     // does not repeat the same storage read on a mature profile.
     globalThis.__everyTabNewTabSettings = settings;
+    // Read the small launcher while Minimal's module graph is loading. A ready
+    // snapshot can fill the detached deck before its first frame; a slow read
+    // still never holds Search or navigation behind saved-data I/O.
+    if (plan.mode === "minimal") {
+      const starred = { items: null, ready: null };
+      starred.ready = listItems(STORE_KEYS.starred)
+        .then((items) => (starred.items = items))
+        .catch(() => null);
+      globalThis.__everyTabNewTabStarred = starred;
+    }
     try {
       await import("./newtab.js");
     } finally {
       delete globalThis.__everyTabNewTabSettings;
+      delete globalThis.__everyTabNewTabStarred;
     }
   }
 

@@ -1,8 +1,12 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { normalizeUrl } from "./url-key.js";
 
 export const CLOSE_DAY_ACTIONS = Object.freeze({
   close: "close",
   inbox: "inbox",
+  snooze: "snooze",
   addSession: "add-session",
   session: "session",
   newSession: "new-session",
@@ -12,10 +16,12 @@ export const CLOSE_DAY_ACTIONS = Object.freeze({
 });
 
 const ACTIONS = new Set(Object.values(CLOSE_DAY_ACTIONS));
+const REVISION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const clean = (value) => String(value ?? "").trim();
 const liveRecords = (map) => Object.values(map ?? {}).filter((record) => record && !record.deletedAt);
 const PLAYBACK_QUERY_KEYS = new Set(["t", "start", "time_continue"]);
+const RECURRENCE_RE = /^(?:daily|weekly|weeks:[234]|weekday:[0-6])$/;
 
 /** Treat playback position as state within one YouTube page, not a new saved page. */
 export function closeDayUrlKey(value) {
@@ -60,6 +66,51 @@ function choiceLabels(value) {
   return [...new Set(source.map(clean).filter(Boolean))].slice(0, 20).map((label) => label.slice(0, 80));
 }
 
+function choiceSnooze(value) {
+  const dueAt = Number(value?.dueAt);
+  if (!Number.isFinite(dueAt) || dueAt <= Date.now()) return null;
+  const recurrence = clean(value?.recurrence);
+  if (recurrence && !RECURRENCE_RE.test(recurrence)) return null;
+  return { dueAt, ...(recurrence ? { recurrence } : {}) };
+}
+
+function organizationPlan(value, expectedMemberKeys) {
+  if (!value || typeof value !== "object") return null;
+  const expected = [...new Set(expectedMemberKeys.map(clean).filter(Boolean))];
+  const cleanIds = (ids) => [...new Set((Array.isArray(ids) ? ids : [])
+    .map(clean).filter((id) => id && id.length <= 80))].slice(0, 40);
+  const cleanNames = (names) => [...new Set((Array.isArray(names) ? names : [])
+    .map(clean).filter(Boolean).map((name) => name.slice(0, 64)))].slice(0, 20);
+  if (value.mode === "add") {
+    const members = [...new Set((Array.isArray(value.memberKeys) ? value.memberKeys : [])
+      .map(clean).filter(Boolean))];
+    if (members.length !== expected.length || expected.some((member) => !members.includes(member))) return null;
+    return { mode: "add", memberKeys: expected,
+      groupIds: cleanIds(value.groupIds), createNames: cleanNames(value.createNames) };
+  }
+  if (value.mode !== "replace" || !Array.isArray(value.members)) return null;
+  const byMember = new Map(value.members.map((entry) => [clean(entry?.memberKey), entry]));
+  if (byMember.size !== expected.length || expected.some((member) => !byMember.has(member))) return null;
+  const members = expected.map((memberKey) => {
+    const entry = byMember.get(memberKey);
+    const revision = clean(entry?.revision);
+    if (!REVISION_RE.test(revision)) return null;
+    return { memberKey, groupIds: cleanIds(entry?.groupIds),
+      createNames: cleanNames(entry?.createNames), revision };
+  });
+  return members.some((entry) => entry == null) ? null : { mode: "replace", members };
+}
+
+function organizationMemberKeys(action, value) {
+  if (action === CLOSE_DAY_ACTIONS.archiveLabel) return choiceLabels(value);
+  if (action === CLOSE_DAY_ACTIONS.session) return [clean(value?.targetSessionId)].filter(Boolean);
+  if (action === CLOSE_DAY_ACTIONS.newSession) {
+    const name = clean(value?.newSessionName);
+    return name ? [`new:${name}`] : [];
+  }
+  return [];
+}
+
 /** Stable, non-secret revision used only to detect a changed review input. */
 export function closeDayMapRevision(map) {
   return liveRecords(map)
@@ -75,8 +126,11 @@ export function closeDayFingerprint(tab) {
     index: Number(tab?.index),
     pinned: tab?.pinned === true,
     audible: tab?.audible === true,
+    incognito: tab?.incognito === true,
     rawUrl: String(tab?.rawUrl ?? tab?.url ?? ""),
-    canonicalUrl: String(tab?.ref?.url ?? "")
+    canonicalUrl: String(tab?.ref?.url ?? ""),
+    committedUrl: String(tab?.committedUrl ?? tab?.url ?? tab?.rawUrl ?? ""),
+    pendingUrl: String(tab?.pendingUrl ?? "")
   };
 }
 
@@ -92,7 +146,10 @@ export function closeDayFingerprintMatches(a, b, { includeAudible = true } = {})
   const left = a?.fingerprint ?? a;
   const right = b?.fingerprint ?? b;
   return closeDayFingerprintKey(left) === closeDayFingerprintKey(right) &&
-    (!includeAudible || Boolean(left?.audible) === Boolean(right?.audible));
+    (!includeAudible || Boolean(left?.audible) === Boolean(right?.audible)) &&
+    (!("incognito" in (left ?? {})) || Boolean(left.incognito) === Boolean(right?.incognito)) &&
+    (!("committedUrl" in (left ?? {})) || left.committedUrl === right?.committedUrl) &&
+    (!("pendingUrl" in (left ?? {})) || left.pendingUrl === right?.pendingUrl);
 }
 
 function coverageIndex(sessions, inbox, archive) {
@@ -108,9 +165,26 @@ function coverageIndex(sessions, inbox, archive) {
         const key = refKey(ref);
         if (!key) continue;
         if (session.auto) snapshots.add(key);
-        else if (!target.has(key)) target.set(key, { sessionId: session.id, name: session.name });
+        else {
+          const membership = target.get(key) ?? {
+            sessionId: session.id,
+            name: session.name,
+            sessionNames: [],
+            sessions: []
+          };
+          const name = clean(session.name);
+          if (name && !membership.sessionNames.includes(name)) membership.sessionNames.push(name);
+          if (name && !membership.sessions.some((entry) => entry.id === session.id)) {
+            membership.sessions.push({ id: session.id, name });
+          }
+          target.set(key, membership);
+        }
       }
     }
+  }
+  for (const membership of named.values()) {
+    membership.sessionNames.sort((a, b) => a.localeCompare(b));
+    membership.sessions.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
   for (const item of liveRecords(inbox)) {
     for (const ref of item.tabs ?? []) {
@@ -135,6 +209,7 @@ function availableActions({ locked, boundSessionId, coverage }) {
   if (coverage?.kind !== "unsaveable") {
     actions.unshift(
       CLOSE_DAY_ACTIONS.inbox,
+      CLOSE_DAY_ACTIONS.snooze,
       CLOSE_DAY_ACTIONS.archiveLabel,
       CLOSE_DAY_ACTIONS.session,
       CLOSE_DAY_ACTIONS.newSession,
@@ -173,6 +248,14 @@ function sanitizedChoice(prior, defaults, available, sessionsById) {
     next.label = labels[0];
     next.labels = labels;
   }
+  if (prior.action === CLOSE_DAY_ACTIONS.snooze) {
+    const snooze = choiceSnooze(prior);
+    if (!snooze) return defaults;
+    Object.assign(next, snooze);
+  }
+  const organization = organizationPlan(prior.organizationPlan,
+    organizationMemberKeys(prior.action, next));
+  if (organization) next.organizationPlan = organization;
   return next;
 }
 
@@ -180,9 +263,12 @@ function coverageFor(ref, coverage) {
   const key = refKey(ref);
   if (!key) return { kind: "unsaveable", label: "Cannot be saved" };
   const session = coverage.named.get(key);
-  if (session) return { kind: "session", label: `In Session “${session.name}”`, ...session };
-  if (coverage.inboxUrls.has(key)) return { kind: "inbox", label: "In Inbox" };
   const archived = coverage.archiveUrls.get(key);
+  if (session) return {
+    kind: "session", label: `In Session “${session.name}”`, ...session,
+    labels: archived?.labels ?? []
+  };
+  if (coverage.inboxUrls.has(key)) return { kind: "inbox", label: "In Inbox" };
   if (archived) {
     const suffix = archived.labels.length ? ` · ${archived.labels[0]}${archived.labels.length > 1 ? ` +${archived.labels.length - 1}` : ""}` : "";
     return { kind: "archive", label: `In Archive${suffix}`, labels: archived.labels };
@@ -225,18 +311,21 @@ function arrangementDrift(liveTabs, savedRefs, matches) {
   return { any: order || pinned || groups, order, pinned, groups };
 }
 
+/**
+ * Language-free reason codes; the review surface owns their copy. The draft is a
+ * device-local operational record rebuilt from live tabs on every capture.
+ * @returns {""|"incognito"|"protected-review"|"extension-page"|"audible"|"unsaveable"}
+ */
 function lockedReason(tab, extensionOrigin, protectedTabId) {
-  if (tab.incognito) return "Incognito tabs are excluded and never stored.";
-  if (Number(tab.id) === Number(protectedTabId)) return "This review stays open so the workflow can finish safely.";
+  if (tab.incognito) return "incognito";
+  if (Number(tab.id) === Number(protectedTabId)) return "protected-review";
   const raw = String(tab.rawUrl ?? tab.url ?? "");
   // EveryTab's suspend page is an extension URL, but browserTabInput has
   // already resolved it to the original saveable page. Only a true extension
   // page (no canonical ref) is protected here.
-  if (extensionOrigin && raw.startsWith(extensionOrigin) && !tab.ref) {
-    return "EveryTab and extension pages stay open.";
-  }
-  if (tab.audible) return "Audible tabs stay open.";
-  if (!tab.ref) return "Browser, internal, file, blank, and other unsaveable pages stay open.";
+  if (extensionOrigin && raw.startsWith(extensionOrigin) && !tab.ref) return "extension-page";
+  if (tab.audible) return "audible";
+  if (!tab.ref) return "unsaveable";
   return "";
 }
 
@@ -302,14 +391,25 @@ export function buildCloseDayPlan({
       const matches = occurrenceMatches(saveable, savedRefs);
       const matchByTabId = new Map(saveable.map((tab, index) => [tab.id, matches[index]]));
       drift = arrangementDrift(saveable, savedRefs, matches);
-      rows = tabs.map((tab) => rowFromTab(tab, {
+      rows = tabs.map((tab) => {
+        const coverage = coverageFor(tab.ref, coverageIndexValue);
+        const sessionNames = [...new Set([
+          ...(coverage.sessionNames ?? []), clean(session.name)
+        ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        const sessions = [...(coverage.sessions ?? []), { id: session.id, name: clean(session.name) }]
+          .filter((entry, index, all) => entry.id && entry.name &&
+            all.findIndex((candidate) => candidate.id === entry.id) === index)
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+        return rowFromTab(tab, {
         extensionOrigin, protectedTabId, coverageIndex: coverageIndexValue,
         coverage: matchByTabId.get(tab.id) == null
-          ? coverageFor(tab.ref, coverageIndexValue)
-          : { kind: "bound-session", label: `In Session “${session.name}”`, sessionId: session.id, name: session.name },
+          ? coverage
+          : { kind: "bound-session", label: `In Session “${session.name}”`, sessionId: session.id,
+            name: session.name, sessionNames, sessions, labels: coverage.labels ?? [] },
         boundSessionId: session.id, matchSavedIndex: matchByTabId.get(tab.id),
         sessionsById, prior
-      }));
+        });
+      });
     } else {
       rows = tabs.map((tab) => rowFromTab(tab, {
         extensionOrigin, protectedTabId, coverageIndex: coverageIndexValue,
@@ -369,6 +469,7 @@ export function summarizeCloseDayPlan(plan) {
     stayOpenCount: rows.length - closeRows.length,
     inboxCount: count(CLOSE_DAY_ACTIONS.inbox), inboxBundleCount: inboxWindows.size,
     archiveCount: count(CLOSE_DAY_ACTIONS.archiveLabel),
+    snoozeCount: count(CLOSE_DAY_ACTIONS.snooze),
     sessionCount: count(CLOSE_DAY_ACTIONS.addSession) + count(CLOSE_DAY_ACTIONS.session) + count(CLOSE_DAY_ACTIONS.newSession),
     affectedSessionCount: [...affectedSessions].filter(Boolean).length,
     unfiledCount: count(CLOSE_DAY_ACTIONS.unfiled),
@@ -408,6 +509,14 @@ function choiceFromPatch(plan, row, patch) {
     next.label = labels[0];
     next.labels = labels;
   }
+  if (action === CLOSE_DAY_ACTIONS.snooze) {
+    const snooze = choiceSnooze(patch);
+    if (!snooze) return null;
+    Object.assign(next, snooze);
+  }
+  const organization = organizationPlan(patch?.organizationPlan,
+    organizationMemberKeys(action, next));
+  if (organization) next.organizationPlan = organization;
   return next;
 }
 

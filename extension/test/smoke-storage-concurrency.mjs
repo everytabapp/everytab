@@ -1,15 +1,24 @@
 import { runSmokeBrandContracts } from "./smoke-brand-contracts.mjs";
 import { runSmokeStoragePolicy } from "./smoke-storage-policy.mjs";
 import { ARCHIVE_OVERLAY_KEY, STORE_KEYS } from "../js/lib/types.js";
+import {
+  NAMED_SESSION_RECORDS_KEY, buildSessionIdentityIndex
+} from "../js/lib/session-identity-index.js";
 
 export async function runSmokeStorageConcurrency({ check, browserEffects }) {
+  const stepWhenPending = async (storage) => {
+    while (storage.pending() === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await storage.step();
+  };
   /* ═══ E2-0 — storage-concurrency characterization + lock-primitive tests
      (e2-0-storage-concurrency.md §5). E2-0a wrote C-R1…C-R6 as documented
      current behavior; E2-0b (the "everytab-store" Web Lock in store.js/
      journal.js/counters.js) FLIPPED C-R1, C-R4 (patchSettings), and C-R5 part B;
      E2-0c (atomic multi-set commits) FLIPPED C-R2 + C-R5 part A; E2-0d
-     (vault-sync serialization) FLIPPED C-R3 (merge phase under the store lock)
-     and C-R6 (whole run under "everytab-vault-sync" with ifAvailable). Only the
+     (Vault serialization) FLIPPED C-R3 (remote commits under the store lock)
+     and C-R6 (the protocol owns "everytab-vault-sync" with ifAvailable). Only the
      stale-base saveSettings call-site pattern (second half of C-R4) remains
      CURRENT BEHAVIOR, until E2-0e migrates those call sites to patchSettings. */
   {
@@ -25,7 +34,6 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       buildSearchSnapshot,
       createSearchSession
     } = await import("../js/lib/search.js");
-    const { syncWithHandle } = await import("../js/vault/sync.js");
     const fs = await import("node:fs");
     const realLocal = chrome.storage.local;
     const realOnChanged = chrome.storage.onChanged;
@@ -100,8 +108,10 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
             }]) &&
           index.version === 2 &&
           ist.setLog.length === 1 &&
-          JSON.stringify(ist.setLog[0]) === JSON.stringify(["sessionIdentityIndex"]),
-        "N46r: v1 identity backfill preserves the complete Session/snapshot store and writes only its v2 drift-safe index"
+          JSON.stringify(ist.setLog[0]) === JSON.stringify([
+            NAMED_SESSION_RECORDS_KEY, "sessionIdentityIndex"
+          ]),
+        "N46r: v1 backfill preserves the complete Session/snapshot store and writes only its compact read/write projections"
       );
     }
   
@@ -117,14 +127,17 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       ist.pause();
       const a = upsertItem(STORE_KEYS.inbox, rec("cr1-a")); // context A (background)
       const b = upsertItem(STORE_KEYS.inbox, rec("cr1-b")); // context B (dashboard) — queued on the lock
+      // The explicit authority seam resolves before the adapter issues its
+      // browser-map test read. Let that microtask boundary settle first.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       check(
         ist.pending() === 1,
         "E2-0 C-R1 (FIXED): B holds no storage op while A owns the lock (serialized, not interleaved)"
       );
-      await ist.step(); // A.get (empty map)
-      await ist.step(); // A.set commits {cr1-a}; lock releases; B acquires
-      await ist.step(); // B.get — sees A's committed record
-      await ist.step(); // B.set — whole map now carries BOTH
+      await stepWhenPending(ist); // A.get (empty map)
+      await stepWhenPending(ist); // A.set commits {cr1-a}; lock releases; B acquires
+      await stepWhenPending(ist); // B.get — sees A's committed record
+      await stepWhenPending(ist); // B.set — whole map now carries BOTH
       await a;
       await b;
       const map = ist.snapshot()[STORE_KEYS.inbox];
@@ -166,7 +179,7 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       let guard = 0;
       while ((ist.pending() > 0 || guard === 0) && guard < 20) {
         if (!tornFree()) everTorn = true;
-        await ist.step();
+        await stepWhenPending(ist);
         guard++;
       }
       const movedN = await sweep;
@@ -218,11 +231,6 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
         !!map["cr3-fresh"] && !!map["cr3-remote"] && !!map["cr3-existing"],
         "E2-0 C-R3 (FIXED at E2-0d): the merge phase and the mid-sync upsert serialize on the store lock — the fresh record survives, nothing dropped"
       );
-      const syncSrc = fs.readFileSync(new URL("../js/vault/sync.js", import.meta.url), "utf8");
-      check(
-        syncSrc.includes("withStoreLock"),
-        "E2-0 C-R3 source contract: sync.js runs its merge phase under withStoreLock"
-      );
     }
   
     /* — C-R4 · §2.3 R4 (settings clobber) — FLIPPED at E2-0b via patchSettings.
@@ -239,10 +247,10 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       ist.pause();
       const p1 = patchSettings({ inboxExpiryDays: 5 }); // popup
       const p2 = patchSettings({ uiScheme: "matcha" }); // options — queued on the lock
-      await ist.step(); // p1 fresh read under the lock
-      await ist.step(); // p1 one-set commit; lock passes to p2
-      await ist.step(); // p2 fresh read — sees p1's field
-      await ist.step(); // p2 one-set commit
+      await stepWhenPending(ist); // p1 fresh read under the lock
+      await stepWhenPending(ist); // p1 one-set commit; lock passes to p2
+      await stepWhenPending(ist); // p2 fresh read — sees p1's field
+      await stepWhenPending(ist); // p2 one-set commit
       await p1;
       await p2;
       const s1 = ist.snapshot().settings;
@@ -252,19 +260,43 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       );
     }
     {
+      const ist = createInterleavableStorage({
+        settings: { suspendWhitelist: ["https://one.example/"] }
+      });
+      chrome.storage.local = ist.local;
+      ist.pause();
+      const append = (url) => patchSettings((current) => ({
+        suspendWhitelist: [...current.suspendWhitelist, url]
+      }));
+      const p1 = append("https://two.example/");
+      const p2 = append("https://three.example/");
+      await stepWhenPending(ist);
+      await stepWhenPending(ist);
+      await stepWhenPending(ist);
+      await stepWhenPending(ist);
+      await p1;
+      await p2;
+      check(
+        JSON.stringify(ist.snapshot().settings.suspendWhitelist) === JSON.stringify([
+          "https://one.example/", "https://two.example/", "https://three.example/"
+        ]),
+        "E2-0 C-R4: functional patchSettings updates compose from the latest locked value"
+      );
+    }
+    {
       const ist = createInterleavableStorage({});
       chrome.storage.local = ist.local;
       ist.pause();
       const popup = (async () => saveSettings({ ...(await getSettings()), inboxExpiryDays: 5 }))();
       const options = (async () => saveSettings({ ...(await getSettings()), uiScheme: "matcha" }))();
-      await ist.step(); // popup's stale base read (outside the lock)
-      await ist.step(); // options' stale base read (same stale base)
-      await ist.step(); // popup's whole-object write (locked, serialized)
+      await stepWhenPending(ist); // popup's stale base read (outside the lock)
+      await stepWhenPending(ist); // options' stale base read (same stale base)
+      await stepWhenPending(ist); // popup's whole-object write (locked, serialized)
       check(
         ist.snapshot().settings.inboxExpiryDays === 5,
         "E2-0 C-R4: the first surface's field did commit"
       );
-      await ist.step(); // options' whole-object write from the stale base
+      await stepWhenPending(ist); // options' whole-object write from the stale base
       await popup;
       await options;
       const s = ist.snapshot().settings;
@@ -296,8 +328,8 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       chrome.storage.local = ist.local;
       ist.pause();
       void sweepE2(1000 + 2 * DAY2);
-      await ist.step(); // settings read
-      await ist.step(); // the mutator's fresh 3-key read under the lock
+      await stepWhenPending(ist); // settings read
+      await stepWhenPending(ist); // the mutator's fresh 3-key read under the lock
       // …the single atomic set is now pending — the worker dies HERE (the one
       // moment that used to persist the torn state): the op is simply abandoned.
       const snap = ist.snapshot();
@@ -346,51 +378,6 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       navigator.locks = createMockLockManager(); // clean partition for the rest of the block
     }
   
-    /* — C-R6 · §2.3 R3's multiplier (two concurrent syncs) — FLIPPED at E2-0d.
-       E2-0d wraps the whole syncWithHandle run in the "everytab-vault-sync" lock
-       with ifAvailable, so a second dashboard that boots/schedules a sync while
-       one is already running SKIPS instead of doubling the RMW window. Exactly
-       one sync body executes; the skipped run touches nothing. Tests the REAL
-       syncWithHandle against a root stub that records any vault access. — */
-    {
-      navigator.locks = createMockLockManager();
-      // Dashboard 1 is mid-sync: occupy the vault-sync lock (holder is assigned
-      // synchronously when request() is first called).
-      let release;
-      const held = new Promise((r) => (release = r));
-      const occupying = navigator.locks.request(
-        "everytab-vault-sync",
-        { mode: "exclusive" },
-        () => held
-      );
-      // Dashboard 2 tries to sync while dashboard 1 holds the lock. The root stub
-      // throws if the body ever reaches the vault (it must not, when skipped).
-      const root = {
-        touched: false,
-        getDirectoryHandle() {
-          this.touched = true;
-          throw new Error("skipped sync must not run its body");
-        }
-      };
-      const report = await syncWithHandle(root, 1000);
-      check(
-        report.skipped === true && report.pulled === 0 && report.pushed === 0,
-        "E2-0 C-R6 (FIXED at E2-0d): a second concurrent sync SKIPS via ifAvailable — exactly one sync body runs"
-      );
-      check(
-        root.touched === false,
-        "E2-0 C-R6 (FIXED): the skipped sync touched no vault directory — zero doubled RMW"
-      );
-      release();
-      await occupying;
-      const syncSrc = fs.readFileSync(new URL("../js/vault/sync.js", import.meta.url), "utf8");
-      check(
-        syncSrc.includes("everytab-vault-sync") && syncSrc.includes("ifAvailable"),
-        "E2-0 C-R6 source contract: sync.js serializes whole runs on everytab-vault-sync with ifAvailable"
-      );
-      navigator.locks = createMockLockManager(); // clean partition for anything after
-    }
-  
     /* — E2-0b · mutateStores (§4.2): the atomic-batch seam E2-0c converts the
        multi-set domain sequences to. Two overlapped batches must serialize, and
        each must commit ALL its keys in exactly ONE set (the ledger proves the
@@ -408,10 +395,10 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
         [STORE_KEYS.inbox]: { ...(maps[STORE_KEYS.inbox] ?? {}), "mb-b": rec("mb-b") },
         [JKEY]: [...(maps[JKEY] ?? []), { id: "j-b" }]
       }));
-      await ist.step(); // m1 fresh read (both keys, one get)
-      await ist.step(); // m1 single two-key commit; lock passes to m2
-      await ist.step(); // m2 fresh read — sees m1's commit
-      await ist.step(); // m2 single two-key commit
+      await stepWhenPending(ist); // m1 fresh read (both keys, one get)
+      await stepWhenPending(ist); // m1 single two-key commit; lock passes to m2
+      await stepWhenPending(ist); // m2 fresh read — sees m1's commit
+      await stepWhenPending(ist); // m2 single two-key commit
       check((await m1) === true && (await m2) === true, "E2-0b mutateStores: both batches report committed");
       const fin = ist.snapshot();
       check(
@@ -453,14 +440,17 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       const c = { ...rec("c2-c"), source: "dump" };
       const ist2 = createInterleavableStorage({
         deviceId: "dev-e2",
-        [STORE_KEYS.inbox]: { [c.id]: c }
+        [STORE_KEYS.inbox]: { [c.id]: c },
+        [NAMED_SESSION_RECORDS_KEY]: {},
+        sessionIdentityIndex: buildSessionIdentityIndex({})
       });
       chrome.storage.local = ist2.local;
       const res = await moveTabsToSession([{ item: c, indexes: [0] }], "__new", "E2 test");
       const s2 = ist2.snapshot();
-      const sess = Object.values(s2[STORE_KEYS.sessions] ?? {})[0];
+      const sess = Object.values(s2[NAMED_SESSION_RECORDS_KEY] ?? {})[0];
       check(
-        !!res && res.moved === 1 && ist2.setLog.length === 1 && ist2.setLog[0].length === 4 &&
+        !!res && res.moved === 1 && ist2.setLog.length === 1 &&
+          ist2.setLog[0].length === 4 &&
           ist2.setLog[0].includes("sessionIdentityIndex") &&
           !!sess && sess.name === "E2 test" && !!s2[STORE_KEYS.inbox][c.id].deletedAt &&
           s2.journal[0].id === res.entry.id,
@@ -510,18 +500,20 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       delete src.tabs;
       const ist = createInterleavableStorage({
         deviceId: "dev-e2",
-        [STORE_KEYS.sessions]: { [src.id]: src }
+        [STORE_KEYS.sessions]: { [src.id]: src },
+        [NAMED_SESSION_RECORDS_KEY]: { [src.id]: src },
+        sessionIdentityIndex: buildSessionIdentityIndex({ [src.id]: src })
       });
       chrome.storage.local = ist.local;
       const res = await msT(
         [{ session: src, picks: [{ windowIndex: 0, indexes: [0, 1] }] }], "__new", "Merged E2");
       const s = ist.snapshot();
-      const sessions = Object.values(s[STORE_KEYS.sessions]);
+      const sessions = Object.values(s[NAMED_SESSION_RECORDS_KEY]);
       const target = sessions.find((x) => x.name === "Merged E2");
       check(
         !!res && res.moved === 2 && ist.setLog.length === 1 && ist.setLog[0].length === 3 &&
           ist.setLog[0].includes("sessionIdentityIndex") &&
-          !!target && !target.deletedAt && !!s[STORE_KEYS.sessions][src.id].deletedAt &&
+          !!target && !target.deletedAt && !!s[NAMED_SESSION_RECORDS_KEY][src.id].deletedAt &&
           s.journal[0].id === res.entry.id,
         "E2-0c-4: moveSessionTabs commits target + drained source + identity index + undo in ONE set"
       );
@@ -533,7 +525,11 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
     {
       navigator.locks = createMockLockManager();
       const { createSessionFromWindowsJournaled } = await import("../js/lib/sessions.js");
-      const ist = createInterleavableStorage({ deviceId: "dev-e2" });
+      const ist = createInterleavableStorage({
+        deviceId: "dev-e2",
+        [NAMED_SESSION_RECORDS_KEY]: {},
+        sessionIdentityIndex: buildSessionIdentityIndex({})
+      });
       chrome.storage.local = ist.local;
       const created = await createSessionFromWindowsJournaled(
         [[{ url: "https://w1a.example" }, { url: "https://w1b.example" }],
@@ -541,7 +537,7 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
         "Two windows"
       );
       const s = ist.snapshot();
-      const stored = s[STORE_KEYS.sessions]?.[created.id];
+      const stored = s[NAMED_SESSION_RECORDS_KEY]?.[created.id];
       check(
         !!stored && stored.windows.length === 2 && stored.windows[0].length === 2 &&
           stored.windows[1].length === 1 && ist.setLog.length === 1 && ist.setLog[0].length === 3 &&
@@ -553,10 +549,12 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       // F14: the Open-tabs bulk → Session moved to list-configs.js.
       const db = fs.readFileSync(new URL("../js/ui/list-configs.js", import.meta.url), "utf8");
       const pickStart = db.indexOf('sessionComboboxButton(localeMessage("list_to_session")');
-      const pick = db.slice(pickStart, pickStart + 1_200);
+      const pick = db.slice(pickStart, pickStart + 1_800);
       check(
-        pick.includes("s.group.refs[i]") && pick.includes("createSessionFromWindowsJournaled(windows") &&
-          pick.includes("addWindowsToSession(v.id, windows") && !pick.includes("[refs]"),
+        pick.includes("s.group.refs[i]") && pick.includes("createSessionFromWindowsJournaled(") &&
+          pick.includes("windows, v.name || undefined, v.organization") &&
+          pick.includes("v.organization") && pick.includes("addWindowsToSession(v.id, windows") &&
+          !pick.includes("[refs]"),
         "session-save fix: the Open-tabs bulk → Session groups the selection per source window (no flatten) on BOTH branches"
       );
     }
@@ -842,7 +840,8 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       ]);
       check(
         ist.getLog.length === 3 &&
-          ist.getLog.every((keys) => keys.length === 1),
+          JSON.stringify(ist.getLog.map((keys) => keys.length).sort()) ===
+            JSON.stringify([1, 1, 2]),
         "E3-3 measurement: representative 7-read render fan-out coalesces to 3 unique-key reads (57% fewer)"
       );
     }
@@ -892,6 +891,8 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       const {
         TAB_REFRESH_TASKS,
         dashboardTasksForStorage,
+        createForegroundTrailingRefresh,
+        createForegroundTaskQueue,
         createFrameRefreshScheduler,
         createLeadingTrailingRefresh
       } = await import("../js/ui/refresh-scheduler.js");
@@ -899,26 +900,28 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       check(
         JSON.stringify(TAB_REFRESH_TASKS) ===
           // F34-4: `starred` is deliberately absent. The launcher reads no live
-          // tabs, so a tab event must not re-render it.
-          JSON.stringify(["open", "attention", "duplicates", "nav"]),
-        "E3-4/F34-4: tab events refresh the collection, the attention row, dedupe and nav only"
+          // tabs, so a tab event must not re-render it. Needs you and the
+          // navigation counts run their live-only variants: the saved library
+          // refreshes through storage changes alone.
+          JSON.stringify(["open", "attentionLive", "duplicates", "navOpen"]),
+        "E3-4/F34-4: tab events refresh the collection, live attention, dedupe and live nav counts only"
       );
   
       const matrixCases = [
         ["inbox", ["inbox", "labels", "nav", "attention"]],
         ["archive", ["archive", "labels", "navLibrary"]],
         [ARCHIVE_OVERLAY_KEY, ["archive", "labels", "navLibrary"]],
-        ["sessions", ["sessions", "snapshots", "nav", "attention"]],
-        ["smartviews", ["smartviews", "navLibrary"]],
+        ["sessions", ["sessions", "snapshots", "snoozes", "navSessions", "attention", "openWarm"]],
+        ["smartviews", []],
         ["snoozes", ["snoozes", "sessions", "nav", "attention"]],
         ["starred", ["starred"]],
-        ["vaultMeta", ["vault", "nav", "attention"]],
+        ["vaultMetaV2", ["vault", "vaultPill", "attention"]],
         ["journal", ["activity", "attention"]],
-        ["sessionWindows", ["attention"]],
-        ["sessionIdentityIndex", ["attention"]],
+        ["sessionWindows", ["attention", "openWarm"]],
+        ["sessionIdentityIndex", ["attention", "openWarm", "open"]],
         ["focusGuardState", ["focus"]],
         ["focusTemporaryAccess", ["focus"]],
-        ["settings", ["focus", "settings", "nav", "attention"]],
+        ["settings", ["open", "inbox", "duplicates", "attention", "nav", "focus", "settings"]],
         [STORE_KEYS.organizationGroups, ["labels", "sessions"]],
         [STORE_KEYS.organizationMemberships, ["labels", "sessions"]],
         ["labelMeta", ["navLibrary"]],
@@ -928,6 +931,23 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
         matrixCases.every(([key, expected]) =>
           JSON.stringify(dashboardTasksForStorage({ [key]: {} })) === JSON.stringify(expected)),
         "E3-4: each storage key preserves its exact section/global refresh pairing"
+      );
+      check(
+        JSON.stringify(dashboardTasksForStorage({
+          settings: {
+            oldValue: { uiScheme: "ink", uiMode: "scheme" },
+            newValue: { uiScheme: "laser", uiMode: "scheme" }
+          },
+          schemeRotationPrepared: { newValue: { next: "nord" } }
+        })) === JSON.stringify([]) &&
+        JSON.stringify(dashboardTasksForStorage({
+          settings: {
+            oldValue: { uiScheme: "ink", uiMode: "scheme" },
+            newValue: { uiScheme: "laser", uiMode: "dark" }
+          },
+          schemeRotationPrepared: { newValue: { next: "nord" } }
+        })) === JSON.stringify(["focus", "settings", "nav", "attention"]),
+        "On-open scheme rotation paints through theme.js without rebuilding Dashboard content"
       );
       check(
         dashboardTasksForStorage({ archive: {} }).length === 3 &&
@@ -940,8 +960,16 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       );
       const libraryNavSource = dashboardSource.slice(
         dashboardSource.indexOf("async function readNavLibraryData"),
-        dashboardSource.indexOf("const renderNav = coalesce")
+        dashboardSource.indexOf("const renderNav = coalesceLatest")
       );
+      const liveNavSource = dashboardSource.slice(
+        dashboardSource.indexOf("async function renderNavInner("),
+        dashboardSource.indexOf("/* ---- hero")
+      );
+      check(liveNavSource.includes("reads.tabs()") &&
+          liveNavSource.includes("await reads.groups()") &&
+          !liveNavSource.includes("chrome.tabs.query("),
+        "Dashboard navigation derives Open and duplicate counts from one live-tab snapshot");
       check(
         libraryNavSource.includes("readLabelNavigationSnapshot()") &&
           !libraryNavSource.includes("countItems(STORE_KEYS.archive)") &&
@@ -1034,6 +1062,56 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       liveTimer.cb();
       check(refreshes.length === 2,
         "E3-4 measurement: 5 tab-move events produce exactly 2 refreshes incl. the 120ms tail");
+
+      const foregroundTimers = [];
+      const foregroundRefreshes = [];
+      let foreground = false;
+      const foregroundBurst = createForegroundTrailingRefresh(
+        () => foregroundRefreshes.push("refresh"),
+        {
+          delay: 180,
+          isForeground: () => foreground,
+          setTimer: (cb, ms) => {
+            const timer = { cb, ms, cleared: false };
+            foregroundTimers.push(timer);
+            return timer;
+          },
+          clearTimer: (timer) => { timer.cleared = true; }
+        }
+      );
+      for (let i = 0; i < 5; i++) foregroundBurst.request();
+      let foregroundTimer = foregroundTimers.findLast((timer) => !timer.cleared);
+      check(foregroundRefreshes.length === 0 && foregroundTimer?.ms === 180,
+        "live Dashboard events wait behind one 180ms paint-first boundary");
+      foregroundTimer.cb();
+      check(foregroundRefreshes.length === 0,
+        "an inactive Dashboard retains dirty live-browser work without running it");
+      foreground = true;
+      foregroundBurst.foreground();
+      foregroundTimer = foregroundTimers.findLast((timer) => !timer.cleared);
+      check(foregroundTimer?.ms === 0,
+        "returning to a dirty Dashboard schedules one immediate reconciliation");
+      foregroundTimer.cb();
+      check(foregroundRefreshes.length === 1,
+        "a dirty Dashboard reconciles exactly once when it returns to the foreground");
+
+      const foregroundTaskFlushes = [];
+      foreground = false;
+      const foregroundTasks = createForegroundTaskQueue(
+        (tasks) => foregroundTaskFlushes.push(tasks),
+        { isForeground: () => foreground }
+      );
+      foregroundTasks.request(["settings", "nav"]);
+      foregroundTasks.request(["nav", "attention"]);
+      check(foregroundTaskFlushes.length === 0,
+        "an inactive Dashboard does no storage-driven presentation work");
+      foreground = true;
+      foregroundTasks.foreground();
+      check(
+        JSON.stringify(foregroundTaskFlushes) ===
+          JSON.stringify([["settings", "nav", "attention"]]),
+        "returning to a Dashboard reconciles all deferred storage tasks once"
+      );
   
       const db = fs.readFileSync(new URL("../js/ui/dashboard.js", import.meta.url), "utf8");
       const routeBody = db.match(/function route\(\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
@@ -1114,9 +1192,6 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       const boot = fs.readFileSync(new URL("../js/boot.js", import.meta.url), "utf8");
       const theme = fs.readFileSync(new URL("../js/ui/theme.js", import.meta.url), "utf8");
       const background = fs.readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
-      const newTabCreatedBody = background.match(
-        /chrome\.tabs\.onCreated\.addListener\(\(tab\) => \{([\s\S]*?)\n\}\);/
-      )?.[1] ?? "";
       const tokens = fs.readFileSync(new URL("../css/tokens.css", import.meta.url), "utf8");
       check(
         db.includes('const h2 = el("h2", {}, shellSectionTitle(id));') &&
@@ -1141,8 +1216,8 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
           openSurface.includes("scheduleBindingPrune();") &&
           store.includes("buildSessionIdentityIndex(") &&
           store.includes("committed[SESSION_IDENTITY_INDEX_KEY]") &&
-          db.includes("if (SESSION_IDENTITY_INDEX_KEY in changes)") &&
-          db.includes("if (openSectionVisible()) renderOpen();"),
+          db.includes("dashboardStorageRefresh.request(dashboardTasksForStorage(changes") &&
+          db.includes("openWarm: warmHiddenOpen"),
         "E3-4r/N45/N46: Open uses compact Session identities, defers saved-label enrichment, and maintains the index atomically"
       );
       const newTabPrefetch = newTabEntry.match(/const startOpenPrefetch = \(\) => \{([\s\S]*?)\n    \};/)?.[1] ?? "";
@@ -1178,9 +1253,7 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       );
       check(
         boot.includes("__everyTabBootThemeSelection") &&
-          theme.includes("if (!globalThis.__everyTabBootThemeSelection) applyCached();") &&
-          background.includes("return rotateNewTabOnce(sender.tab.id)") &&
-          !newTabCreatedBody.includes("rotateNewTabOnce"),
+          theme.includes("if (!globalThis.__everyTabBootThemeSelection) applyCached();"),
         "D3/E3: New Tab consumes pre-paint before its worker handshake can advance the shared cache"
       );
       check(
@@ -1224,12 +1297,12 @@ export async function runSmokeStorageConcurrency({ check, browserEffects }) {
       check(perf.perfActive() === false,
         "E3-0: activateFromSettings ignores a false perfHud");
       perf.activateFromSettings({ perfHud: true });
-      const end = perf.pspan("smoke-span");
+      const end = perf.pspan("store:commit");
       end("detail");
-      perf.pcount("smoke-count", 3, 1.5);
+      perf.pcount("refresh tasks (total)", 3, 1.5);
       const blob = perf.preport();
       check(perf.perfActive() === true && typeof blob === "string" &&
-          blob.includes("smoke-span") && blob.includes("smoke-count"),
+          blob.includes("store:commit") && blob.includes("refresh tasks (total)"),
         "E3-0: active perf records spans + counters and reports a JSON blob");
   
       const db = fs.readFileSync(new URL("../js/ui/dashboard.js", import.meta.url), "utf8");

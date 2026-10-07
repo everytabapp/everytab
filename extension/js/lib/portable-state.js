@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Narrow compatibility facade for portable state.
  *
@@ -16,6 +19,7 @@ export {
 
 export {
   RESTORE_CHECKPOINT_KEY, buildPortableExport, buildRestoreCheckpointExport,
-  previewPortableRestore, readPortableRestoreCheckpoint, readPortableRestoreFile,
-  restorePortableState, undoPortableRestore
+  previewPortableRestore, readPortableLogicalState, readPortableRestoreCheckpoint,
+  readPortableRestoreFile,
+  restorePortableState, undoPortableRestore, withPortableLogicalState
 } from "./portable-state-transaction.js";

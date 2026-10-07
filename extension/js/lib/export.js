@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { newMeta } from "./store.js";
 import { buildPortableExport, restorePortableState } from "./portable-state.js";
 import { unwrapSuspendedUrl } from "./tabs.js";

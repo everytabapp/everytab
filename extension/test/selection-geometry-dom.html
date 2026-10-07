@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-interface-style="terminal">
+<head>
+  <meta charset="utf-8">
+  <title>Selection geometry regression</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/tablist-d4.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/sidepanel.css">
+  <link rel="stylesheet" href="../css/interface-style.css">
+  <style>
+    body { min-height: 1400px; margin: 0; padding: 18px; }
+    #fixture { width: 880px; max-width: calc(100vw - 36px); margin: 0 auto; }
+    body[data-surface="sidepanel"] #fixture { width: 360px; }
+  </style>
+</head>
+<body data-row-info="clean">
+  <pre id="result">RUNNING</pre>
+  <main id="fixture"></main>
+  <script type="module" src="./selection-geometry-dom-page.mjs"></script>
+</body>
+</html>

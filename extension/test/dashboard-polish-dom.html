@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-scheme="cream" data-mode="light" data-emphasis="bold">
+<html lang="en" data-scheme="cream" data-mode="light" data-emphasis="bold" data-interface-style="terminal">
 <head>
   <meta charset="utf-8">
   <title>Dashboard polish DOM regression</title>
@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="../css/primitives.css">
   <link rel="stylesheet" href="../css/tablist-d4.css">
   <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/newtab.css">
+  <link rel="stylesheet" href="../css/interface-style.css">
   <style>
     body { min-height: 2400px; margin: 0; padding: 18px; }
     #result { position: fixed; right: 4px; bottom: 4px; z-index: 100; max-width: 50vw; }
@@ -30,9 +32,11 @@
     <div class="hero-panel">
       <div class="search-field"><input id="search-input" value="tab"></div>
       <div class="hero-search-overlay">
+        <div class="hero-search-content">
         <div class="search-results search-option-list" role="listbox">
           <button class="search-row" role="option"><span class="rtitle">Visible search result</span></button>
           <button class="search-row" role="option"><span class="rtitle">Second result</span></button>
+        </div>
         </div>
       </div>
     </div>

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Lightweight URL identity shared by storage projections and duplicate/search
  * features. Keep this module dependency-free: Session index construction runs

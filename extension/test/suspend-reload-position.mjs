@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createMockLockManager } from "./e2-mocks.mjs";
+import { installBrowserMapStorageAuthority } from "./storage-authority-fixture.mjs";
 
 const originalUrl = "https://kept.example/article";
 const suspendBase = "chrome-extension://test-ext-id/suspend.html";
@@ -67,6 +68,7 @@ globalThis.chrome = {
   }
 };
 
+installBrowserMapStorageAuthority();
 Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }, configurable: true
 });
@@ -75,6 +77,30 @@ const { recoverSuspendedTabs } = await import("../js/lib/suspend.js");
 
 // Browser-restart pass: the live restored page is in window 42 under tab 2001.
 await recoverSuspendedTabs();
+
+// The user protects the restored suspended tab during this browser session.
+// An extension reload may recreate that page under another numeric id without
+// ending the promise attached to the logical tab occurrence.
+mem.automationTabProtections = {
+  2001: {
+    tabId: 2001,
+    createdAt: Date.now(),
+    permanent: true,
+    duration: "always",
+    expiresAt: null,
+    url: originalUrl,
+    hostname: "kept.example"
+  },
+  3000: {
+    tabId: 3000,
+    createdAt: Date.now() + 1,
+    permanent: true,
+    duration: "always",
+    expiresAt: null,
+    url: "https://newer-target.example/",
+    hostname: "newer-target.example"
+  }
+};
 
 // Extension-reload pass: Chrome removes that extension page. Window 41 is where
 // the user clicked Reload; recovery must still recreate it in window 42.
@@ -85,6 +111,14 @@ assert.deepEqual(created.map(({ windowId, index, pinned }) => ({ windowId, index
   { windowId: 42, index: 2, pinned: false }
 ], `reload recovery changed the suspended tab's window or position: ${JSON.stringify(created)}`);
 assert.ok(mem.suspendedRegistry[created[0].id], "the recreated tab owns the refreshed registry entry");
+assert.ok(mem.automationTabProtections[created[0].id],
+  "extension-reload recovery transfers temporary protection to the recreated tab id");
+assert.equal(mem.automationTabProtections[created[0].id].hostname, "newer-target.example",
+  "recovery preserves a newer permanent protection already owned by the target id");
+assert.equal(mem.automationTabProtections[created[0].id].permanent, true,
+  "extension-reload recovery preserves no-time-limit tab protection");
+assert.equal(mem.automationTabProtections[2001], undefined,
+  "the retired pre-reload tab id cannot leak protection to a later tab");
 assert.deepEqual(
   (({ windowId, index, pinned }) => ({ windowId, index, pinned }))(mem.suspendedRegistry[created[0].id]),
   { windowId: 42, index: 2, pinned: false },

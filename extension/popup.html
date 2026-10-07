@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
-      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+      data-interface-style="soft" data-row-info="detailed" data-action-labels="icons">
 <head>
 <meta charset="utf-8" />
 <meta name="color-scheme" content="dark light" />
@@ -12,13 +12,21 @@
   * { box-sizing: border-box; }
   /* D4-3b: 340px forced the primary's label onto three lines. 380px is still a
      compact task surface and lets every action label read on one line. */
-  /* Chrome caps action popups at 600px. Use that complete allowance so the
-     ordinary shell reaches its footer without a scrollbar; #app retains its
-     scroll fallback for short displays, text enlargement, and extra banners. */
-  html, body { width: 400px; height: 600px; overflow: hidden; }
+  /* Chrome caps action popups at 600px, but the effective CSS viewport can be
+     shorter with display scaling or browser UI. Size to the space Chrome
+     actually gives us; the shell compacts its whitespace before #app uses its
+     accessible scroll fallback. */
+  html, body { width: 400px; height: 600px; max-height: 600px; overflow: hidden; }
   body { font: 13px/1.45 var(--font-body); margin: 0; min-width: 400px; }
-  #app { height: 100%; overflow-y: auto; padding: 12px 12px 0; }
-  body:not(.popup-ready) #app { visibility: hidden; }
+  #app { height: 100%; max-height: min(600px, 100vh); overflow-y: auto; padding: 12px 12px 0; }
+  body.popup-fit-compact #app { padding-top: 10px; }
+  body.popup-fit-compact .search-box { margin-bottom: 6px; }
+  body.popup-fit-compact .group { padding-block: 9px; }
+  body.popup-fit-compact .statusstrip { margin-bottom: 8px; }
+  body.popup-fit-compact .linkrow { padding-block: 7px 8px; }
+  /* Search is the stable command entry. Keep it visible while the contextual
+     groups hydrate so a keyboard Search request can focus it immediately. */
+  body:not(.popup-ready) #app > :not(.search-box) { visibility: hidden; }
   h1 { font-family: var(--font-display); font-weight: var(--display-weight);
        letter-spacing: var(--display-tracking); font-size: 14px; margin: 0 0 8px; }
   .count { color: var(--ink-3); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
@@ -53,7 +61,7 @@
   .search-results { --search-inset: 8px; --search-row-block: 5px; --search-gap: 7px; }
   .ghost-hint { font-size: 11px; }
   .ghost-chip { padding-inline: 4px; font-size: 11px; }
-  .search-results { max-height: min(320px, 68vh); }
+  .search-results { max-height: min(540px, calc(100vh - 64px)); }
   .rtype { font-size: 10px; }
   .rmeta { font-size: 10px; }
   .chip { display: inline-flex; align-items: center; border-radius: 99px; padding: 1px 3px 1px 8px;
@@ -91,9 +99,44 @@
   .chip.labelchip:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
   .tablabels-more { width: auto; min-height: 24px; padding: 0 4px; flex: none;
                     font-size: 11px; color: var(--ink-3); }
+  .tab-suspend-status { display: flex; align-items: center; gap: 5px; min-width: 0;
+                        margin: 3px 0 5px; padding: 0 8px; color: var(--accent-strong-ink);
+                        font-size: 11px; }
+  .tab-suspend-status:empty { display: none; }
+  .tab-suspend-status > .ic { flex: none; }
+  .tab-suspend-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                             white-space: nowrap; }
+  .tab-suspend-manage { display: inline; width: auto; min-height: 0; margin-left: auto;
+                        padding: 0; border-radius: 0; color: var(--accent-strong-ink);
+                        font-size: 11px; text-decoration: underline; text-underline-offset: 2px; }
+  .tab-suspend-manage:hover { background: none; color: var(--ink); }
+  .head-utilities .head-utility.is-active { background: var(--accent-soft);
+                                            color: var(--accent-soft-ink); }
+  .head-utilities .head-utility.is-active > .ic { color: currentColor; }
   /* F16 — quick-label panel. The tag combobox (js/ui/labelinput.js) is ported
      from the dashboard; the popup's .chip rules already style its chips. */
   .label-panel .label-save { width: 100%; margin-top: 6px; text-align: center; }
+  .label-panel .organization-form { display: flex; flex-direction: column; gap: 8px; }
+  .label-panel .palette-field { display: flex; flex-direction: column; gap: 5px; }
+  .label-panel .palette-field-label { color: var(--ink-2); font-size: 12px; font-weight: 650; }
+  .label-panel .palette-help { color: var(--ink-3); font-size: 11px; line-height: 1.35; }
+  .label-panel .organization-form-actions { display: grid; grid-template-columns: auto minmax(0, 1fr);
+                                             gap: 6px; padding-top: 6px;
+                                             border-top: var(--bw) solid var(--border); }
+  .label-panel .organization-form-actions button { width: auto; justify-content: center;
+                                                    border: var(--bw) solid var(--border); }
+  .label-panel .organization-form-actions .primary { width: 100%; }
+  .label-panel .organization-inline-toggle,
+  .label-panel .organization-inline-separate-action button {
+    width: auto;
+    justify-content: center;
+    border: var(--bw) solid var(--border);
+  }
+  .label-panel .organization-inline-body { padding: 8px; }
+  .keep-awake-current { color: var(--accent-strong-ink); font-weight: 650; }
+  .keep-awake-options > button { justify-content: center; min-height: var(--control-h-compact);
+                                 border: var(--bw) solid var(--border); }
+  .keep-awake-options .keep-awake-settings { border-color: transparent; color: var(--ink-2); }
   .tagbox { position: relative; display: inline-flex; align-items: center; gap: 4px;
             flex-wrap: wrap; width: 100%; padding: 3px 8px; }
   .tagchips { display: contents; }
@@ -105,6 +148,7 @@
   .tagopt { padding: 6px 10px; border-radius: var(--r-mini); font-size: 12px; color: var(--ink-2);
             cursor: pointer; margin: 0; }
   .tagopt:hover, .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .tagopt.create { font-weight: 650; }
   .msg { color: var(--ink-2); margin-top: 8px; min-height: 18px; padding: 0 8px; }
   /* The shared feedback row is transient, not structural. Reserving it while
      empty created a false extra gap before Focus. */
@@ -128,8 +172,13 @@
   .group { padding: 12px 0; margin: 0; border-top: var(--bw) solid var(--border); }
   .group-head { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
                 color: var(--accent-strong-ink); margin: 0 0 6px; padding: 0 8px; }
-  .actgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 4px; margin-top: 4px; }
+  .actgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+             gap: 2px 8px; margin-top: 4px; }
+  .actgrid > button { min-width: 0; min-height: 38px; padding-inline: 10px; }
   .tab-actions { margin-top: 3px; }
+  .actgrid .action-label { flex: 1; min-width: 0; overflow: visible;
+                           text-overflow: clip; white-space: nowrap; }
+  .tab-actions .action-icon { display: inline-flex; flex: none; }
   /* Author CSS outranks Chrome's user-agent `[hidden]` rule. Without this
      explicit host rule, `.actgrid { display:grid }` kept unsupported tab
      actions visible even though popup.js correctly set `hidden = true`. */
@@ -147,6 +196,14 @@
   .group-title-row { display: flex; align-items: center; gap: 7px; min-height: 28px;
                      padding: 0 8px; }
   .group-title-row .group-head { flex: none; margin: 0; padding: 0; }
+  .head-utilities { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+  .head-utilities button { width: 28px; min-width: 28px; min-height: 28px; margin: 0;
+                           padding: 0; justify-content: center; }
+  .head-utilities .head-utility .lbl,
+  .head-utilities .head-utility .k,
+  .head-utilities .group-utility .lbl { display: none; }
+  .head-utilities .head-utility > .ic,
+  .head-utilities .group-utility > .ic { flex: none; }
   .group-utility { width: auto; min-height: 28px; margin-left: auto; padding: 0 6px;
                    gap: 6px; flex: none; font-size: 12px; color: var(--ink-2); }
   .actions-row { display: flex; gap: 4px; }
@@ -232,10 +289,12 @@
              margin: 0 -12px; padding: 10px 12px 12px;
              border-top: var(--bw) solid var(--border); background: var(--surface); }
   .linkrow button { width: auto; flex: 1; margin: 0; justify-content: center; font-size: 12px; }
+  body:has(.search-box:focus-within .search-results:not(:empty)) .linkrow { z-index: 0; }
 
 </style>
+<link rel="stylesheet" href="css/interface-style.css" />
 </head>
-<body>
+<body data-surface="popup">
   <div id="app"></div>
   <script type="module" src="./js/ui/popup.js"></script>
 </body>

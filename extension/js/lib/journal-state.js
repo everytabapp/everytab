@@ -1,9 +1,16 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Pure Journal transaction sealing and freshness checks. */
 import { ARCHIVE_OVERLAY_KEY, STORE_KEYS } from "./types.js";
 
 export const JOURNAL_KEY = "journal";
 export const JOURNAL_CAP = 200;
 export const JOURNAL_UNDO_CONTRACT_VERSION = 1;
+
+/** @typedef {import("./types.js").JournalEntry} JournalEntry */
+/** @typedef {import("./types.js").Meta & {deletedAt:number,deletionRevision:string}} JournalDeletionMarker */
+/** @typedef {Record<string, Record<string, JournalDeletionMarker>>} JournalDeletionMaps */
 
 function isPlainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -68,6 +75,26 @@ function postDescriptor(maps, sets, target) {
     ...(Number.isFinite(record.value?.deletedAt) ? { deletedAt: record.value.deletedAt } : {}),
     hash: fingerprint(record.value)
   };
+}
+
+/**
+ * Replace only committed deletion descriptors in newly appended entries.
+ * Live/read-only target descriptors were sealed by the Store and must survive
+ * unchanged: the physical commit may not contain their record maps at all.
+ * @param {JournalEntry[]} priorJournal
+ * @param {JournalEntry[]} journal
+ * @param {JournalDeletionMaps} deletionMaps final compact markers by store/id
+ * @returns {JournalEntry[]}
+ */
+export function sealCommittedJournalDeletions(priorJournal, journal, deletionMaps) {
+  const priorIds = new Set(priorJournal.map((entry) => entry?.id));
+  return journal.map((entry) => {
+    if (!entry?.id || priorIds.has(entry.id) || !hasValidUndoContract(entry)) return entry;
+    const undoPostState = entry.undoPostState.map((target) =>
+      Object.hasOwn(deletionMaps[target.store] ?? {}, target.id)
+        ? postDescriptor({}, deletionMaps, target) : target);
+    return { ...entry, undoPostState };
+  });
 }
 
 /**

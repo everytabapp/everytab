@@ -1,9 +1,14 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
 /* D4-2b: one Calm Precision list presentation for Dashboard and side panel.
    Behavior remains in createTabList; hosts own only page/chrome geometry. */
 
 .tablist {
+  position: relative;
   container-type: inline-size;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Group rhythm. One settled presentation replaces the retired Space, Divider,
@@ -47,15 +52,23 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.tablist .tl-rows { margin-top: var(--sp-1); }
-.tablist .window-block + .window-block { margin-top: var(--sp-8); }
+.tablist .tl-rows { position: relative; margin-top: var(--sp-1); }
+.tablist .window-block-shell + .window-block-shell { margin-top: var(--sp-8); }
 .tablist .window-block > .item-head { min-height: 30px; }
-
-/* One checkbox rendering in every scheme and mode. Shape is a preference;
-   checked fill and check ink always come from the active scheme contract. */
-/* N41: the mark is CENTRED by the box, not placed with hand-tuned offsets.
-   The old absolute left/top values left uneven gaps, invisible inside a square
-   but plainly off inside a circle. One grid centring works for both shapes. */
+.tablist .window-block { position: relative; }
+.tablist .drop-zone-new-anchor {
+  position: relative;
+  z-index: 4;
+  height: 0;
+}
+.tablist .drop-zone-window-end-anchor {
+  position: relative;
+  z-index: 4;
+  height: 0;
+}
+/* Shared Interface style owns checkbox shape and marks. These list-local rules
+   keep the accepted row geometry available before that final stylesheet and
+   for the isolated list harnesses that intentionally load this file alone. */
 .tablist input[type="checkbox"] {
   appearance: none;
   position: relative;
@@ -71,8 +84,6 @@
   color: var(--accent-ink);
   cursor: pointer;
 }
-[data-checkbox-shape="round"] .tablist input[type="checkbox"] { border-radius: 50%; }
-[data-checkbox-shape="square"] .tablist input[type="checkbox"] { border-radius: 3px; }
 .tablist input[type="checkbox"]:checked,
 .tablist input[type="checkbox"]:indeterminate {
   border-color: var(--accent);
@@ -80,13 +91,14 @@
 }
 .tablist input[type="checkbox"]:checked::after {
   content: "";
-  width: 4px;
-  height: 8px;
-  border: solid currentColor;
-  border-width: 0 2px 2px 0;
-  /* A rotated tick's optical centre sits below its box centre, so it is nudged
-     up by one pixel before the rotation. */
-  transform: translateY(-1px) rotate(45deg);
+  width: 15px;
+  height: 15px;
+  border: 0;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.2 9.4 16.6 19.2 6.9' fill='none' stroke='%23000' stroke-width='2.35' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.2 9.4 16.6 19.2 6.9' fill='none' stroke='%23000' stroke-width='2.35' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  clip-path: none;
+  transform: none;
 }
 .tablist input[type="checkbox"]:indeterminate::after {
   content: "";
@@ -188,7 +200,7 @@
 
 /* A pinned tab is a stable browser state, not an action or label. The word is
    clearer than another small glyph and shares the current-window accent. */
-.tablist .pinned-state {
+.tablist :is(.pinned-state, .surface-tab-state) {
   display: inline-flex;
   align-items: center;
   color: var(--accent-strong-ink);
@@ -241,12 +253,17 @@
 }
 .tablist .trow img.fv,
 .tablist .trow .fv-placeholder {
-  display: block;
+  display: grid;
+  place-items: center;
   width: 16px !important;
   height: 16px;
   padding: 0;
   border-radius: 4px;
   background: transparent;
+  color: var(--ink-3);
+  font-size: 9px;
+  font-weight: 720;
+  line-height: 1;
   object-fit: contain;
 }
 .tablist .row-subline {
@@ -276,7 +293,7 @@
    so feedback paints strongly without moving a single control. */
 .tablist:not([data-compact]) .trow {
   display: grid;
-  grid-template-columns: 17px 24px minmax(0, 1fr) auto auto;
+  grid-template-columns: var(--tablist-select-column) 24px minmax(0, 1fr) auto auto;
   align-items: center;
   column-gap: var(--sp-4);
   min-height: 40px;
@@ -307,7 +324,8 @@
 }
 .tablist:not([data-compact]) .trow img.fv,
 .tablist:not([data-compact]) .trow .fv-placeholder {
-  display: block;
+  display: grid;
+  place-items: center;
   width: 24px !important;
   height: 24px;
   padding: 4px;
@@ -344,22 +362,22 @@
 /* Browser pin state is useful even when optional row detail is set to Clean.
    Keep only that state in the subline, and place its accent rule after the
    generic row-detail color so the cascade cannot silently mute it. */
-.tablist .row-subline > .pinned-state {
+.tablist .row-subline > :is(.pinned-state, .surface-tab-state) {
   flex: none;
   min-width: auto;
   max-width: none;
   color: var(--accent-strong-ink);
 }
-.tablist:not([data-compact]) .row-subline > .pinned-state {
+.tablist:not([data-compact]) .row-subline > :is(.pinned-state, .surface-tab-state) {
   color: var(--accent-strong-ink);
 }
-[data-row-info="clean"] .tablist .row-subline:has(> .pinned-state) > :not(.pinned-state) {
+[data-row-info="clean"] .tablist .row-subline:has(> :is(.pinned-state, .surface-tab-state, .session-memberships)) > :not(.pinned-state, .surface-tab-state, .session-memberships) {
   display: none;
 }
-[data-row-info="clean"] .tablist[data-compact] .row-subline:has(> .pinned-state) {
+[data-row-info="clean"] .tablist[data-compact] .row-subline:has(> :is(.pinned-state, .surface-tab-state, .session-memberships)) {
   display: contents;
 }
-[data-row-info="clean"] .tablist:not([data-compact]) .row-subline:has(> .pinned-state) {
+[data-row-info="clean"] .tablist:not([data-compact]) .row-subline:has(> :is(.pinned-state, .surface-tab-state, .session-memberships)) {
   display: flex;
 }
 [data-row-info="clean"] .tablist:not([data-compact]) .row-subline { display: none; }
@@ -374,12 +392,8 @@
   min-width: 0;
 }
 .tablist:not([data-compact]) input[type="checkbox"]:checked::after {
-  width: 11px;
-  height: 9px;
-  border: 0;
-  background: currentColor;
-  clip-path: polygon(3% 43%, 20% 27%, 43% 50%, 79% 13%, 97% 31%, 43% 87%);
-  transform: none;
+  width: 15px;
+  height: 15px;
 }
 
 /* F22: the same compact action becomes a filled accent star when active. */
@@ -393,6 +407,7 @@
    its own calm ledger. The separation carries meaning without adding a new
    card style, and single-tab Inbox items use the exact same grammar. */
 .tablist:not([data-compact]) {
+  --tablist-select-column: 17px;
   display: grid;
   gap: var(--sp-8);
   overflow: visible;
@@ -417,7 +432,7 @@
 /* F34-8/F34-17/F36: the window header keeps a deliberate 12px breath below
    Search while its own rows pass underneath, then the next window pushes it
    out. F36 removes the opaque hero shelf from that gap, so scrolling text is
-   visible directly beneath Search without restoring a per-card curtain. */
+   visible directly beneath Search without restoring an opaque curtain. */
 .tablist:not([data-compact]) > .item > .item-head-shell {
   --cap-radius: var(--shape-panel);
   position: sticky;
@@ -470,6 +485,29 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   border-radius: 0 0 var(--shape-panel) var(--shape-panel);
   background: var(--workbench-row);
 }
+/* The composed Open list reserves its final layout once. A viewport-sized,
+   background-matched curtain moves over the already-composed rows so the
+   browser only animates one simple surface, not the full painted list tree. */
+[data-sec="open"] .sec-inner.is-window-list-arriving {
+  position: relative;
+  overflow: clip;
+}
+[data-sec="open"] .window-list-curtain {
+  position: absolute;
+  z-index: 10;
+  inset: 0 0 auto;
+  background: var(--bg-solid);
+  pointer-events: none;
+  will-change: transform;
+}
+body.gradient [data-sec="open"] .window-list-curtain,
+[data-gradient="true"] body [data-sec="open"] .window-list-curtain {
+  background: var(--bg-grad, var(--bg-solid));
+  background-attachment: fixed;
+}
+[data-sec="open"]:has(.sec-inner.is-window-list-arriving) {
+  border-block-end-color: transparent;
+}
 .tablist:not([data-compact]) .item-head {
   min-height: 32px;
   padding: 5px 10px;
@@ -508,6 +546,114 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   opacity: 1;
 }
 
+/* Live Chrome groups in Dashboard Open tabs. The group is a quiet subsection
+   of the window ledger: one explicit name/count line plus a single scheme-
+   accent rail in the unused right edge lane. Selection retains its established
+   left marker, while tabs keep their complete action lane and row geometry. */
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--tablist-select-column, 17px) 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-height: 32px;
+  padding: 3px 18px 3px 10px;
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--workbench-row));
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-copy {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-access {
+  grid-column: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  height: 26px;
+  margin-inline-end: 4px;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .trow[data-live-tab-group] {
+  padding-inline-end: 14px;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-head::after,
+.tablist[data-tablist="open"]:not([data-compact]) .trow[data-live-tab-group]::after,
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-slot:not(:empty)::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline-end: 8px;
+  width: 2px;
+  border-radius: var(--shape-pill);
+  background: var(--accent);
+  pointer-events: none;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-head::after {
+  inset-block: 0 -1px;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .trow[data-live-tab-group]::after {
+  inset-block: -1px;
+}
+.tablist[data-tablist="open"]:not([data-compact])
+  .trow[data-live-tab-group][data-live-tab-group-end]::after {
+  inset-block: -1px 0;
+  border-radius: 0 0 var(--shape-mini) var(--shape-mini);
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-slot {
+  position: relative;
+}
+.tablist[data-tablist="open"]:not([data-compact])
+  .trow[data-live-tab-group-end]:has(+ .open-tab-group-slot:not(:empty))::after {
+  inset-block-end: 0;
+  border-radius: 0;
+}
+.tablist[data-tablist="open"]:not([data-compact])
+  .open-tab-group-slot:not(:empty)::before {
+  inset-block: -1px;
+}
+.tablist[data-tablist="open"]:not([data-compact])
+  .open-tab-group-slot[data-live-tab-group-end]:not(:empty)::before {
+  inset-block-end: 0;
+  border-radius: 0 0 var(--shape-mini) var(--shape-mini);
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-name {
+  max-width: min(48ch, 68%);
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: 720;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-count {
+  flex: none;
+  color: var(--workbench-tertiary);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@container (max-width: 520px) {
+  .tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-name {
+    max-width: 55%;
+  }
+  .tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-access {
+    width: 26px;
+    min-width: 26px;
+    padding-inline: 0;
+  }
+  .tablist[data-tablist="open"]:not([data-compact]) .open-tab-group-access-label {
+    display: none;
+  }
+}
+
 /* The disclosure row is a member of the ledger, so it takes the ledger's row
    material, its square geometry, and the same divider weight. */
 .tablist:not([data-compact]) .disclosure-row {
@@ -525,6 +671,10 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
 }
 .tablist:not([data-compact]) .disclosure-row:focus-visible {
   border-radius: 0;
+}
+.tablist[data-tablist="open"]:not([data-compact]) .disclosure-row:not(.disclosure-section) {
+  color: var(--accent-strong-ink);
+  font-weight: 650;
 }
 .tablist:not([data-compact]) .disclosure-section {
   border-bottom: 0;
@@ -571,11 +721,15 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
 }
 .tablist:not([data-compact]) .window-block {
   margin: 0;
+  padding: 0;
   overflow: hidden;
   border: var(--bw) solid var(--border);
   border-radius: var(--shape-control);
 }
 .tablist:not([data-compact]) .window-block + .window-block {
+  margin-top: 0;
+}
+.tablist:not([data-compact]) .window-block-shell + .window-block-shell {
   margin-top: 0;
 }
 .tablist[data-compact] > .item > .item-head-shell,
@@ -603,6 +757,52 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   color: var(--ink-2);
   font-size: var(--text-micro);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The canonical address explains why the rows are duplicates without making a
+   long URL the card's headline. Its second column gives way first and exposes
+   the complete value through the native title affordance. */
+.tablist .dup-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px var(--sp-3);
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: var(--workbench-row);
+  color: var(--workbench-detail);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+.tablist .dup-identity-label {
+  color: var(--ink-2);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.tablist .dup-identity-url {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Chrome may leave an unopened background tab's title stale. Explain that
+   only when the titles actually differ, below the authoritative address. */
+.tablist .dup-title-note {
+  grid-column: 1 / -1;
+  color: var(--workbench-detail);
+}
+.tablist .dup-rule-trigger {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  min-height: 25px;
+  padding: 2px 8px;
+  color: var(--ink-2);
+  font-size: var(--text-meta);
   white-space: nowrap;
 }
 
@@ -651,6 +851,121 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   white-space: nowrap;
 }
 
+/* Duplicate matching exceptions use the same anchored, keyboard-contained
+   palette as list actions. Choices read as three explicit policies rather
+   than a settings form, and long internal URLs can never widen the panel. */
+.action-popover .dup-rule-domain {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.action-popover .dup-rule-choices {
+  display: grid;
+  gap: var(--sp-2);
+}
+.action-popover .dup-rule-choice {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  background: var(--surface);
+}
+.action-popover .dup-rule-choice[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-soft-ink);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.action-popover .dup-rule-choice strong {
+  font-size: var(--text-control);
+}
+.action-popover .dup-rule-choice span {
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  line-height: 1.3;
+}
+.action-popover .dup-rule-samples {
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+.action-popover .dup-rule-samples code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--text-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-popover .dup-rule-preview {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+}
+.action-popover .dup-rule-feedback {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-meta);
+}
+.action-popover .dup-rule-feedback[hidden] { display: none; }
+.action-popover .dup-rule-form-actions,
+.action-popover .dup-rule-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.action-popover .dup-rule-list {
+  display: grid;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  overflow: hidden;
+}
+.action-popover .dup-rule-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+.action-popover .dup-rule-row + .dup-rule-row {
+  border-top: var(--bw) solid var(--border);
+}
+.action-popover .dup-rule-row-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.action-popover .dup-rule-row-copy strong,
+.action-popover .dup-rule-row-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-popover .dup-rule-row-copy strong { font-size: var(--text-control); }
+.action-popover .dup-rule-row-copy span {
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+}
+@container (max-width: 360px) {
+  .tablist .dup-identity { grid-template-columns: minmax(0, 1fr) auto; }
+  .tablist .dup-identity-label { display: none; }
+  .tablist .dup-identity-url { grid-column: 1; }
+  .tablist .dup-rule-trigger { grid-column: 2; }
+}
+@media (max-width: 480px) {
+  .action-popover .dup-rule-row { grid-template-columns: minmax(0, 1fr); }
+  .action-popover .dup-rule-row-actions { justify-content: flex-start; }
+}
+
 .tablist .chips {
   display: inline-flex;
   flex: 0 1 auto;
@@ -659,11 +974,79 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   flex-wrap: nowrap;
   overflow: hidden;
 }
+.tablist .rowchips .chip[data-chip-index] { display: none; }
+.tablist .rowchips .chip[data-chip-index="1"],
+.tablist .rowchips .chip[data-chip-index="2"],
+.tablist .rowchips .more-at-2 { display: inline-flex; }
+.tablist .rowchips :is(.more-at-3, .more-at-4, .more-at-6, .more-at-8) { display: none; }
+.tablist .rowchips.is-expanded .chip[data-chip-index] { display: inline-flex; }
+.tablist .rowchips.is-expanded .chip.more { display: none; }
+.tablist .rowchips.is-expanded .chip.more.collapse-labels { display: inline-flex; }
+@container (min-width: 760px) {
+  .tablist .rowchips .chip[data-chip-index="3"] { display: inline-flex; }
+  .tablist .rowchips .more-at-2 { display: none; }
+  .tablist .rowchips .more-at-3 { display: inline-flex; }
+}
+@container (min-width: 980px) {
+  .tablist .rowchips .chip[data-chip-index="4"] { display: inline-flex; }
+  .tablist .rowchips .more-at-3 { display: none; }
+  .tablist .rowchips .more-at-4 { display: inline-flex; }
+}
+@container (min-width: 1260px) {
+  .tablist .rowchips .chip[data-chip-index="5"],
+  .tablist .rowchips .chip[data-chip-index="6"] { display: inline-flex; }
+  .tablist .rowchips .more-at-4 { display: none; }
+  .tablist .rowchips .more-at-6 { display: inline-flex; }
+}
+@container (min-width: 1580px) {
+  .tablist .rowchips .chip[data-chip-index="7"],
+  .tablist .rowchips .chip[data-chip-index="8"] { display: inline-flex; }
+  .tablist .rowchips .more-at-6 { display: none; }
+  .tablist .rowchips .more-at-8 { display: inline-flex; }
+}
 .tablist .chip {
   flex: none;
   padding: 1px 7px;
   border-radius: var(--shape-pill);
   font-size: var(--text-micro);
+}
+/* Both clipping boxes need ink clearance, including the tail of an initial j. */
+.tablist .session-memberships,
+.close-day-labels .session-memberships {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+  align-items: baseline;
+  gap: 3px;
+  padding: 1px;
+  color: var(--ink-3);
+  font-size: var(--text-micro);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist .session-membership-link,
+.close-day-labels .session-membership-link {
+  border: 0;
+  padding: 1px;
+  color: var(--accent-strong);
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  min-width: 0;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tablist .session-membership-link:hover,
+.close-day-labels .session-membership-link:hover { text-decoration: underline; }
+.tablist .session-membership-link:focus-visible,
+.close-day-labels .session-membership-link:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: 2px;
 }
 
 /* Stable direct-action lanes. Dashboard gets short labels while compact and
@@ -698,6 +1081,11 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+.tablist.has-multiple-selection .trow .tacts {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 /* F47r: the accented mark beside a card's name is TEXT, nothing else. No pill,
    no fill, no border — the colour alone carries it. `--accent-strong-ink` is
@@ -780,7 +1168,8 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
    the strip is a summary, not a list. */
 .tablist .fold-strip img.fv,
 .tablist .fold-strip .fv-placeholder {
-  display: block;
+  display: grid;
+  place-items: center;
   flex: none;
   width: 16px !important;
   height: 16px;
@@ -790,7 +1179,13 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   object-fit: contain;
   box-shadow: 0 0 0 2px var(--workbench-header);
 }
-.tablist .fold-strip .fv-placeholder { background: var(--surface-2); }
+.tablist .fold-strip .fv-placeholder {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 8px;
+  font-weight: 720;
+  line-height: 1;
+}
 .tablist .fold-strip > :first-child { margin-left: 0; }
 
 /* A folded card is one closed object: the header owns the whole silhouette. */
@@ -908,8 +1303,17 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
 }
 .tablist[data-compact] .item-head > .item-meta { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
 
-/* Selection stays where it started. One-card picks replace that card's usual
-   actions; only a cross-card selection needs the global keeper dock. */
+/* Multi-card selection moves commands to the keeper dock. Keep the existing
+   lane's footprint but make it inert instead of rebuilding every window's
+   controls; even very large profiles now commit selection within one frame. */
+.tablist.has-multiple-selection .item-head > .gacts:not(.header-bulk-actions) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* A selection contained by one card keeps its commands beside that card. The
+   lane is always one control-row tall; narrow headers scroll it horizontally
+   instead of changing the sticky cap's height. */
 .tablist .header-bulk-actions {
   flex: 1 1 auto;
   min-width: 0;
@@ -920,15 +1324,20 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   justify-content: flex-end;
   gap: var(--sp-2);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
+  overscroll-behavior-inline: contain;
 }
 .tablist .header-bulk-actions::-webkit-scrollbar { display: none; }
 .tablist .header-bulk-count {
   flex: none;
+  max-width: 72px;
+  overflow: hidden;
   color: var(--ink-2);
   font-size: var(--text-meta);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tablist .header-bulk-actions > button {
@@ -940,18 +1349,17 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   padding-inline: 0;
 }
 .tablist .header-bulk-actions .action-label { display: none; }
-.tablist[data-compact] .header-bulk-count { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
 
-/* A named Session owns seven real card actions. At the 520px/200% pressure
-   case the side panel has about 240 CSS px of content: one horizontal row
-   cannot contain the title plus every 28px target. Give crowded compact card
-   headers a second, right-aligned action line instead of clipping or hiding an
-   operation. DOM and keyboard order are unchanged. */
-.tablist[data-tablist="sessions"][data-compact]
+/* Named Sessions own seven card actions and Open windows own six. At the
+   520px/200% pressure case the panel has about 240 CSS px of content, so one
+   line cannot retain both a useful title and every 28px target. Give either
+   crowded compact header a second right-aligned action line. DOM and keyboard
+   order remain unchanged. */
+:is(.tablist[data-tablist="sessions"], .tablist[data-tablist="open"])[data-compact]
   .item-head:has(> .gacts > :nth-child(6)) {
   flex-wrap: wrap;
 }
-.tablist[data-tablist="sessions"][data-compact]
+:is(.tablist[data-tablist="sessions"], .tablist[data-tablist="open"])[data-compact]
   .item-head:has(> .gacts > :nth-child(6)) > .gacts {
   flex: 1 0 100%;
   justify-content: flex-end;
@@ -967,6 +1375,9 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   inset: auto;
   margin: 0;
   max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  display: flex;
+  flex-direction: column;
   padding: 0;
   overflow: visible;
   color: var(--ink);
@@ -1050,7 +1461,12 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   background: var(--nav-hover);
   color: var(--ink);
 }
-.action-popover-body { padding: var(--sp-5); }
+.action-popover-body {
+  min-height: 0;
+  padding: var(--sp-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .action-popover button {
   width: auto;
   margin: 0;
@@ -1228,8 +1644,12 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   border-top: var(--bw) solid color-mix(in srgb, var(--border) 68%, transparent);
 }
 .action-popover .tagmenu {
+  position: static;
+  inset: auto;
+  flex: 1 0 100%;
   width: 100%;
   max-height: min(240px, 34vh);
+  margin-top: var(--sp-2);
   padding: var(--sp-2);
 }
 .action-popover .tagopt {
@@ -1251,12 +1671,10 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
 @keyframes action-popover-in {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(.985);
     box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -1349,19 +1767,24 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   width: auto;
   min-width: 0;
   transform: none;
+  flex-wrap: wrap;
+  overflow-x: hidden;
 }
 
 .tablist > .bulk-bar.keeper-enter {
-  transition: opacity var(--motion-continuity) var(--ease-out),
-              transform var(--motion-continuity) var(--ease-out);
+  transition: opacity var(--motion-reveal) var(--ease-out),
+              transform var(--motion-reveal) var(--ease-out),
+              box-shadow var(--motion-reveal) var(--ease-out);
 }
 @starting-style {
   .tablist > .bulk-bar.keeper-enter {
-    opacity: 0;
-    transform: translateX(-50%) translateY(6px);
+    opacity: .35;
+    transform: translateX(-50%) translateY(8px) scale(.985);
+    box-shadow: 0 0 0 1px var(--focus-ring),
+      0 4px 14px color-mix(in srgb, var(--shadow-ink) 10%, transparent);
   }
   [data-surface="sidepanel"] .tablist > .bulk-bar.keeper-enter {
-    transform: translateY(6px);
+    transform: translateY(8px) scale(.985);
   }
 }
 
@@ -1373,8 +1796,8 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
   transform: none;
 }
 [data-surface="sidepanel"] .tablist > .bulk-bar .keeper-count {
-  position: sticky;
-  left: 0;
+  position: static;
+  flex: 1 1 auto;
   padding-right: var(--sp-2);
   background: var(--surface);
 }
@@ -1430,4 +1853,190 @@ body.gradient .tablist:not([data-compact]) > .item > .item-head-shell::after,
 @media (prefers-reduced-motion: reduce) {
   .tablist .trow,
   .tablist .tacts { transition: none; }
+}
+
+/* Automation awareness: the selected beside-age treatment. The trigger lives
+   in the existing metadata line, so neither its reveal nor its 48x2 track can
+   change the 40px Detailed row or the reserved action rail. */
+.tablist .automation-awareness {
+  appearance: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--shape-row);
+  background: transparent;
+  color: var(--accent-strong-ink);
+  font: inherit;
+  line-height: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.tablist .row-subline > .automation-awareness-row {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: min(240px, 48%);
+  color: var(--accent-strong-ink);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-reveal) var(--ease-out);
+}
+.tablist .automation-awareness-copy {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tablist .automation-awareness:hover .automation-awareness-copy {
+  text-decoration: underline;
+  /* Keep the line inside the compact, ellipsized metadata box. */
+  text-underline-offset: 1px;
+  text-decoration-thickness: 1px;
+}
+.tablist .automation-awareness-shield { flex: 0 0 13px; }
+.automation-protection-badge { display: none; }
+[data-row-info="clean"] .automation-protection-badge,
+[data-row-info="useful"] .automation-protection-badge { display: inline-flex; align-items: center; }
+.tablist .row-subline > .automation-awareness-row.is-protected,
+.tablist .row-subline > .automation-awareness-row.is-expired {
+  opacity: 1;
+  pointer-events: auto;
+}
+.protection-current {
+  display: grid;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-4);
+  border-bottom: var(--bw) solid var(--border);
+}
+.protection-current > p { margin: 0; }
+.protection-scope-list { display: grid; gap: 12px; }
+.protection-scope { display: grid; gap: 8px; min-width: 0; }
+.protection-scope + .protection-scope { border-top: 1px solid var(--line); padding-top: 12px; }
+.protection-scope-copy { min-width: 0; }
+.protection-scope-copy .palette-help { margin: 4px 0 0; overflow-wrap: anywhere; }
+.protection-page-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.protection-durations { display: flex; gap: 8px; }
+.protection-durations .protection-choice { flex: 1; min-width: 0; white-space: normal; }
+.tablist .automation-awareness-meter {
+  position: relative;
+  display: none;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.tablist .automation-awareness-row.has-meter .automation-awareness-meter { display: block; }
+.tablist .automation-awareness-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--automation-awareness-progress, 0%);
+  border-radius: inherit;
+  background: var(--accent);
+}
+.tablist .trow:is(:hover, :focus-within, .kbd-reveal) .automation-awareness-row,
+.tablist .automation-awareness-row:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Selection rebuilds the row shell. A reused awareness control carries its
+   already-revealed state across that two-frame mount handoff so its copy and
+   meter never fade out and back in under a stationary pointer or focus. */
+.tablist .automation-awareness.is-rejoining {
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+}
+/* A reordered row may bring a previously hidden control under the pointer.
+   During remount, let its new row's hover/focus decide opacity immediately;
+   this class must not reveal controls in rows the user is not interacting with. */
+.tablist .automation-awareness.is-remounting { transition: none; }
+/* New Open shells settle hover/focus before ordinary interaction transitions
+   resume. Rebuilding under a stationary pointer must not replay a reveal. */
+.tablist[data-tablist="open"].is-mounting .trow,
+.tablist[data-tablist="open"].is-mounting .tacts,
+.tablist[data-tablist="open"].is-mounting .automation-awareness-row {
+  transition: none;
+}
+.tablist .automation-awareness:focus-visible {
+  outline: 2px solid var(--focus-accent);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.tablist .row-subline > .automation-awareness-row::before { content: none; }
+[data-row-info="clean"] .tablist .automation-awareness-row,
+[data-row-info="useful"] .tablist .automation-awareness-row { display: none; }
+
+/* Inbox owns the same component at card grain. It is a direct header sibling,
+   never nested inside the fold button, and yields before the fixed action rail. */
+.tablist .automation-awareness-inbox {
+  display: inline-flex;
+  flex: 0 1 360px;
+  align-items: center;
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-feedback) var(--ease-out);
+}
+.tablist .item:is(:hover, :focus-within, .palette-source) .automation-awareness-inbox {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tablist .automation-awareness-inbox .automation-awareness-copy {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent-strong-ink);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+@container (max-width: 720px) {
+  .tablist .row-subline > .automation-awareness-row { max-width: min(180px, 45%); }
+  .tablist .automation-awareness-inbox { flex-basis: 180px; max-width: 180px; }
+}
+@container (max-width: 390px) {
+  [data-row-info="detailed"] .tablist[data-tablist="open"]
+    .row-subline:has(> .automation-awareness-row) { display: flex; }
+  [data-row-info="detailed"] .tablist[data-tablist="open"]
+    .row-subline:has(> .automation-awareness-row) > :not(.row-recency, .automation-awareness-row) {
+    display: none;
+  }
+  [data-row-info="detailed"] .tablist[data-tablist="open"] .row-recency { display: inline; }
+  .tablist .row-subline > .automation-awareness-row { max-width: min(130px, 55%); }
+  .tablist .automation-awareness-row.has-meter .automation-awareness-meter { display: none; }
+  .tablist .automation-awareness-inbox { flex-basis: 110px; max-width: 110px; }
+}
+@media (hover: none) {
+  .tablist .automation-awareness-row,
+  .tablist .automation-awareness-inbox {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tablist .automation-awareness-row,
+  .tablist .automation-awareness-inbox { transition: none; }
+}
+
+/* The group frame owns the final edge. Palette slots and invisible end-drop
+   targets follow rows, so DOM last-child is not the last visible ledger row.
+   A disclosure remains a separate cell; drag insertion uses its own line. */
+.tablist[data-tablist] .item :is(.tl-rows, .window-block) > .trow:not(:has(~ .trow, ~ .disclosure-row, ~ .activity-entry)),
+.tablist[data-tablist] .item :is(.tl-rows, .window-block) > .activity-entry:not(:has(~ .trow, ~ .activity-entry)),
+.tablist[data-tablist] .item :is(.tl-rows, .window-block) > .disclosure-row {
+  border-bottom-width: 0;
 }

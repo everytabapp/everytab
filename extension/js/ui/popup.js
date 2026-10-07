@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "../lib/failure-diagnostic.js";
 /**
  * Popup — the triage surface (spec: popup-journeys.md).
  * Layout top→bottom: search · [dup hint] · [vault warn] · status strip ·
@@ -10,10 +14,13 @@
  *  - Criterion 5: the shell is appended synchronously (fast first paint); async
  *    data fills in without resizing the shell (reserved heights, in-place text).
  */
+import { faviconSource } from "./favicon-source.js";
 import { openDashboard } from "../lib/actions.js";
-import { findDuplicateGroupsFromTabs, normalizeUrl } from "../lib/dedup.js";
-import { getSettings, listItems } from "../lib/store.js";
-import { tabLabels, saveLabeledCopies } from "../lib/labels.js";
+import { findDuplicateGroupsFromTabs } from "../lib/dedup.js";
+import { duplicateUrlKey, readDuplicateDomainRules } from "../lib/duplicate-domain-rules.js";
+import { getSettings, listItems, readStoreValue } from "../lib/store.js";
+import { saveLabeledCopies } from "../lib/labels.js";
+import { readPopupTabLabels as computeTabLabels } from "./popup-label-data.js";
 import { STORE_KEYS } from "../lib/types.js";
 import { isStarredUrl, starTab, unstarUrl } from "../lib/starred.js";
 import { listActions } from "../lib/journal.js";
@@ -21,6 +28,8 @@ import {
   isHttpTab, ownSuspendedRef, urlOf, canonicalRef, isSaveableTab, saveableTabRef
 } from "../lib/tabs.js";
 import { isSuspendExempt } from "../lib/suspend.js";
+import { readProtectionStatus } from "../lib/automation-protection.js";
+import { buildProtectionPanel, protectionStatusText } from "./automation-protection.js";
 import { linksToMarkdown } from "../lib/export.js";
 import {
   nextWallClockInfo, siteRuleCounts
@@ -28,23 +37,29 @@ import {
 import {
   formatRemaining, blockedSitesSummary, focusPopupDurationInfo
 } from "../lib/focus-copy.js";
-import { applyDocumentLocale, msg as localeMessage } from "../lib/i18n.js";
+import { applyDocumentLocale, applyUiLanguage, msg as localeMessage } from "../lib/i18n.js";
 import { withPending } from "./pending.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
 // E3-0: dev-only perf instrumentation. The real toolbar popup can't carry
 // `?perf=1`, so activation ALSO happens from the hidden settings.perfHud the
 // moment hydrate's own settings read lands; all calls are no-ops otherwise.
 import { activateFromSettings, perfActive, precord, preport } from "../lib/perf.js";
-import { getVaultStatus } from "../vault/vault.js";
-import { el } from "./dom.js";
+import { getVaultStatus, getVaultSyncMeta } from "../vault/vault.js";
+import { el, eventOwnsTextEntry, isComposingKey } from "./dom.js";
 import { icon } from "./icons.js";
 import { createSearchBox } from "./searchbox.js";
 import { createFocusAccessPanel, getFocusAccessStatus } from "./focus-access.js";
 import { createLabelInput } from "./labelinput.js";
-import { buildSnoozePanel as buildSharedSnoozePanel, buildSortChoices } from "./list-helpers.js";
+import { createInlineOrganizationEditor } from "./organization-controls.js";
+import { applyOrganizationMemberPlan } from "../lib/organization.js";
+import {
+  buildSnoozePanel as buildSharedSnoozePanel, buildSortChoices, sessionComboboxButton
+} from "./list-helpers.js";
 import { listSortLabel } from "./list-copy.js";
 import { initTooltips } from "./tooltip.js";
 import { initTheme } from "./theme.js";
 import { createAnchoredPanel, dismissAnchoredPanel } from "./tablist.js";
+import { createSpatialArrowNavigator } from "./arrow-navigation.js";
 import { consumeSearchPopupMode } from "../lib/search-popup.js";
 import {
   popupCloseDuplicates, popupClosedDuplicates, popupCopiedLinks, popupDefaultDuration,
@@ -56,6 +71,9 @@ import {
   popupSuspendedTabs, popupUntilTime, popupUntilTomorrow
 } from "./popup-copy.js";
 
+// The chosen interface language must be in place before the shell paints.
+// hydrate() reads the same cached Settings snapshot, so this adds no storage read.
+await applyUiLanguage((await getSettings()).uiLanguage);
 initTheme();
 applyDocumentLocale();
 document.title = localeMessage("manifest_name");
@@ -68,6 +86,23 @@ const perfScriptStart = performance.now();
 
 const send = (m) => chrome.runtime.sendMessage(m);
 const app = document.getElementById("app");
+let popupFitPending = false;
+
+/** Use ordinary density when it fits, then reclaim only whitespace before any scroll. */
+function fitPopupHeight() {
+  popupFitPending = false;
+  document.body.classList.remove("popup-fit-compact");
+  if (app.scrollHeight > app.clientHeight + 1 ||
+      document.documentElement.scrollHeight > document.documentElement.clientHeight + 1) {
+    document.body.classList.add("popup-fit-compact");
+  }
+}
+
+function schedulePopupFit() {
+  if (popupFitPending) return;
+  popupFitPending = true;
+  queueMicrotask(fitPopupHeight);
+}
 
 /* ---------- message area: confirmation + Undo / Rename ---------- */
 const msgArea = el("div", { class: "msg popup-msg", role: "status", "aria-live": "polite" });
@@ -104,6 +139,7 @@ function renameControl(id, name) {
     // Enter validates. Handle it explicitly (preventDefault stops the implicit
     // form submission from firing doRename a second time).
     input.addEventListener("keydown", (e) => {
+      if (isComposingKey(e)) return;
       if (e.key === "Enter") { e.preventDefault(); doRename(); }
     });
     const form = el("form", { class: "rename-form", onsubmit: (e) => {
@@ -120,13 +156,15 @@ function renameControl(id, name) {
 
 const dupHintSlot = el("div", {});   // J6 (P2a-3)
 const vaultWarnSlot = el("div", {}); // J5 (P2a-2)
+let focusPopupActions = () => {};
 const search = createSearchBox({
   placeholder: localeMessage("search_popup_placeholder"),
   historyPlaceholder: localeMessage("search_popup_history_placeholder"),
   enterFallback: true,
   // P11-05/P11-05r: only the named command autofocuses. Once focused, this
   // popup gets the same chips-then-recents state as every other Search host.
-  autofocusWhen: consumeSearchPopupMode
+  autofocusWhen: consumeSearchPopupMode,
+  escapeToList: () => focusPopupActions()
 });
 const statusStrip = el("div", { class: "statusstrip" }, "…");
 
@@ -137,6 +175,7 @@ const tabTitle = el("span", { class: "th-title" }, "…");
 // any saved Inbox/Archive copy of the same URL) — parity with the dashboard's
 // open-tab row chips. Hidden while empty.
 const tabLabelsSlot = el("div", { class: "tablabels" });
+const tabSuspendStatusSlot = el("div", { class: "tab-suspend-status" });
 /**
  * D4-3d: one action row. The label lives in its own span so a dynamic relabel
  * (Suspend becomes Wake) cannot wipe the icon, and the key hint is rendered only
@@ -144,7 +183,7 @@ const tabLabelsSlot = el("div", { class: "tablabels" });
  * @param {string} iconName @param {string} label @param {string} [key]
  */
 function actionRow(iconName, label, key) {
-  return el("button", { disabled: "" },
+  return el("button", { disabled: "", title: label, "aria-label": label },
     icon(iconName, 15),
     el("span", { class: "lbl" }, label),
     key ? el("span", { class: "k", "aria-hidden": "true" }, key) : null);
@@ -153,23 +192,74 @@ function actionRow(iconName, label, key) {
 function setLabel(btn, text) {
   const lbl = btn.querySelector(".lbl");
   if (lbl) lbl.textContent = text;
+  btn.title = text;
+  btn.setAttribute("aria-label", text);
+}
+let popupSessionTabId = null;
+let popupSessionWindowId = null;
+let tabSessionPending = false;
+let windowSessionPending = false;
+
+async function commitPopupSession(scope, value) {
+  const isTab = scope === "tab";
+  if ((isTab && tabSessionPending) || (!isTab && windowSessionPending)) return false;
+  if (isTab) tabSessionPending = true;
+  else windowSessionPending = true;
+  try {
+    setMsg(popupStatic.saving());
+    const message = isTab
+      ? { type: "save-tabs-session", tabIds: [popupSessionTabId] }
+      : { type: "save-window-session", windowId: popupSessionWindowId };
+    if (value.isNew) {
+      message.name = value.name || undefined;
+      message.organization = value.organization;
+    }
+    else message.sessionId = value.id;
+    const result = await send(message);
+    if (result?.name) {
+      setMsg(popupSavedSession(result.name),
+        value.isNew ? renameControl(result.id, result.name) : null);
+    } else {
+      setMsg(popupStatic.nothingSave());
+    }
+    return Boolean(result?.id);
+  } finally {
+    if (isTab) tabSessionPending = false;
+    else windowSessionPending = false;
+  }
 }
 const dumpTabBtn = actionRow("inbox", popupStatic.saveTabInbox(), "I");
 const snoozeBtn = actionRow("snooze", popupStatic.snooze(), "S");
 const suspendBtn = actionRow("suspend", popupStatic.suspend(), "Z");
+suspendBtn.classList.add("head-utility");
+const keepAwakeBtn = actionRow("shield", popupStatic.keepAwake(), "P");
+keepAwakeBtn.classList.add("head-utility");
 // F16: quick-label — save a labeled copy to Archive and keep the tab open.
 const labelTabBtn = actionRow("labels", popupStatic.label(), "L");
+const tabSessionBtn = sessionComboboxButton(localeMessage("popup_save_in_session"), {
+  iconName: "sessions",
+  title: localeMessage("list_save_tab_session_title"),
+  onOpen: () => closePanelsExcept(),
+  onPick: (value) => commitPopupSession("tab", value)
+});
+tabSessionBtn.setAttribute("data-shortcut-key", "t");
+tabSessionBtn.setAttribute("aria-keyshortcuts", "T");
+tabSessionBtn.append(el("span", { class: "k", "aria-hidden": "true" }, "T"));
+tabSessionBtn.disabled = true;
 // P11-12: Star is state on the named current page, so it lives with the page
 // identity rather than consuming a fifth workflow row.
 const starTabBtn = el("button", {
   class: "tab-star", type: "button", disabled: "",
   title: popupStatic.starTab(), "aria-label": popupStatic.starTab(), "aria-pressed": "false"
 }, icon("star", 15));
+const tabUtilities = el("span", { class: "head-utilities" }, suspendBtn, keepAwakeBtn, starTabBtn);
 const tabReason = el("div", { class: "reason" });
 const tabActions = el("div", { class: "actgrid tab-actions" },
-  dumpTabBtn, snoozeBtn, labelTabBtn, suspendBtn);
+  dumpTabBtn, tabSessionBtn, snoozeBtn, labelTabBtn);
 const snoozePanelTab = el("div", { class: "panel snooze-panel" });
 const snoozePopoverTab = createAnchoredPanel(snoozePanelTab);
+const keepAwakePanelTab = el("div", { class: "panel keep-awake-panel" });
+const keepAwakePopoverTab = createAnchoredPanel(keepAwakePanelTab);
 const labelPanelTab = el("div", { class: "panel label-panel" });
 labelPanelTab.style.display = "none";
 // F16: the label confirmation belongs under THIS TAB, not the shared msg area
@@ -181,15 +271,27 @@ const dumpWinBtn = actionRow("inbox", popupStatic.saveWindowInbox());
 dumpWinBtn.classList.add("window-save");
 const winSnoozeBtn = actionRow("snooze", popupStatic.snooze());
 const suspendOthersBtn = actionRow("suspend", popupStatic.suspendOthers());
-const saveBtn = actionRow("sessions", popupStatic.saveSession());
+suspendOthersBtn.classList.add("head-utility");
+const protectWindowBtn = actionRow("shield", popupStatic.keepAwake());
+protectWindowBtn.classList.add("head-utility");
+const saveBtn = sessionComboboxButton(popupStatic.saveSession(), {
+  iconName: "sessions",
+  title: localeMessage("list_save_window_session_title"),
+  onOpen: () => closePanelsExcept(),
+  onPick: (value) => commitPopupSession("window", value)
+});
+saveBtn.disabled = true;
 // F13: one-shot sort of the current window (same three orders as the dashboard).
 const sortWinBtn = actionRow("organize", popupStatic.sort());
 // F19: copy this window's web pages to the clipboard as a Markdown link list.
 const copyWinBtn = el("button", { class: "group-utility", type: "button", disabled: "" },
   icon("copy", 14), el("span", { class: "lbl" }, popupStatic.copyLinks()));
+const windowUtilities = el("span", { class: "head-utilities" }, suspendOthersBtn, protectWindowBtn, copyWinBtn);
 const winReason = el("div", { class: "reason" });
 const snoozePanelWin = el("div", { class: "panel snooze-panel" });
 const snoozePopoverWin = createAnchoredPanel(snoozePanelWin);
+const protectionPanelWin = el("div", { class: "panel keep-awake-panel" });
+const protectionPopoverWin = createAnchoredPanel(protectionPanelWin);
 const sortPanelWin = el("div", { class: "panel snooze-panel" });
 const sortPopoverWin = createAnchoredPanel(sortPanelWin);
 
@@ -218,24 +320,24 @@ app.append(
   // core actions are full-width rows rather than a grid of boxes.
   el("div", { class: "group" },
     el("div", { class: "tabhead" },
-      el("h2", { class: "group-head" }, popupStatic.thisTab()), tabFav, tabTitle, starTabBtn),
+      el("h2", { class: "group-head" }, popupStatic.thisTab()), tabFav, tabTitle, tabUtilities),
     tabLabelsSlot,
+    tabSuspendStatusSlot,
     tabActions,
     snoozePanelTab,
+    keepAwakePanelTab,
     labelPanelTab,
     labelMsg,
     tabReason),
   el("div", { class: "group" },
     el("div", { class: "group-title-row" },
-      el("h2", { class: "group-head" }, popupStatic.thisWindow()), copyWinBtn),
-    // P11-12r: keep the highest-frequency window action first and full-width,
-    // but use the same quiet command material as every other section.
-    el("div", { class: "actions-row" }, dumpWinBtn),
-    // Four secondary actions form a complete two-column grid. Copy is a quiet
-    // object utility in the heading instead of an orphaned fifth tile.
+      el("h2", { class: "group-head" }, popupStatic.thisWindow()), windowUtilities),
+    // Both objects use the same two-by-two action matrix. Secondary state
+    // controls live beside the object title instead of creating odd-sized rows.
     el("div", { class: "actgrid" },
-      saveBtn, winSnoozeBtn, suspendOthersBtn, sortWinBtn),
+      dumpWinBtn, saveBtn, winSnoozeBtn, sortWinBtn),
     snoozePanelWin,
+    protectionPanelWin,
     sortPanelWin,
     winReason),
   // Confirmations (Saved/Undo/Rename, snooze/suspend results) sit directly under
@@ -258,21 +360,35 @@ app.append(
     el("button", { class: "quiet", onclick: () => openDashboard() }, popupStatic.dashboard()),
     el("button", { class: "quiet", onclick: () => chrome.runtime.openOptionsPage() }, popupStatic.settings()))
 );
+const popupArrowNavigation = createSpatialArrowNavigator({
+  root: document,
+  candidateSelector: ".group button:not([disabled]), .linkrow button:not([disabled])"
+});
+focusPopupActions = () => popupArrowNavigation.focusEntry({ preferLast: true });
 // P2b-4/P11-05: an ordinary toolbar click still does not autofocus Search, so
 // the action rows remain immediately usable. The one explicit exception is the
 // named keyboard command, whose one-shot initialState is owned by searchbox.js.
 const searchInput = search.querySelector("input");
-function isTyping(t) {
-  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
-    t.tagName === "SELECT" || t.isContentEditable);
-}
-/* D4-3d: the four current-tab actions carry the SAME single keys the dashboard
+chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+  if (message?.type !== "focus-popup-search") return;
+  searchInput?.focus({ preventScroll: true });
+  respond({ focused: document.activeElement === searchInput });
+  return true;
+});
+/* The current-tab actions carry the same single keys the dashboard
  * binds on a focused row, so the hint beside each one is the real binding and
  * the muscle memory transfers. A disabled action is skipped rather than
  * silently swallowing the key, and typing always wins. */
-const TAB_KEYS = { i: () => dumpTabBtn, s: () => snoozeBtn, z: () => suspendBtn, l: () => labelTabBtn };
+const TAB_KEYS = {
+  i: () => dumpTabBtn,
+  t: () => tabSessionBtn,
+  s: () => snoozeBtn,
+  z: () => suspendBtn,
+  l: () => labelTabBtn,
+  p: () => keepAwakeBtn
+};
 document.addEventListener("keydown", (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || eventOwnsTextEntry(e, document.activeElement)) return;
   if (e.key === "/") {
     e.preventDefault();
     searchInput?.focus();
@@ -390,6 +506,7 @@ function renderSiteFocus(settings, status) {
     if (isCustom) customInput.focus(); else prevChoice = durationSelect.value;
   });
   customInput.addEventListener("keydown", (e) => {
+    if (isComposingKey(e)) return;
     if (e.key === "Escape") {
       e.preventDefault();
       durationSelect.value = prevChoice; customPanel.style.display = "none";
@@ -434,16 +551,17 @@ function renderSiteFocus(settings, status) {
 
 /* ---------- hydrate (async — no layout shift) ---------- */
 
-function favEl(favUrl) {
-  return favUrl
-    ? el("img", { class: "fav", src: favUrl, alt: "",
+function favEl(favUrl, url = "") {
+  const source = faviconSource({ favIconUrl: favUrl, url });
+  return source
+    ? el("img", { class: "fav", src: source, alt: "",
         onerror: (e) => e.currentTarget.replaceWith(el("span", { class: "fav" })) })
     : el("span", { class: "fav" });
 }
 
-function setFav(target, favUrl) {
-  if (favUrl) {
-    const img = favEl(favUrl);
+function setFav(target, favUrl, url) {
+  if (faviconSource({ favIconUrl: favUrl, url })) {
+    const img = favEl(favUrl, url);
     target.replaceWith(img);
     return img;
   }
@@ -456,14 +574,16 @@ function setFav(target, favUrl) {
  * suspended tabs their underlying-URL equivalence. Recomputed on every popup
  * open, so it auto-clears once the duplicate is resolved.
  */
-function renderDupHint(active, allTabs, groups) {
+function renderDupHint(active, allTabs, groups, duplicateRules) {
   if (!active || !isHttpTab(active)) return;
-  const key = normalizeUrl(urlOf(active));
+  const key = duplicateUrlKey(urlOf(active), duplicateRules);
+  if (!key) return;
   // Only surface the hint when this duplication is also what the badge counts,
   // so the badge and the popup's top row always agree (criterion 4).
   if (!groups.some((g) => g.key === key)) return;
   const twins = allTabs.filter(
-    (t) => t.id !== active.id && isHttpTab(t) && normalizeUrl(urlOf(t)) === key
+    (t) => t.id !== active.id && isHttpTab(t) &&
+      duplicateUrlKey(urlOf(t), duplicateRules) === key
   );
   if (twins.length === 0) return;
   const existing = twins.reduce((a, b) => (a.id < b.id ? a : b)); // oldest open copy
@@ -471,7 +591,7 @@ function renderDupHint(active, allTabs, groups) {
 
   dupHintSlot.replaceChildren(
     el("div", { class: "banner" },
-      favEl(existing.favIconUrl),
+      favEl(existing.favIconUrl, urlOf(existing)),
       el("div", { class: "banner-body" },
         el("div", { class: "btext" }, popupDuplicateHint(where))),
       el("button", { class: "primary", onclick: () => {
@@ -484,13 +604,14 @@ function renderDupHint(active, allTabs, groups) {
 }
 
 async function hydrate() {
-  const [settings, activeTabs, winTabs, allTabs, inbox, snoozes] = await Promise.all([
+  const [settings, activeTabs, winTabs, allTabs, inbox, snoozes, duplicateRules] = await Promise.all([
     getSettings(),
     chrome.tabs.query({ active: true, currentWindow: true }),
     chrome.tabs.query({ currentWindow: true }),
     chrome.tabs.query({}),
     listItems(STORE_KEYS.inbox),
-    listItems(STORE_KEYS.snoozes)
+    listItems(STORE_KEYS.snoozes),
+    readDuplicateDomainRules()
   ]);
   activateFromSettings(settings); // E3-0: hidden perfHud → instrument this fill
   const [active] = activeTabs;
@@ -498,13 +619,15 @@ async function hydrate() {
   const suspendedRef = active ? ownSuspendedRef(active) : null;
   const activeCapture = active ? saveableTabRef(active) : null;
   const starredRef = activeCapture;
-  const groups = findDuplicateGroupsFromTabs(allTabs);
-  const [initialStarred, initialLabels, focusSnapshot, vaultSnapshot] = await Promise.all([
+  const groups = findDuplicateGroupsFromTabs(allTabs, duplicateRules);
+  const [initialStarred, initialLabels, initialSuspendExemptions, focusSnapshot, vaultSnapshot] = await Promise.all([
     starredRef ? isStarredUrl(starredRef.url) : false,
-    activeCapture ? computeTabLabels(active) : [],
+    activeCapture ? computeTabLabels(active, { inbox }) : [],
+    activeCapture ? readProtectionStatus(active.id) : { kind: "none", protected: false },
     readFocusSnapshot(),
     readVaultWarning()
   ]);
+  let keepAwakeStatus = initialSuspendExemptions;
 
   /* --- publish one useful popup state after the independent reads settle --- */
   const endToday = new Date();
@@ -531,7 +654,7 @@ async function hydrate() {
   /* --- THIS TAB (J2) --- */
   tabTitle.textContent =
     suspendedRef?.title || active?.title || active?.url || popupStatic.noActiveTab();
-  setFav(tabFav, suspendedRef?.favIconUrl ?? active?.favIconUrl);
+  setFav(tabFav, suspendedRef?.favIconUrl ?? active?.favIconUrl, suspendedRef?.url ?? (active ? urlOf(active) : ""));
 
   if (active && activeCapture) {
     tabActions.hidden = false;
@@ -554,6 +677,8 @@ async function hydrate() {
     // tab OPEN — it saves a labeled copy to the Archive (parity with the
     // dashboard's card-level Label), never closes the tab.
     labelTabBtn.disabled = false;
+    popupSessionTabId = active.id;
+    tabSessionBtn.disabled = false;
     labelTabBtn.onclick = () => toggleLabel(labelPanelTab, active, activeCapture);
     let starred = initialStarred;
     const paintStar = () => {
@@ -579,6 +704,20 @@ async function hydrate() {
     };
     renderTabLabels(initialLabels); // show any labels this page already carries
     suspendBtn.disabled = false;
+    keepAwakeBtn.disabled = false;
+    renderKeepAwakeStatus(keepAwakeStatus);
+    keepAwakeBtn.onclick = (event) => {
+      labelPanelTab.style.display = "none";
+      keepAwakePopoverTab.anchor(event.currentTarget);
+      keepAwakePopoverTab.toggle(() => buildProtectionPanel(active.id, {
+        close: (options) => keepAwakePopoverTab.close(options),
+        openSettings: suspensionSettings,
+        onChanged: (next) => {
+          keepAwakeStatus = next;
+          renderKeepAwakeStatus(next);
+        }
+      }), "protection");
+    };
     if (suspendedRef) {
       // The memory action on a suspended tab is Wake, not Suspend.
       setLabel(suspendBtn, popupStatic.wakeTab());
@@ -592,6 +731,7 @@ async function hydrate() {
     }
   } else {
     tabActions.hidden = true;
+    tabSuspendStatusSlot.replaceChildren();
     tabReason.textContent = active?.incognito
       ? popupStatic.privateTab()
       : popupStatic.unsupportedPage();
@@ -616,17 +756,24 @@ async function hydrate() {
   }
 
   if (saveable.length > 0) {
+    popupSessionWindowId = active?.windowId;
     saveBtn.disabled = false;
-    saveBtn.onclick = (e) => withPending(e.currentTarget, async () => {
-      // Immediate feedback + one-in-flight guard: without these a click looked
-      // like a broken no-op, and repeat clicks each created a whole new session.
-      setMsg(popupStatic.saving());
-      const res = await send({ type: "save-window-session", windowId: active?.windowId });
-      if (res?.name) setMsg(popupSavedSession(res.name), renameControl(res.id, res.name));
-      else setMsg(popupStatic.nothingSave());
-    });
     // P2b-1: snooze the whole window — reuses the same preset/recurrence panel.
     winSnoozeBtn.disabled = false;
+    protectWindowBtn.disabled = false;
+    protectWindowBtn.onclick = (event) => {
+      labelPanelTab.style.display = "none";
+      protectionPopoverWin.anchor(event.currentTarget);
+      protectionPopoverWin.toggle(() => buildProtectionPanel({ windowId: active.windowId }, {
+        close: (options) => protectionPopoverWin.close(options),
+        openSettings: suspensionSettings,
+        onChanged: async () => {
+          if (!activeCapture) return;
+          keepAwakeStatus = await readProtectionStatus(active.id);
+          renderKeepAwakeStatus(keepAwakeStatus);
+        }
+      }), "protection");
+    };
     winSnoozeBtn.onclick = (event) => {
       labelPanelTab.style.display = "none";
       snoozePopoverWin.anchor(event.currentTarget);
@@ -676,7 +823,7 @@ async function hydrate() {
 
   /* --- dup hint (J6) + bulk "Close N duplicates" (J5) --- */
   const dupCount = groups.reduce((n, g) => n + g.close.length, 0);
-  renderDupHint(active, allTabs, groups);
+  renderDupHint(active, allTabs, groups, duplicateRules);
   if (dupCount > 0) {
     dupCloseSlot.replaceChildren(
       el("div", { class: "group duplicates-group" },
@@ -710,7 +857,7 @@ async function hydrate() {
 async function readVaultWarning() {
   let status;
   try { status = await getVaultStatus(); } catch { return null; }
-  const meta = (await chrome.storage.local.get("vaultMeta")).vaultMeta;
+  const meta = await getVaultSyncMeta();
   const warn =
     status.state === "needs-permission" ||
     status.state === "error" ||
@@ -736,15 +883,23 @@ function renderVaultWarning(text) {
 // closes the rest (interaction-model P3: at most one panel open at a time).
 const INLINE_PANELS = [labelPanelTab];
 
+function closePanelsExcept(panel = null) {
+  dismissAnchoredPanel();
+  for (const candidate of INLINE_PANELS) {
+    if (candidate !== panel) candidate.style.display = "none";
+  }
+}
+
 /** F16: toggle the quick-label panel; opening it closes any open snooze/sort panel. */
 function toggleLabel(panel, tab, ref) {
-  dismissAnchoredPanel();
   const open = panel.style.display !== "none";
-  for (const p of INLINE_PANELS) if (p !== panel) p.style.display = "none";
+  closePanelsExcept(panel);
   if (open) { panel.style.display = "none"; return; }
   labelMsg.textContent = ""; // clear any prior confirmation as we reopen
-  buildLabelPanel(panel, tab, ref);
+  // A display:none descendant cannot become the active element. Reveal the
+  // panel before buildLabelPanel gives the text field immediate focus.
   panel.style.display = "block";
+  buildLabelPanel(panel, tab, ref);
 }
 
 /**
@@ -756,53 +911,83 @@ function toggleLabel(panel, tab, ref) {
  * @param {import("../lib/types.js").TabRef|null} ref
  */
 function buildLabelPanel(panel, tab, ref) {
-  const save = async () => {
+  let savePending = false;
+  let tags;
+  const organizer = createInlineOrganizationEditor({ kind: "label", onSubmit: () => saveButton.click() });
+  const syncOrganizer = async () => {
+    if (!tags) return;
     const labels = tags.getLabels();
-    // Confirmations/nudges go to labelMsg (under This tab), not the shared msg
-    // area below This window.
-    if (labels.length === 0) { labelMsg.textContent = popupStatic.typeLabelFirst(); return; }
-    if (!ref) { labelMsg.textContent = popupStatic.cannotLabel(); panel.style.display = "none"; return; }
+    await organizer.setMembers(labels.map((name) => ({ key: name, name })));
+  };
+  const finish = async (entries, organizationPlan = null) => {
+    const labels = entries.map((entry) => entry.name);
     await saveLabeledCopies([ref], labels);
+    if (organizationPlan) {
+      const grouped = await applyOrganizationMemberPlan("label", organizationPlan);
+      if (grouped?.ok === false) reportFailure("Label group assignment");
+    }
     labelMsg.textContent = popupLabeledWith(labels);
     panel.style.display = "none";
-    await refreshTabLabels(tab); // reflect the new labels immediately
+    await refreshTabLabels(tab);
+  };
+  const save = async () => {
+    if (savePending) return;
+    savePending = true;
+    saveButton.disabled = true;
+    let entries;
+    try {
+      entries = await tags.getEntries();
+    } catch (error) {
+      reportFailure("Label choices read", error, console.error);
+      labelMsg.textContent = localeMessage("list_save_failed");
+      savePending = false;
+      saveButton.disabled = false;
+      return;
+    }
+    const labels = entries.map((entry) => entry.name);
+    // Confirmations/nudges go to labelMsg (under This tab), not the shared msg
+    // area below This window.
+    if (labels.length === 0) {
+      labelMsg.textContent = popupStatic.typeLabelFirst();
+      savePending = false;
+      saveButton.disabled = false;
+      return;
+    }
+    if (!ref) {
+      labelMsg.textContent = popupStatic.cannotLabel();
+      panel.style.display = "none";
+      return;
+    }
+    try {
+      await organizer.setMembers(entries.map((entry) => ({
+        key: entry.name, name: entry.name, isNew: entry.isNew
+      })));
+      await finish(entries, await organizer.getPlan());
+    } catch (error) {
+      reportFailure("Label save", error, console.error);
+      labelMsg.textContent = localeMessage("list_save_failed");
+      savePending = false;
+      saveButton.disabled = false;
+    }
   };
   // N13: Enter on the emptied input applies (type a label → Enter → Enter).
   // N22: a second Esc (or Esc with the dropdown closed) backs out to the button.
-  const tags = createLabelInput({
+  tags = createLabelInput({
     placeholder: popupStatic.labelsPlaceholder(),
     onSubmit: save,
-    onCancel: () => { panel.style.display = "none"; labelTabBtn.focus(); }
+    onCancel: () => { panel.style.display = "none"; labelTabBtn.focus(); },
+    onChange: () => { void syncOrganizer(); }
   });
-  panel.replaceChildren(
+  const saveButton = el("button", { class: "primary label-save", onclick: save }, popupStatic.saveLabeledCopy());
+  const baseNodes = [
     tags.element,
-    el("button", { class: "primary label-save", onclick: save }, popupStatic.saveLabeledCopy()),
+    organizer.element,
+    saveButton,
     el("div", { class: "reason" }, popupStatic.labelExplanation())
-  );
+  ];
+  panel.replaceChildren(...baseNodes);
   // Focus the input so the user can type immediately.
-  tags.element.querySelector(".taginput")?.focus();
-}
-
-/**
- * F16 (nit) — the labels this page already carries: the union of labels on any
- * saved Inbox/Archive copy of the same (normalized) URL. Same matching as the
- * dashboard's open-tab row chips.
- * @param {chrome.tabs.Tab} tab @returns {Promise<string[]>}
- */
-async function computeTabLabels(tab) {
-  const ref = canonicalRef(tab);
-  if (!ref) return [];
-  const key = normalizeUrl(ref.url);
-  const out = new Set();
-  for (const store of [STORE_KEYS.inbox, STORE_KEYS.archive]) {
-    for (const item of await listItems(store)) {
-      for (const t of item.tabs) {
-        if (normalizeUrl(t.url) !== key) continue;
-        for (const l of tabLabels(item, t)) out.add(l);
-      }
-    }
-  }
-  return [...out];
+  tags.element.querySelector(".taginput")?.focus({ preventScroll: true });
 }
 
 /**
@@ -869,10 +1054,47 @@ function buildSnoozePanel(target, controller) {
   });
 }
 
-hydrate().finally(() => document.body.classList.add("popup-ready"));
+function suspensionSettings() {
+  openDashboard("settings:protection");
+  window.close();
+}
+
+function keepAwakeStatusText(status) {
+  return protectionStatusText(status);
+}
+
+/** Persistently show the current page exception each time the popup opens. */
+function renderKeepAwakeStatus(status) {
+  const text = keepAwakeStatusText(status);
+  const active = Boolean(text);
+  keepAwakeBtn.classList.toggle("is-active", status?.protected === true);
+  setLabel(keepAwakeBtn, active ? text : popupStatic.keepAwake());
+  if (!active) {
+    tabSuspendStatusSlot.replaceChildren();
+    return;
+  }
+  tabSuspendStatusSlot.replaceChildren(...[
+    status?.protected ? icon("shield", 13) : null,
+    el("span", { class: "tab-suspend-status-text", title: text }, text),
+    el("button", { type: "button", class: "tab-suspend-manage", onclick: suspensionSettings },
+      popupStatic.manageSuspension())
+  ].filter(Boolean));
+}
+
+
+new MutationObserver(schedulePopupFit).observe(app, {
+  childList: true, subtree: true, characterData: true,
+  attributes: true, attributeFilter: ["class", "hidden", "style"]
+});
+
+hydrate().finally(() => {
+  document.body.classList.add("popup-ready");
+  schedulePopupFit();
+});
 
 // A notification action or another EveryTab surface can move this boundary while the
 // popup is open. Refresh only the small access band; it never rebuilds the action groups.
 chrome.storage.onChanged.addListener((changes, area) => {
+  changes = expandStorageChanges(changes);
   if (area === "local" && changes.focusTemporaryAccess) focusAccessPanel.refresh();
 });

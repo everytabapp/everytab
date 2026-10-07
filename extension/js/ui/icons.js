@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Monochrome line-icon set — one consistent vocabulary in `currentColor`, so
  * every icon inherits its context's ink/accent and renders identically on every
@@ -5,7 +8,8 @@
  * the type system, not decoration). Stroke-based, 24×24 grid, Lucide-derived.
  *
  * SVG can't be built with the `el` helper (wrong namespace), so we set the
- * inner markup directly — parsed in the SVG namespace by the browser.
+ * inner markup directly — parsed in the SVG namespace by the browser. That
+ * parse happens once per icon name; every further instance is a deep clone.
  */
 const NS = "http://www.w3.org/2000/svg";
 
@@ -24,9 +28,13 @@ const PATHS = {
   stats: '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-4"/>',
   activity: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 2"/>',
   data: '<path d="M17 3l4 4-4 4"/><path d="M21 7H9"/><path d="M7 21l-4-4 4-4"/><path d="M3 17h12"/>',
+  search: '<circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/>',
+  folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l3 3h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
+  file: '<path d="M6 2.5h8l4 4v15H6z"/><path d="M14 2.5v4h4"/>',
   vault: '<rect x="4" y="10.5" width="16" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/><circle cx="12" cy="15.5" r="1.4" fill="currentColor" stroke="none"/>',
-  settings: '<path d="M4 21v-6"/><path d="M4 11V3"/><path d="M12 21v-8"/><path d="M12 9V3"/><path d="M20 21v-4"/><path d="M20 13V3"/><path d="M2 15h4"/><path d="M10 9h4"/><path d="M18 13h4"/>',
+  settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   suspend: '<path d="M12 3v18"/><path d="M3 12h18"/><path d="m5.6 5.6 12.8 12.8"/><path d="m18.4 5.6-12.8 12.8"/>',
+  shield: '<path d="M12 3 20 6v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z"/><path d="m8.8 12 2.1 2.1 4.5-4.6"/>',
   play: '<path d="M7 4.5v15l12-7.5z"/>',
   // Ending a Focus run is a stop, not a moon: the moon already means snooze
   // everywhere else in the product, so reusing it here read as "sleep".
@@ -34,6 +42,9 @@ const PATHS = {
   refresh: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
   pin: '<path d="M12 17v5"/><path d="M15 4.5 19.5 9M9 10.8a2 2 0 0 1-1.1 1.8l-2.4 1.2 6.7 6.7 1.2-2.4a2 2 0 0 1 1.8-1.1M9 10.8 4.5 6.3M9 10.8l4.7-4.7M13.7 6.1 18.4 10.8"/>',
   star: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.4 6.3-.9z"/>',
+  // Favorite proposal F: compact enough to stay optically centred in a
+  // 28–30px control, with an inner cavity that remains legible when filled.
+  favorite: '<path d="M12 4.3 14.12 9.09 19.32 9.62 15.42 13.11 16.53 18.23 12 15.6 7.47 18.23 8.58 13.11 4.68 9.62 9.88 9.09Z"/>',
   volume: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>',
   /* User-approved pointed teal stack/keeper mark on the supplied 1024 square canvas. */
   mark: '<g transform="scale(.0234375)" stroke="none"><path fill="#1E4A49" d=" M266.000000,439.013153 C472.479462,439.020477 678.458923,439.049896 884.438416,438.974548 C895.831177,438.970398 906.163818,441.665192 915.383362,448.358582 C929.079346,458.301849 935.726562,472.183075 935.831482,488.698242 C936.153381,539.357788 936.336914,590.024536 935.830505,640.681030 C935.442932,679.450562 920.523315,713.233765 897.386047,743.668884 C871.810181,777.311768 839.953369,804.283569 805.846069,828.761902 C753.511719,866.321594 697.748230,898.161011 640.083984,926.652283 C614.462830,939.311401 588.108643,950.489014 562.068359,962.297424 C529.210205,977.197571 496.258911,977.008850 463.488159,962.248962 C435.604889,949.690369 407.636780,937.266357 380.210114,923.759644 C334.502136,901.250061 290.243317,876.092224 247.709030,847.983582 C213.442459,825.338562 180.878464,800.532898 152.269485,770.915527 C129.889175,747.746399 110.815315,722.283142 99.732422,691.570801 C93.343338,673.865723 89.993271,655.634338 89.990143,636.803772 C89.982025,587.975281 89.905182,539.146667 90.015884,490.318420 C90.076675,463.506439 107.532089,443.249634 133.535095,439.415466 C135.501389,439.125519 137.518845,439.094055 139.512650,439.092194 C181.508423,439.052765 223.504211,439.034943 266.000000,439.013153 M554.771973,724.271301 C575.049622,704.018250 595.363525,683.801392 615.592712,663.500000 C630.410706,648.629089 645.340698,633.859680 659.806458,618.651001 C672.424255,605.385315 673.418457,585.960876 662.930298,571.397217 C650.292725,553.849182 623.563599,548.947632 604.158752,568.608582 C569.517578,603.706970 534.673584,638.605347 499.896820,673.569946 C493.605408,679.895386 487.230133,686.137390 480.645569,692.663696 C477.157318,689.068848 474.065582,685.806030 470.891998,682.624939 C453.711853,665.404053 436.554108,648.160400 419.298859,631.014954 C411.430389,623.196594 401.742462,619.431702 390.733093,620.337463 C374.809570,621.647522 363.358032,629.965149 358.066162,645.010010 C352.868134,659.788208 356.326202,673.220703 367.537811,684.418152 C396.067474,712.911560 424.695892,741.307007 453.099823,769.925171 C469.311035,786.258667 491.714508,786.787109 508.191162,770.591919 C523.639160,755.407715 538.917419,740.050781 554.771973,724.271301 z"/><path fill="#286766" d="M 171.097 309.992 C 269.955 309.961 368.382 309.909 466.809 309.929 C 595.615 309.956 724.421 310.047 853.227 310.097 C 879.677 310.108 899.036 327.842 899.114 352.312 C 899.179 372.706 899.123 393.1 899.121 413.493 C 899.121 414.742 899.121 415.991 899.121 417.59 C 642.082 417.59 385.322 417.59 128.243 417.59 C 128.156 416.38 127.994 415.164 127.994 413.948 C 127.98 393.554 127.927 373.161 128.007 352.767 C 128.1 329.159 145.226 312.052 171.097 309.992 Z"/><path fill="#378A89" d="M 376.852 203.499 C 524.956 203.514 672.605 203.734 820.252 203.36 C 847.467 203.29 868.032 222.855 867.317 246.829 C 866.906 260.603 867.229 274.395 867.203 288.18 C 867.201 289.406 867.066 290.633 866.977 292.126 C 631.326 292.126 395.947 292.126 160.288 292.126 C 160.169 290.901 159.974 289.823 159.972 288.743 C 159.946 274.537 159.879 260.331 159.958 246.125 C 160.094 221.334 179.184 203.599 205.962 203.559 C 262.773 203.475 319.584 203.512 376.852 203.499 Z"/><path fill="#47ADAA" d="M 318.515 186.822 C 279.21 186.821 240.359 186.821 201.06 186.821 C 200.959 184.871 200.817 183.382 200.815 181.893 C 200.796 171.908 200.781 161.924 200.811 151.94 C 200.889 126.096 219.457 108.967 247.491 108.963 C 367.772 108.944 488.051 108.944 608.331 108.949 C 666.496 108.951 724.662 108.889 782.826 109.057 C 799.301 109.104 812.106 116.055 820.295 129.247 C 823.17 133.877 825.475 139.446 825.764 144.694 C 826.519 158.411 826.018 172.187 826.018 186.823 C 656.91 186.823 487.941 186.823 318.515 186.822 Z"/><path fill="#FEFEFE" d=" M554.521118,724.520630 C538.917419,740.050781 523.639160,755.407715 508.191162,770.591919 C491.714508,786.787109 469.311035,786.258667 453.099823,769.925171 C424.695892,741.307007 396.067474,712.911560 367.537811,684.418152 C356.326202,673.220703 352.868134,659.788208 358.066162,645.010010 C363.358032,629.965149 374.809570,621.647522 390.733093,620.337463 C401.742462,619.431702 411.430389,623.196594 419.298859,631.014954 C436.554108,648.160400 453.711853,665.404053 470.891998,682.624939 C474.065582,685.806030 477.157318,689.068848 480.645569,692.663696 C487.230133,686.137390 493.605408,679.895386 499.896820,673.569946 C534.673584,638.605347 569.517578,603.706970 604.158752,568.608582 C623.563599,548.947632 650.292725,553.849182 662.930298,571.397217 C673.418457,585.960876 672.424255,605.385315 659.806458,618.651001 C645.340698,633.859680 630.410706,648.629089 615.592712,663.500000 C595.363525,683.801392 575.049622,704.018250 554.521118,724.520630 z"/></g>',
@@ -45,6 +56,7 @@ const PATHS = {
      generic Back control. Both directions keep exactly the same footprint. */
   navcollapse: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><rect x="3.5" y="3.5" width="6" height="17" rx="1.6" fill="currentColor" stroke="none" opacity=".18"/><path d="m16 9-3 3 3 3"/>',
   navexpand: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><rect x="3.5" y="3.5" width="6" height="17" rx="1.6" fill="currentColor" stroke="none" opacity=".18"/><path d="m13 9 3 3-3 3"/>',
+  back: '<path d="m15 18-6-6 6-6"/><path d="M9 12h10"/>',
   switch: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
   move: '<path d="M4 12h15"/><path d="m15 8 4 4-4 4"/>',
   add: '<path d="M12 5v14M5 12h14"/>',
@@ -58,23 +70,40 @@ const PATHS = {
   cluster: '<rect x="9" y="2" width="6" height="5" rx="1.5"/><rect x="3" y="17" width="6" height="5" rx="1.5"/><rect x="15" y="17" width="6" height="5" rx="1.5"/><path d="M12 7v4M6 17v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>'
 };
 
-/**
- * @param {keyof typeof PATHS} name
- * @param {number} [size]
- * @returns {SVGElement}
- */
-export function icon(name, size = 18) {
+function buildIcon(name, size) {
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("width", String(size));
   svg.setAttribute("height", String(size));
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.75");
+  svg.setAttribute("stroke-width", name === "favorite" ? "1.65" : "1.75");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("class", "ic");
   svg.innerHTML = PATHS[name] ?? "";
+  return svg;
+}
+
+/** Parsed once per name; `icon()` deep-clones the template and sizes the copy. */
+const TEMPLATES = new Map();
+
+/**
+ * @param {keyof typeof PATHS} name
+ * @param {number} [size]
+ * @returns {SVGElement}
+ */
+export function icon(name, size = 18) {
+  let template = TEMPLATES.get(name);
+  if (!template) {
+    template = buildIcon(name, size);
+    // Minimal DOM doubles without cloneNode keep the per-instance parse.
+    if (typeof template.cloneNode !== "function") return template;
+    TEMPLATES.set(name, template);
+  }
+  const svg = template.cloneNode(true);
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
   return svg;
 }

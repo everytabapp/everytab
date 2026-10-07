@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
@@ -117,7 +117,7 @@ async function waitForResult(client, width) {
 }
 
 const profile = await mkdtemp(`${tmpdir()}/everytab-close-day-ui-`);
-const chrome = spawn(chromeBin, [
+const chrome = spawnOwnedChrome(chromeBin, [
   "--headless=new", "--disable-gpu", "--disable-background-networking",
   "--disable-component-update", "--disable-default-apps", "--no-first-run",
   "--allow-file-access-from-files", "--remote-debugging-port=0",
@@ -138,6 +138,6 @@ try {
   }
 } finally {
   client?.close();
-  chrome.kill("SIGTERM");
+  await terminateOwnedChrome(chrome);
   await rm(profile, { recursive: true, force: true });
 }

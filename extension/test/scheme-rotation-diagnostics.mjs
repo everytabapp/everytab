@@ -1,23 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { createSchemeRotationDiagnostics as createDiagnostics } from
+  "../js/background/scheme-rotation-trace.js";
 
 const backgroundUrl = new URL("../js/background.js", import.meta.url);
 const source = await readFile(backgroundUrl, "utf8");
-const startMarker = "/* scheme-rotation-diagnostics:test-seam:start */";
-const endMarker = "/* scheme-rotation-diagnostics:test-seam:end */";
-const start = source.indexOf(startMarker);
-const end = source.indexOf(endMarker);
-assert.ok(start >= 0 && end > start, "background exposes the diagnostics test seam");
-
-const context = vm.createContext({ structuredClone });
-vm.runInContext(
-  `${source.slice(start + startMarker.length, end)}\n` +
-  "globalThis.createDiagnostics = createSchemeRotationDiagnostics;",
-  context
-);
-const createDiagnostics = context.createDiagnostics;
 const themeUrl = new URL("../js/ui/theme.js", import.meta.url);
 const themeSource = await readFile(themeUrl, "utf8");
 const pageStartMarker = "/* scheme-rotation-page-paint:test-seam:start */";
@@ -137,7 +125,7 @@ diagnostics.recordStorageChange({
     oldValue: { commitToken: "secret-token" },
     newValue: { commitToken: "another-secret-token" }
   },
-  vaultMeta: {
+  vaultMetaV2: {
     oldValue: {
       lastSyncAt: 111,
       ok: false,
@@ -214,32 +202,7 @@ assert.deepEqual(
   "re-arming clears prior operational events but keeps worker identity"
 );
 
-assert.match(source, /scheme-rotation-diagnostics-arm/);
-assert.match(source, /scheme-rotation-diagnostics/);
-assert.match(source, /scheme-rotation-diagnostics-page-paint/);
-assert.match(source, /schemeRotationDiagnostics\.recordStorageChange\(changes, area\)/);
-for (const event of [
-  "readiness-received",
-  "task-missing-tab",
-  "task-coalesced",
-  "task-already-handled",
-  "task-start",
-  "task-complete",
-  "task-failure",
-  "page-paint"
-]) {
-  assert.ok(source.includes(`"${event}"`), `background records ${event}`);
-}
-assert.match(
-  source,
-  /return \{ ok: true, result \};/,
-  "the successful New Tab readiness response stays behavior-compatible"
-);
-assert.match(
-  source,
-  /return Promise\.resolve\(\{ ok: true, alreadyHandled: true \}\)/,
-  "the already-handled response stays behavior-compatible"
-);
+assert.match(source, /recordStorageChange: schemeRotationDiagnostics\.recordStorageChange/);
 assert.match(
   themeSource,
   /diagnosticsCapture = response\?\.diagnosticsCapture \?\? null/,

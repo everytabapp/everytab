@@ -1,6 +1,5 @@
 {
-  "name": "tabvault",
-  "version": "0.0.1",
+  "name": "everytab",
   "private": true,
   "type": "module",
   "description": "No build step: this folder loads directly via chrome://extensions → Load unpacked. package.json exists only so node treats .js as ES modules for syntax checks (node --check)."

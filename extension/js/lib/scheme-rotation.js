@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** D3 — no-repeat scheme rotation and its single alarm. */
 import { DEFAULT_SETTINGS, STORE_KEYS } from "./types.js";
 import { getSettings, mutateStores } from "./store.js";
@@ -14,9 +17,11 @@ export function rotationPool(favorites = [], customRecords = []) {
   const availableSet = new Set(available);
   const wanted = new Set((Array.isArray(favorites) ? favorites : [])
     // Favorites are a filter, not an active-theme fallback. Silently ignore an
-    // unavailable value instead of turning it into Cream; keep the one legacy
-    // built-in alias that predates the Matcha rename.
-    .map((id) => ({ everforest: "matcha", catppuccin: "dracula", rosepine: "dracula" }[id] ?? id))
+    // unavailable value instead of turning it into Cream. Compatibility aliases
+    // preserve the user's existing favorite intent after a built-in is retired.
+    .map((id) => ({
+      everforest: "matcha", catppuccin: "dracula", rosepine: "dracula", perestroika: "jamon"
+    }[id] ?? id))
     .filter((id) => availableSet.has(id)));
   const valid = available.filter((id) => wanted.has(id));
   return valid.length ? valid : available;

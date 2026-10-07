@@ -1,28 +1,48 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "../lib/failure-diagnostic.js";
 /**
  * M6 — shared settings form. Mounted by both the dashboard Settings page and
  * the standalone options page, so there is exactly one source of truth for
  * what the settings UI contains.
  */
-import { getSettings, listItems, patchSettings } from "../lib/store.js";
+import { getSettings, listItems, patchSettings, readStoreValue } from "../lib/store.js";
 import { DEFAULT_SETTINGS, STORE_KEYS } from "../lib/types.js";
+import {
+  normalizeWelcomePhrases, WELCOME_PHRASE_MAX_COUNT, WELCOME_PHRASE_MAX_LENGTH
+} from "../lib/welcome-phrases.js";
 import {
   availableSchemeIds, customSchemeCatalogue
 } from "../lib/custom-schemes.js";
 import { canonicalizeDomain, ruleIndexForDomain } from "../lib/focus.js";
+import { formatRemaining } from "../lib/focus-copy.js";
+import {
+  exactSuspendPageRule, exactSuspendPageUrl, listAutoSuspendPageExceptions,
+  removeAutoSuspendPageException,
+  TEMPORARY_SUSPEND_EXEMPTIONS_KEY
+} from "../lib/suspend.js";
 import { hasTabGroupsPermission, ensureTabGroupsPermission } from "../lib/tab-groups.js";
 import {
   hasHistoryAccess, requestHistoryAccess, removeHistoryAccess, onHistoryAccessChanged
 } from "../lib/history-access.js";
-import { el } from "./dom.js";
+import { el, isComposingKey } from "./dom.js";
+import { icon } from "./icons.js";
+import { msg } from "../lib/i18n.js";
+import {
+  listTemporaryTabProtections, removeTemporaryTabProtection, patchAutomationProtectionSettings
+} from "../lib/automation-protection.js";
 import { historyAccessCopy } from "./history-access-copy.js";
-import { SCHEMES, SCHEME_LABELS, SCHEME_ACCENTS, SCHEME_GROUPS } from "./theme.js";
+import { SCHEME_LABELS, SCHEME_ACCENTS, SCHEME_GROUPS } from "./theme.js";
 import { renderShortcutList, renderBrowserCommands } from "./shortcuts.js";
 import { createCustomSchemeSettings } from "./custom-schemes-settings.js";
 import { createAutomationThresholdControls } from "./automation-threshold-controls.js";
+import { createNewTabChoices } from "./new-tab-choices.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
 import {
-  settingsExceptionDescription, settingsFavoriteAria,
+  settingsApplySchemeAria, settingsExceptionDescription, settingsFavoriteAria,
   settingsFavoritesHelp, settingsFavoritesSummary, settingsGroupTitle, settingsInvalidSite,
-  settingsOptions, settingsRowCopy, settingsSchemeGroupLabel, settingsStatic
+  settingsLanguageOptions, settingsOptions, settingsRowCopy, settingsSchemeGroupLabel, settingsStatic
 } from "./settings-copy.js";
 
 /**
@@ -53,8 +73,17 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
   const update = async (patch) => {
     // Publish the local choice synchronously for dependent controls whose
     // handlers intentionally do not await persistence.
+    const previous = settings;
     settings = { ...settings, ...patch };
-    await patchSettings(patch);
+    try {
+      if ("archiveWhitelist" in patch || "suspendWhitelist" in patch) {
+        await patchAutomationProtectionSettings(patch);
+      } else await patchSettings(patch);
+    } catch (error) {
+      // Do not let a rejected optimistic choice return on the next form sync.
+      settings = await getSettings().catch(() => previous);
+      throw error;
+    }
     // Re-read the committed merge instead of retaining a whole-form snapshot.
     // Hidden retired keys and concurrent writes from other surfaces therefore
     // survive an unrelated Settings edit byte-for-byte.
@@ -108,23 +137,87 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     return sel;
   };
 
-  // A newline-separated URL-pattern list bound to a settings key (used by both
-  // "Keep these tabs open" and F9's "Never suspend these").
-  const patternList = (key) => {
+  // A newline-separated URL-pattern list bound to one or more compatibility
+  // keys. Shared automation protection writes both historical aliases so an
+  // edit, including a removal, cannot be resurrected by the other old list.
+  const patternList = (keyOrKeys, {
+    visible = (values) => values,
+    merged = (values) => values
+  } = {}) => {
+    const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
+    const value = () => settings[keys[0]] ?? [];
     const ta = el("textarea", {
       rows: 3,
       placeholder: settingsStatic.patternsPlaceholder(),
-      onchange: (e) =>
-        update({ [key]: e.currentTarget.value.split("\n").map((l) => l.trim()).filter(Boolean) })
+      onchange: (e) => {
+        const next = merged(
+          e.currentTarget.value.split("\n").map((l) => l.trim()).filter(Boolean),
+          value()
+        );
+        return update(Object.fromEntries(keys.map((key) => [key, next])));
+      }
     });
-    ta.value = (settings[key] ?? []).join("\n");
+    ta.value = visible(value()).join("\n");
     syncers.push(() => {
-      if (document.activeElement !== ta) ta.value = (settings[key] ?? []).join("\n");
+      if (document.activeElement !== ta) ta.value = visible(value()).join("\n");
     });
     return ta;
   };
-  const whitelist = patternList("archiveWhitelist");
-  const suspendWhitelist = patternList("suspendWhitelist");
+  const visibleProtectionRule = (rule) => exactSuspendPageUrl(rule) ??
+    (String(rule).startsWith("site:") ? String(rule).slice(5) : String(rule ?? "").trim());
+  const visibleSuspendRules = (values) => [...new Set(values
+    .map(visibleProtectionRule)
+    .filter(Boolean))];
+  const storedSuspendRules = (values, previous = []) => {
+    // Preserve an unchanged legacy full-URL fragment as broad. Only a newly
+    // entered complete URL becomes an exact-page rule. When old broad and exact
+    // forms render identically, broad wins because it is the larger protection.
+    const existingByVisible = new Map();
+    for (const raw of previous) {
+      const stored = String(raw ?? "").trim();
+      if (!stored) continue;
+      const visible = visibleProtectionRule(stored);
+      const current = existingByVisible.get(visible);
+      if (!current || (/^(page:|site:)/.test(current) && !/^(page:|site:)/.test(stored))) {
+        existingByVisible.set(visible, stored);
+      }
+    }
+    return [...new Set(values.map((rule) => {
+      const value = String(rule ?? "").trim();
+      if (existingByVisible.has(value)) return existingByVisible.get(value);
+      if (!/^https?:\/\//i.test(value)) {
+        try {
+          const candidate = new URL(`https://${value}`);
+          if (candidate.hostname === value.toLowerCase()) return `site:${candidate.hostname}`;
+        } catch { /* URL fragments retain their explicit broad meaning. */ }
+        return value;
+      }
+      try { return exactSuspendPageRule(value); } catch { return value; }
+    }).filter(Boolean))];
+  };
+  const automationExclusions = patternList(["archiveWhitelist", "suspendWhitelist"], {
+    visible: visibleSuspendRules,
+    merged: storedSuspendRules
+  });
+  const welcomePhrases = el("textarea", {
+    rows: 4,
+    class: "welcome-phrases-input",
+    placeholder: settingsStatic.welcomePhrasesPlaceholder(),
+    "aria-label": settingsRowCopy("welcomePhrases").title,
+    onchange: async (event) => {
+      const phrases = normalizeWelcomePhrases(event.currentTarget.value);
+      event.currentTarget.value = phrases.join("\n");
+      await update({ newTabWelcomePhrases: phrases });
+    }
+  });
+  welcomePhrases.value = normalizeWelcomePhrases(settings.newTabWelcomePhrases).join("\n");
+  welcomePhrases.dataset.maxLines = String(WELCOME_PHRASE_MAX_COUNT);
+  welcomePhrases.dataset.maxLineLength = String(WELCOME_PHRASE_MAX_LENGTH);
+  syncers.push(() => {
+    if (document.activeElement !== welcomePhrases) {
+      welcomePhrases.value = normalizeWelcomePhrases(settings.newTabWelcomePhrases).join("\n");
+    }
+  });
 
   const automation = createAutomationThresholdControls({
     readSettings: () => settings,
@@ -239,9 +332,9 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     return node;
   };
 
-  const keyboardGroup = group("keyboard",
-    el("p", { class: "settings-hint" }, settingsStatic.keyboardHint()),
-    renderShortcutList());
+  // Created in the final groupNodes slot below so the jump navigation follows
+  // the same order as the settings sections it controls.
+  let keyboardGroup;
 
   // ---- F8: Focus group (run defaults + blocked-site rules) ----
   // F8-1 stores settings only; no tab/window is redirected, minimized, or closed
@@ -427,6 +520,7 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     };
     addBtn.addEventListener("click", addSite);
     siteInput.addEventListener("keydown", (e) => {
+      if (isComposingKey(e)) return;
       if (e.key === "Enter") { e.preventDefault(); addSite(); }
     });
     // A cross-tab settings change reconciles the list, deferring while focus is
@@ -469,11 +563,6 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     return group("focus",
       el("p", { class: "settings-hint" },
         settingsStatic.focusHint()),
-      row(durationCopy.title, durationCopy.description, durationSelect, durationMinutes),
-      row(morningCopy.title, morningCopy.description,
-        timeField("focusMorningEndMinutes", morningCopy.title)),
-      row(dayCopy.title, dayCopy.description,
-        timeField("focusDayEndMinutes", dayCopy.title)),
       el("div", { class: "setrow focus-block" },
         el("span", { class: "tw" },
           el("div", { class: "t" }, blockedCopy.title),
@@ -481,35 +570,19 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
         el("div", { class: "focus-site-add" }, siteInput, addBtn),
         notice,
         list),
+      row(durationCopy.title, durationCopy.description, durationSelect, durationMinutes),
+      row(morningCopy.title, morningCopy.description,
+        timeField("focusMorningEndMinutes", morningCopy.title)),
+      row(dayCopy.title, dayCopy.description,
+        timeField("focusDayEndMinutes", dayCopy.title)),
       el("div", { class: "setrow" },
         el("span", { class: "tw" }, el("div", { class: "t" }, accessCopy.title), excDesc),
         excSelect));
   };
 
-  const schemeSelect = el("select", {
-    onchange: (event) => update({ uiScheme: event.currentTarget.value })
-  });
-  const renderSchemeSelect = () => {
-    if (document.activeElement === schemeSelect) return;
-    const yours = customSchemeCatalogue(customRecords);
-    schemeSelect.replaceChildren(
-      ...SCHEME_GROUPS.map((group) => el("optgroup", {
-        label: settingsSchemeGroupLabel(group.defaultMode, group.tone)
-      },
-        ...group.ids.map((scheme) =>
-          el("option", { value: scheme }, SCHEME_LABELS[scheme] ?? scheme)))),
-      ...(yours.length ? [el("optgroup", { label: settingsStatic.yours() },
-        ...yours.map(({ id, label }) => el("option", { value: id }, label)))] : [])
-    );
-    schemeSelect.value = String(settings.uiScheme ?? DEFAULT_SETTINGS.uiScheme);
-    if (!schemeSelect.value) schemeSelect.value = DEFAULT_SETTINGS.uiScheme;
-  };
-  renderSchemeSelect();
-  syncers.push(renderSchemeSelect);
-
   // D3: stars progressively constrain rotation. Empty intentionally means
   // every scheme, so there is no redundant "rotation pool" setting.
-  // Open on every mount for discovery. It remains collapsible because 21
+  // Open on every mount for discovery. It remains collapsible because many
   // choices are useful during setup but need not occupy permanent space.
   const favoritesDetails = el("details", { class: "scheme-favorites", open: "" });
   const favoritesSummary = el("summary");
@@ -521,19 +594,34 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     const yours = customSchemeCatalogue(customRecords);
     const ids = availableSchemeIds(customRecords);
     const customById = new Map(yours.map((entry) => [entry.id, entry]));
-    favoritesSummary.textContent = settingsFavoritesSummary(favorites.size, ids.length);
-    favoritesHelp.textContent = settingsFavoritesHelp(favorites.size, settings.schemeRotate);
-    const favoriteButton = (scheme) => {
+    const currentScheme = String(settings.uiScheme ?? DEFAULT_SETTINGS.uiScheme);
+    favoritesSummary.textContent = settingsFavoritesSummary();
+    favoritesHelp.textContent = settingsFavoritesHelp();
+    const schemeChoice = (scheme) => {
       const on = favorites.has(scheme);
+      const current = currentScheme === scheme;
       const custom = customById.get(scheme);
       const label = custom?.label ?? SCHEME_LABELS[scheme] ?? scheme;
       const accent = custom?.accent ?? SCHEME_ACCENTS[scheme];
-      return el("button", {
-        type: "button",
-        class: `scheme-favorite${on ? " on" : ""}`,
-        title: label,
-        "aria-pressed": String(on),
-        "aria-label": settingsFavoriteAria(on, label),
+      return el("div", {
+        class: `scheme-favorite${on ? " on" : ""}${current ? " is-current" : ""}`,
+        "data-scheme-id": scheme
+      },
+      el("button", {
+        type: "button", class: "scheme-apply", title: label,
+        "aria-pressed": String(current), "aria-label": settingsApplySchemeAria(current, label),
+        onclick: async () => {
+          if (!current) await update({ uiScheme: scheme });
+          renderFavorites();
+        }
+      },
+      el("span", { class: "scheme-swatch", style: `background:${accent}` }),
+      el("span", { class: "scheme-favorite-label" }, label),
+      ...(current ? [el("span", { class: "scheme-current", "aria-hidden": "true" }, "✓")] : [])),
+      el("button", {
+        type: "button", class: "scheme-star-toggle",
+        title: settingsFavoriteAria(on, label),
+        "aria-pressed": String(on), "aria-label": settingsFavoriteAria(on, label),
         onclick: async () => {
           const next = new Set(Array.isArray(settings.schemeFavorites) ? settings.schemeFavorites : []);
           if (next.has(scheme)) next.delete(scheme); else next.add(scheme);
@@ -541,9 +629,7 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
           renderFavorites();
         }
       },
-      el("span", { class: "scheme-star", "aria-hidden": "true" }, on ? "★" : "☆"),
-      el("span", { class: "scheme-swatch", style: `background:${accent}` }),
-      el("span", { class: "scheme-favorite-label" }, label));
+      el("span", { class: "scheme-star", "aria-hidden": "true" }, icon("favorite", 17))));
     };
     favoritesGrid.replaceChildren(
       ...SCHEME_GROUPS.map((group) => el("section", {
@@ -552,13 +638,13 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
       },
       el("div", { class: "scheme-category-label" }, settingsSchemeGroupLabel(group.defaultMode, group.tone)),
       el("div", { class: "scheme-category-options" },
-        ...group.ids.filter((id) => ids.includes(id)).map(favoriteButton)))),
+        ...group.ids.filter((id) => ids.includes(id)).map(schemeChoice)))),
       ...(yours.length ? [el("section", {
         class: "scheme-category scheme-category-yours", "aria-label": settingsStatic.yours()
       },
       el("div", { class: "scheme-category-label" }, settingsStatic.yours()),
       el("div", { class: "scheme-category-options" },
-        ...yours.map(({ id }) => favoriteButton(id))))] : [])
+        ...yours.map(({ id }) => schemeChoice(id))))] : [])
     );
   };
   favoritesDetails.append(favoritesSummary, favoritesHelp, favoritesGrid);
@@ -573,7 +659,7 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
   });
 
   const localizedRow = (id, ...controls) => {
-    const copy = settingsRowCopy(id, id === "colorScheme" ? [SCHEMES.length] : []);
+    const copy = settingsRowCopy(id);
     return row(copy.title, copy.description, ...controls);
   };
   const localizedStackedRow = (id, ...controls) => {
@@ -581,39 +667,131 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
     return stackedRow(copy.title, copy.description, ...controls);
   };
 
+  const suspendPageExceptions = el("div", { class: "suspend-page-exceptions" });
+  let suspendExceptionRender = 0;
+  const renderSuspendPageExceptions = async () => {
+    const renderId = ++suspendExceptionRender;
+    const temporary = await readStoreValue(TEMPORARY_SUSPEND_EXEMPTIONS_KEY);
+    if (renderId !== suspendExceptionRender) return;
+    const entries = listAutoSuspendPageExceptions(
+      settings.suspendWhitelist, temporary, Date.now())
+      .filter((entry) => !entry.permanent);
+    if (entries.length === 0) {
+      suspendPageExceptions.replaceChildren(
+        el("div", { class: "suspend-page-exception-empty" }, settingsStatic.noSuspendPageExceptions()));
+      return;
+    }
+    suspendPageExceptions.replaceChildren(...entries.map((entry) => {
+      const status = settingsStatic.suspendPageFor(formatRemaining(entry.expiresAt, Date.now()));
+      const displayUrl = entry.url.startsWith("site:")
+        ? msg("protection_domain_rule", [entry.url.slice(5)]) : entry.url;
+      const remove = el("button", {
+        type: "button",
+        class: "quiet suspend-page-exception-remove",
+        "aria-label": settingsStatic.removeSuspendPageAria(displayUrl),
+        onclick: async () => {
+          remove.disabled = true;
+          try {
+            await removeAutoSuspendPageException(entry.url);
+            await refresh();
+            saved.textContent = settingsStatic.saved();
+            setTimeout(() => (saved.textContent = ""), 1500);
+          } catch (error) {
+            reportFailure("temporary protection removal", error);
+            suspendPageExceptions.append(el("p", { role: "alert" }, msg("protection_failed")));
+          } finally { remove.disabled = false; }
+        }
+      }, settingsStatic.remove());
+      return el("div", { class: "suspend-page-exception-row" },
+        el("span", { class: "suspend-page-exception-url", title: displayUrl }, displayUrl),
+        el("span", { class: "suspend-page-exception-status" }, status),
+        remove);
+    }));
+  };
+  syncers.push(() => { void renderSuspendPageExceptions(); });
+  void renderSuspendPageExceptions();
+
+  const protectedTabs = el("div", { class: "suspend-page-exceptions" });
+  let protectedTabsGeneration = 0;
+  const renderProtectedTabs = async () => {
+    const generation = ++protectedTabsGeneration;
+    try {
+      const entries = await listTemporaryTabProtections();
+      if (generation !== protectedTabsGeneration) return;
+      protectedTabs.replaceChildren(...(entries.length ? entries.map((entry) =>
+        el("div", { class: "suspend-page-exception-row" },
+          el("span", { class: "suspend-page-exception-url", title: entry.url }, entry.title || entry.url),
+          el("span", { class: "suspend-page-exception-status" }, entry.expiresAt == null
+            ? msg("protection_duration_tab") : entry.expiresAt <= Date.now()
+              ? msg("protection_expired") : formatRemaining(entry.expiresAt, Date.now())),
+          el("button", { type: "button", class: "quiet", onclick: async () => {
+            try {
+              await removeTemporaryTabProtection(entry.tabId);
+              await renderProtectedTabs();
+            } catch (error) {
+              reportFailure("tab protection removal", error);
+              protectedTabs.append(el("p", { role: "alert" }, msg("protection_failed")));
+            }
+          } }, settingsStatic.remove()))) : [el("p", { class: "d" }, msg("protection_no_tabs"))]));
+    } catch (error) {
+      reportFailure("tab protections read", error);
+      protectedTabs.replaceChildren(el("p", { role: "alert" }, msg("protection_failed")));
+    }
+  };
+  syncers.push(() => { void renderProtectedTabs(); });
+  void renderProtectedTabs();
+
+  const newTabChoices = createNewTabChoices({
+    readSettings: () => settings,
+    update,
+    registerSync: (sync) => syncers.push(sync)
+  });
+
   const groupNodes = [
     group("appearance",
-      localizedRow("colorScheme", schemeSelect),
+      localizedRow("language", select("uiLanguage", settingsLanguageOptions())),
+      localizedRow("interfaceStyle", select("uiInterfaceStyle", settingsOptions("interfaceStyle"))),
       localizedRow("mode", select("uiMode", settingsOptions("mode"))),
       localizedRow("rotation", select("schemeRotate", settingsOptions("rotation"))),
       favoritesDetails,
       customSchemeSettings.element,
       localizedRow("backgroundGradient", check("uiGradient")),
       localizedRow("sectionDescriptions", check("uiSectionIntros")),
-      localizedRow("checkboxShape", select("uiCheckboxShape", settingsOptions("checkbox"))),
-      localizedRow("cornerStyle", select("uiCornerStyle", settingsOptions("corners"))),
       localizedRow("rowInformation", select("uiRowInfo", settingsOptions("rowInfo"))),
       localizedRow("rowActionLabels", select("uiActionLabels", settingsOptions("actionLabels")))),
 
     group("newtab",
-      localizedRow("newTabPage", select("newTabMode", settingsOptions("newTabMode"))),
-      localizedRow("newTabFocus", select("newTabFocus", settingsOptions("newTabFocus"))),
-      localizedRow("oneNewTab", check("oneNewTabPerWindow"))),
+      newTabChoices,
+      localizedRow("oneNewTab", check("oneNewTabPerWindow")),
+      localizedRow("welcomePhrasesEnabled", check("newTabWelcomeEnabled")),
+      localizedRow("welcomeTone", select("newTabWelcomeTone", settingsOptions("welcomeTone"))),
+      localizedStackedRow("welcomePhrases", welcomePhrases)),
 
     buildFocusGroup(),
 
     group("autosave",
       localizedRow("autoSaveAfter", automation.autoSaveAfter),
       localizedRow("maxTabsOpen", automation.maxTabsOpen),
-      localizedStackedRow("keepTabsOpen", whitelist),
+      localizedRow("protectedPages",
+        el("a", {
+          class: "linklike",
+          href: chrome.runtime.getURL("dashboard.html#settings:protection")
+        }, settingsStatic.manageProtection())),
       localizedRow("inboxExpiry", automation.inboxExpiry)),
 
     group("suspension",
       localizedRow("suspendAfter", automation.suspendAfter),
       localizedRow("suspendMinTabs", automation.suspendMinTabs),
       localizedRow("suspendMaxTabs", automation.suspendMaxTabs),
-      localizedStackedRow("neverSuspend", suspendWhitelist),
+      localizedRow("protectedPages", el("a", {
+        class: "linklike", href: chrome.runtime.getURL("dashboard.html#settings:protection")
+      }, settingsStatic.manageProtection())),
       localizedRow("suspendPage", check("suspendLazyReload"))),
+
+    group("protection",
+      localizedStackedRow("automationExclusions", automationExclusions),
+      stackedRow(msg("protection_temporary_tabs"), msg("protection_temporary_tabs_detail"), protectedTabs),
+      localizedStackedRow("suspendPageExceptions", suspendPageExceptions)),
 
     group("sessions",
       preserveGroupsRow(),
@@ -638,7 +816,9 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
           openHelp();
         } }, settingsStatic.openHelp()))),
 
-    keyboardGroup
+    keyboardGroup = group("keyboard",
+      el("p", { class: "settings-hint" }, settingsStatic.keyboardHint()),
+      renderShortcutList())
   ];
 
   // Filter box + jump nav.
@@ -723,7 +903,10 @@ export async function mountSettingsForm(container, { listenStorage = true } = {}
   }
   if (listenStorage) {
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "local" || (!changes.settings && !changes[STORE_KEYS.customSchemes])) return;
+      changes = expandStorageChanges(changes);
+      if (area !== "local") return;
+      if (changes[TEMPORARY_SUSPEND_EXEMPTIONS_KEY]) void renderSuspendPageExceptions();
+      if (!changes.settings && !changes[STORE_KEYS.customSchemes]) return;
       void refresh();
     });
   }

@@ -1,10 +1,10 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hasDomTestReceipt, runOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
@@ -39,15 +39,12 @@ try {
     const profile = await mkdtemp(`${tmpdir()}/everytab-onboarding-help-`);
     try {
       const page = `http://127.0.0.1:${server.address().port}/test/onboarding-help-dom.html`;
-      const output = await new Promise((resolveRun, reject) => execFile(chromeBin, [
+      const { stdout: output } = await runOwnedChrome(chromeBin, [
         "--headless=new", "--disable-gpu", "--disable-background-networking",
         "--disable-component-update", "--disable-default-apps", "--no-first-run",
         `--user-data-dir=${profile}`, `--window-size=${width},900`,
         "--virtual-time-budget=10000", "--dump-dom", page
-      ], { timeout: 25_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-        if (error) reject(new Error(`${error.message}\n${stderr}`));
-        else resolveRun(stdout);
-      }));
+      ], { timeoutMs: 25_000, maxBuffer: 4 * 1024 * 1024, completeWhen: hasDomTestReceipt });
       const match = output.match(/<pre id="result"[^>]*data-status="([^"]+)"[^>]*>([\s\S]*?)<\/pre>/);
       const text = (match?.[2] ?? "").replaceAll("&quot;", '"').replaceAll("&amp;", "&")
         .replaceAll("&gt;", ">").replaceAll("&lt;", "<");

@@ -480,7 +480,7 @@
   ],
   "narrative": {
     "northStar": "The Editor Theme",
-    "overview": "EveryTab is styled the way a great code editor is: the layout, keybindings, density, and component anatomy are fixed and learnable once — and the color scheme is yours. A strict two-axis architecture (data-scheme × data-mode) redefines the same ~14 role tokens per scheme; every component is written once against those roles and never hard-codes a color. Each of 36 built-ins plus every validated custom scheme declares a canonical light or dark presentation for Scheme default; System and forced Light/Dark remain available. The working feel is precise, fast, keyboard-first — Raycast/Linear energy on a warm-paper default.",
+    "overview": "EveryTab is styled the way a great code editor is: the layout, keybindings, density, and component anatomy are fixed and learnable once, while the color scheme and Interface style are yours. The color architecture uses data-scheme and data-mode; the independent data-interface-style axis selects Soft, Crisp, or Terminal without changing information architecture or behavior. Every component is written once against shared role and presentation tokens. Each of 36 built-ins plus every validated custom scheme declares a canonical light or dark presentation for Scheme default; System and forced Light/Dark remain available. The working feel is precise, fast, and keyboard-first.",
     "keyCharacteristics": [
       "One fixed structure (full-bleed app shell, sidebar + sticky hero search), 36 built-ins plus validated local custom schemes",
       "All color flows through role tokens; tints, focus rings, and shadows are derived via color-mix, never hand-picked per scheme",

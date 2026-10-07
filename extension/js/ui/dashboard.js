@@ -1,10 +1,14 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { animateDisclosure } from "./disclosure-motion.js";
 import { STORE_KEYS, ARCHIVE_OVERLAY_KEY } from "../lib/types.js";
-import { applyDocumentLocale, msg as localeMessage } from "../lib/i18n.js";
+import { applyDocumentLocale, applyUiLanguage, formatNumber, msg as localeMessage } from "../lib/i18n.js";
 import {
-  listItems, countItems, getSettings,
+  listItems, inboxItemTabCount, getSettings,
   mutateStores, patchSettings
 } from "../lib/store.js";
-import { restoreSession, getSessionBindings } from "../lib/sessions.js";
+import { restoreSessionById, getSessionBindings } from "../lib/sessions.js";
 import { deleteNamedSession } from "../lib/organization.js";
 import {
   collectLabels, readLabelNavigationSnapshot, archiveTabsFromItems, labelTabsFromItems,
@@ -12,12 +16,21 @@ import {
   sortLabelGroups
 } from "../lib/labels.js";
 import { SECTION_TO_PAGE } from "../lib/onboarding-copy.js";
-import { el, coalesce, settleAnchor } from "./dom.js";
+import { el, coalesce, coalesceLatest, settleAnchor } from "./dom.js";
+import { createDisplayTabReads } from "./display-tab-reads.js";
 import { initInputModality } from "./input-modality.js";
 import { icon } from "./icons.js";
 import { createSearchBox } from "./searchbox.js";
+import { bindSearchReveal } from "./search-reveal.js";
+import { createDashboardFocusBridge } from "./dashboard-focus-bridge.js";
+import { createStartupArrival } from "./startup-arrival.js";
+import {
+  createDataHub, dataRoute, nextDataRouteState, ownDataRender
+} from "./data-hub.js";
 import { buildOpenListConfig } from "./list-configs.js";
 import { createOpenSurface } from "./open-surface.js";
+import { reconcileOpenTabUpdate } from "./open-surface.js";
+import { anchoredPanelOpenWithin, subscribeAnchoredPanelChange } from "./tablist.js";
 import { createCloseDaySurface } from "./close-day-surface.js";
 import { createInboxSurface } from "./inbox-surface.js";
 import { createSessionsSurface } from "./sessions-surface.js";
@@ -28,14 +41,19 @@ import {
   createFocusStrip, getFocusGuardStatus, startFocusGuard, endFocusGuard
 } from "./focus-strip.js";
 import { createPageUtilities } from "./command-box.js";
+import { shouldTransitionStarredRail } from "./starred-transition.js";
 import { openShortcutsOverlay } from "./shortcuts.js";
 import { initTooltips } from "./tooltip.js";
 import {
   TAB_REFRESH_TASKS,
   dashboardTasksForStorage,
+  withoutSupersededLiveTasks,
+  createForegroundTrailingRefresh,
+  createForegroundTaskQueue,
   createFrameRefreshScheduler,
-  createLeadingTrailingRefresh
+  createInteractionRefreshGate,
 } from "./refresh-scheduler.js";
+import { createAutomationAwareness } from "./automation-awareness.js";
 import { showLoadingFeedback } from "./loading.js";
 import {
   shellAllLink, shellNavLabel, shellNavName, shellNavToggleLabel,
@@ -43,9 +61,10 @@ import {
   shellSectionTitle, shellSidebarToggleLabel, shellStatic
 } from "./shell-copy.js";
 import {
-  settingsFavoriteAria, settingsModeChoiceLabel, settingsSchemeGroupLabel, settingsStatic
+  settingsFavoriteAria, settingsModeChoiceLabel, settingsOptions, settingsRowCopy,
+  settingsSchemeGroupLabel, settingsStatic
 } from "./settings-copy.js";
-import { initTheme, SCHEMES, SCHEME_LABELS, SCHEME_ACCENTS, SCHEME_GROUPS } from "./theme.js";
+import { initTheme, SCHEME_LABELS, SCHEME_ACCENTS, SCHEME_GROUPS } from "./theme.js";
 import {
   availableSchemeIds,
   CUSTOM_SCHEME_NOTICE_KEY,
@@ -56,20 +75,32 @@ import {
 import { resolveNavMode, NAV_COMPACT_MAX, NAV_HEADER_MAX } from "../lib/nav-mode.js";
 import { hasHistoryAccess, onHistoryAccessChanged } from "../lib/history-access.js";
 import { createHistoryAccessDisclosure } from "./history-access.js";
-import { findDuplicateGroups } from "../lib/dedup.js";
 import { dashboardSearchIntent } from "../lib/newtab-focus.js";
 import { setGroupRestoreNotifier } from "../lib/tab-groups.js";
 // E3-0: dev-only perf instrumentation — self-activates on `?perf=1` or the
 // hidden settings.perfHud; every call below is a guarded no-op otherwise.
 import { perfActive, pspan, pmark, pcount, precord, preport } from "../lib/perf.js";
 import {
-  SESSION_IDENTITY_INDEX_KEY, readSessionIdentities
+  SESSION_IDENTITY_INDEX_KEY, NAMED_SESSION_RECORDS_KEY,
+  SESSION_NAVIGATION_REVISION_KEY, sessionNavigationSnapshot
 } from "../lib/session-identity-index.js";
+import { readSessionIdentities } from "../lib/session-identity-store.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
 
+// Install the chosen interface language before any text renders. Through the
+// New Tab entry this Settings read is already cached and the language already
+// installed; direct dashboard.html pays one read here and reuses it below.
+await applyUiLanguage((await getSettings()).uiLanguage);
 initTheme();
 applyDocumentLocale();
 const app = document.getElementById("app");
+const startupArrival = createStartupArrival();
+window.addEventListener("pagehide", () => startupArrival.destroy(), { once: true });
 document.title = localeMessage("manifest_name");
+const automationAwareness = createAutomationAwareness({
+  openSettings: (group) => go(`settings:${group}`)
+});
+window.addEventListener("pagehide", () => automationAwareness.close(), { once: true });
 
 /* ================= helpers ================= */
 
@@ -130,8 +161,12 @@ async function applyIntroPref() {
 function makeFold(open) {
   const inner = el("div");
   const wrap = el("div", { class: `fold-wrap${open ? " open" : ""}` }, el("div", {}, inner));
+  inner.inert = !open;
   return { wrap, inner, isOpen: () => wrap.classList.contains("open"),
-           set: (v) => wrap.classList.toggle("open", v) };
+    set: (value) => animateDisclosure(wrap, () => {
+      inner.inert = !value;
+      wrap.classList.toggle("open", value);
+    }) };
 }
 
 const msg = (m) => chrome.runtime.sendMessage(m);
@@ -154,10 +189,18 @@ bindUndoShortcut(showToast, afterUndo); // Ctrl/⌘+Z → undo latest + toast
 // the background-action poll doesn't re-toast an action the user just took here.
 let lastToastAt = Date.now();
 
-// F8-R1: Workspace Focus (Focus this window / Focus this session, the active-run
-// status strip, and their message/focus state machine) was retired with Focus v0.2.
-// No dashboard Focus actions or status remain here; the site-guard status strip is
-// Batch 2. The measured `--hero-h` geometry below is generic and stays.
+async function showLatestJournalToast(change) {
+  const direct = (change?.newValue ?? [])[0];
+  let head = direct;
+  if (!head) {
+    const { listActions } = await import("../lib/journal.js");
+    [head] = await listActions();
+  }
+  if (head && !head.undone && head.at > lastToastAt) {
+    lastToastAt = head.at;
+    showToast(head);
+  }
+}
 
 // F19 copy-as-markdown + the shared leaf helpers (mark, flashNote, confirmDelete,
 // cardLabelPanel, sessionComboboxButton, selectionRefs) all live in
@@ -168,6 +211,14 @@ const { copyRefs, copySession } = createCopyHelpers(showNotice);
 /* ================= sections ================= */
 
 const openSec = makeSec("open");
+const openHeadingLabel = openSec.h2.textContent;
+const openHeadingPattern = localeMessage("list_open_heading", [
+  "{count}", localeMessage("unit_windows_other", ["{windows}"])
+]);
+const openHeadingCount = startupArrival.pendingSummary(
+  openHeadingPattern.split(/\{(?:count|windows)\}/), "open-heading-count");
+openSec.h2.replaceChildren(openHeadingCount);
+openSec.h2.setAttribute("aria-label", openHeadingLabel);
 const closeDaySec = makeSec("close-day");
 openSec.actions.replaceChildren(el("button", {
   class: "mini2 section-primary-action", type: "button",
@@ -182,9 +233,12 @@ const snapshotsSec = makeSec("snapshots");
 const labelsSec = makeSec("labels");
 const archiveSec = makeSec("archive");
 const dataSec = makeSec("data");
-const vaultSec = makeSec("vault");
 const statsSec = makeSec("stats");
 const settingsSec = makeSec("settings");
+const dataHub = createDataHub({
+  onJump: (area) => go(`data:${area}`, { origin: "data-jump" })
+});
+dataSec.body.replaceChildren(dataHub.element);
 
 /* ================= Open tabs (M6 — the current browser, first) ============ */
 
@@ -240,7 +294,7 @@ function flushStaleSections() {
 
 // F18: the restore-time "Tab groups could not be recreated" notice is surfaced
 // here (the background worker has no UI and leaves it unset).
-setGroupRestoreNotifier((m) => showNotice(m));
+setGroupRestoreNotifier(() => showNotice(localeMessage("session_tab_groups_failed")));
 
 async function consumeCustomSchemeNotice() {
   const stored = await chrome.storage.local.get(CUSTOM_SCHEME_NOTICE_KEY);
@@ -262,16 +316,19 @@ void consumeCustomSchemeNotice();
 let openSurface = null;
 function getOpenSurface() {
   if (!openSurface) openSurface = createOpenSurface({
+    canReconcilePlacement: () => !openRefreshGate.isHeld() && dashboardCanRefreshLiveTabs(),
     msg, rerender: () => renderOpen(),
     sectionActionHost: openSec.actions,
     shouldRenderBody: openSectionVisible,
     getFlashAnchor: () => openSec.h2,
     showNotice, flashNote, mark,
     cardLabelPanel, sessionComboboxButton, copyRefs,
-    renderArchive, renderLabels, goToLabel,
+    renderArchive, renderLabels, goToLabel, goToSession,
     // F23: Home's Workbench is the complete Open surface. The shared surface
-    // retains its normal 20-row window cap and existing Show more control.
+    // retains its normal 50-row window cap and existing Show more control.
     rowCap: () => undefined,
+    automationAwareness,
+    openSettings: (group) => go(`settings:${group}`),
     takeInitialSnapshot: () => {
       const snapshot = globalThis.__everyTabOpenPrefetch ?? null;
       delete globalThis.__everyTabOpenPrefetch;
@@ -285,10 +342,15 @@ function getOpenSurface() {
 if (document.documentElement.dataset.newTabHost === "true") {
   globalThis.__everyTabWarmOpen = (snapshot) => getOpenSurface().warm(snapshot);
 }
-const renderOpen = coalesce(renderOpenInner);
+const openRefreshGate = createInteractionRefreshGate(coalesce(renderOpenInner), {
+  isHeld: () => anchoredPanelOpenWithin(openSec.body),
+  subscribe: subscribeAnchoredPanelChange
+});
+function renderOpen() { return openRefreshGate.request(); }
 // Open gates inside its surface (it keeps the prior subtree to hold its height),
 // so it is registered rather than wrapped.
 sectionRenderers.set("open", renderOpen);
+window.addEventListener("pagehide", () => openRefreshGate.dispose(), { once: true });
 
 /** Start the primary Open identity snapshot without building its DOM. */
 function freshOpenSnapshot() {
@@ -315,16 +377,34 @@ async function renderOpenInner() {
   // owner. Stage Loading before the shared surface starts its saved-library
   // scan and large synchronous list build; any existing subtree stays visible.
   const loading = openSec.body.childNodes.length === 0
-    ? showLoadingFeedback(openSec.body, { label: "Loading open tabs…" })
+    ? showLoadingFeedback(openSec.body, { label: localeMessage("shell_loading_open") })
     : null;
   try {
-    const { heading, node } = await getOpenSurface().render();
-    openSec.h2.textContent = heading;
+    const { heading, node, placementUpdated = false } = await getOpenSurface().render();
+    if (placementUpdated) return;
+    const held = Boolean(node) && openRefreshGate.isHeld();
+    // Read before connected heading writes can invalidate layout. Held/hidden
+    // results keep their subtree, so they do not need a scroll snapshot.
+    const y = node && !held ? window.scrollY : null;
+    startupArrival.settleSummary(openHeadingCount, heading, "open-heading");
+    openSec.h2.removeAttribute("aria-label");
     // node is null when the section is off-screen (openSectionVisible() === false):
     // keep the prior subtree so its height holds (no flash on return).
     if (node) {
-      const y = window.scrollY;
-      openSec.body.replaceChildren(node);
+      // A row workflow lives in a top-layer popover but remains anchored to the
+      // current ledger node. Replacing that node mid-entry makes the next
+      // suggestion mutation dismiss the picker. Keep this result pending and
+      // reconcile once the workflow closes instead.
+      if (held) {
+        openRefreshGate.defer();
+        return;
+      }
+      // Capture the current card geometry before enrichment replaces its DOM.
+      // Stable window identities retain the first arrival's original deadline.
+      startupArrival.revealGroups(openSec.body, "open-windows", () => {
+        openSec.body.replaceChildren(node);
+      });
+      automationAwareness.sync();
       if (window.scrollY !== y) window.scrollTo(0, y);
     }
   } finally {
@@ -341,6 +421,7 @@ function getCloseDaySurface() {
     rerender: () => renderCloseDay(),
     showNotice,
     onNavigate: (page) => go(page, { origin: "route" }),
+    onSessionOpen: goToSession,
     onLeave: () => go("open", { origin: "route" })
   });
   return closeDaySurface;
@@ -348,7 +429,7 @@ function getCloseDaySurface() {
 const renderCloseDay = lazySection("close-day", renderCloseDayInner);
 async function renderCloseDayInner() {
   const loading = closeDaySec.body.childNodes.length === 0
-    ? showLoadingFeedback(closeDaySec.body, { label: "Preparing the review…" })
+    ? showLoadingFeedback(closeDaySec.body, { label: localeMessage("shell_loading_close_day") })
     : null;
   try {
     closeDaySec.h2.textContent = shellSectionTitle("close-day");
@@ -378,17 +459,21 @@ function getInboxSurface() {
   if (!inboxSurface) inboxSurface = createInboxSurface({
     rerender: () => renderInbox(),
     shouldRenderBody: () => true,
-    renderLabels, goToLabel,
+    sectionActionHost: inboxSec.actions,
+    renderLabels, goToLabel, goToSession,
     showNotice, showToast, flashNote,
     copyRefs, sessionComboboxButton, cardLabelPanel, confirmDelete,
-    buildSnoozePanel, openRowLabel
+    buildSnoozePanel, openRowLabel, automationAwareness
   });
   return inboxSurface;
 }
 async function renderInboxInner() {
   const { heading, node } = await getInboxSurface().render();
   inboxSec.h2.textContent = heading;
-  if (node) inboxSec.body.replaceChildren(node);
+  if (node) {
+    inboxSec.body.replaceChildren(node);
+    automationAwareness.sync();
+  }
 }
 
 /* ==== Labels (M6 — the organizing concept; P2g-2: unified list, tab grain) ==== */
@@ -439,7 +524,7 @@ function getArchiveSurface() {
       createArchiveSurface({
         getBody: () => archiveSec.body,
         setHeading: (text) => { archiveSec.h2.textContent = text; },
-        renderLabels, goToLabel, copyRefs
+        renderLabels, goToLabel, goToSession, copyRefs
       }));
   }
   return archiveSurfacePromise;
@@ -524,13 +609,23 @@ function getDuplicatesSurface() {
       createDuplicatesSurface({
         getBody: () => dupSec.body,
         setHeading: (text) => { dupSec.h2.textContent = text; },
-        msg
+        msg,
+        showNotice
       }));
   }
   return duplicatesSurfacePromise;
 }
-const renderDuplicates = lazySection("duplicates",
-  async () => (await getDuplicatesSurface()).render());
+const refreshDuplicates = coalesceLatest(async (reads) =>
+  (await getDuplicatesSurface()).render(reads));
+function renderDuplicates(reads) {
+  if (!sectionVisible("duplicates")) {
+    staleSections.add("duplicates");
+    return Promise.resolve();
+  }
+  staleSections.delete("duplicates");
+  return refreshDuplicates(reads);
+}
+sectionRenderers.set("duplicates", renderDuplicates);
 
 /* ================= Export / Import ================= */
 
@@ -539,7 +634,7 @@ function getDataSurface() {
   if (!dataSurfacePromise) {
     dataSurfacePromise = import("./data-surface.js").then(({ createDataSurface }) =>
       createDataSurface({
-        getBody: () => dataSec.body,
+        getBody: () => dataHub.coreHost,
         setHeading: (text) => { dataSec.h2.textContent = text; },
         onChanged: async ({ entry }) => {
           if (entry) showToast(entry);
@@ -552,8 +647,9 @@ function getDataSurface() {
   }
   return dataSurfacePromise;
 }
-const renderData = lazySection("data",
-  async () => (await getDataSurface()).render());
+const renderData = lazySection("data", () => ownDataRender(
+  getDataSurface().then((surface) => surface.render()), "Data"
+));
 
 /* ================= Vault sync (M5) ================= */
 
@@ -566,34 +662,49 @@ function getVaultSurface() {
   if (!vaultSurfacePromise) {
     vaultSurfacePromise = import("./vault-surface.js").then(({ createVaultSurface }) =>
       createVaultSurface({
-        getBody: () => vaultSec.body,
-        setHeading: (text) => { vaultSec.h2.textContent = text; },
+        getBody: () => dataHub.vaultBody,
+        setHeading: (text) => { dataHub.vaultHeading.textContent = text; },
         getBanner: () => reconnectBanner,
         onStateChange: () => { void refreshVaultPill(); },
         showNotice,
-        goToVault: () => go("vault", { origin: "route" })
+        goToVault: async () => {
+          go("vault", { origin: "route" });
+          const routeGeneration = dataRouteState.generation;
+          if (!await renderVault()) return;
+          if (!dataAreaRouteIsCurrent("vault", routeGeneration)) return;
+          settleAnchor(() => {
+            if (!dataAreaRouteIsCurrent("vault", routeGeneration)) return;
+            const details = document.getElementById("vault-sync-details");
+            details?.scrollIntoView({ block: "center", behavior: "auto" });
+            details?.focus({ preventScroll: true });
+          });
+        }
       }));
   }
   return vaultSurfacePromise;
 }
 
 function scheduleSync() {
-  if (!vaultPrimaryReady) {
+  if (!vaultPrimaryReady || document.visibilityState === "hidden") {
     vaultSchedulePending = true;
     return;
   }
   void getVaultSurface().then((surface) => surface.schedule());
 }
 
-const renderVault = lazySection("vault",
-  async () => (await getVaultSurface()).render());
+const renderVault = coalesce(async () => {
+  if (currentPage !== "data") return false;
+  return ownDataRender(
+    getVaultSurface().then((surface) => surface.render()), "Vault"
+  );
+});
 
 async function refreshVaultPill() {
   const pill = await (await getVaultSurface()).pillState();
   vaultPill.className = "vault-pill " + pill.cls;
   vaultPill.title = pill.cls === "warn" && pill.status.state === "connected"
-    ? "The last sync didn't complete. Open Vault for details." : `Vault: ${pill.text}`;
-  vaultPill.setAttribute("aria-label", `Vault: ${pill.text}`);
+    ? localeMessage("vault_pill_incomplete_title") : localeMessage("vault_pill_title", [pill.text]);
+  vaultPill.setAttribute("aria-label", localeMessage("vault_pill_title", [pill.text]));
   vaultPill.replaceChildren(
     el("span", { class: "dot" }),
     el("span", { class: "vp-text" }, pill.text)
@@ -661,7 +772,7 @@ async function refreshMountedSettings() {
 
 const ALL_SECS = [
   openSec, closeDaySec, inboxSec, snoozeSec, dupSec, sessionsSec, snapshotsSec,
-  labelsSec, archiveSec, dataSec, vaultSec, statsSec, settingsSec,
+  labelsSec, archiveSec, dataSec, statsSec, settingsSec,
   activitySec
 ];
 /* F46r2: Activity joins the daily collections. It renders real cards now, so it
@@ -680,7 +791,6 @@ const PAGES = {
   labels: [labelsSec],
   archive: [archiveSec],
   data: [dataSec],
-  vault: [vaultSec],
   stats: [statsSec],
   settings: [settingsSec],
   activity: [activitySec]
@@ -699,7 +809,8 @@ for (const s of ALL_SECS) sectionsWrap.append(s.root);
 const navMain = el("nav", { class: "nav" });
 const navLib = el("nav", { class: "nav" });
 const navMore = el("nav", { class: "nav" });
-const vaultPill = el("button", { class: "vault-pill unset", onclick: () => go("vault", { origin: "rail" }) }, "vault");
+const vaultPill = el("button", { class: "vault-pill unset", onclick: () => go("vault", { origin: "rail" }) },
+  localeMessage("vault_pill_none"));
 
 /* F44: Focus moved off the sidebar onto the top-right utility line, directly to
  * the right of Needs you, where it is present on every route and every width.
@@ -720,16 +831,16 @@ function focusActionState(id, iconName, label, current = false) {
   }, icon(iconName, 15), el("span", { class: "hero-focus-label" }, label));
 }
 const focusActionStates = {
-  setup: focusActionState("setup", "settings", "Set up Focus"),
-  ready: focusActionState("ready", "play", "Start Focus", true),
-  active: focusActionState("active", "stop", "End Focus")
+  setup: focusActionState("setup", "settings", localeMessage("focus_action_setup")),
+  ready: focusActionState("ready", "play", localeMessage("focus_action_ready"), true),
+  active: focusActionState("active", "stop", localeMessage("focus_action_active"))
 };
 const focusPrimary = el("button", { class: "hero-focus-action", type: "button" },
   focusActionStates.setup, focusActionStates.ready, focusActionStates.active);
 const focusSettingsButton = el("button", {
   class: "hero-focus-settings", type: "button",
-  "aria-label": "Focus settings",
-  "data-tip": "Choose the guarded sites and duration",
+  "aria-label": localeMessage("focus_settings"),
+  "data-tip": localeMessage("focus_settings_tip"),
   onclick: () => go("settings-focus", { origin: "rail" })
 }, icon("settings", 14));
 const focusUtility = el("div", { class: "hero-focus" }, focusPrimary, focusSettingsButton);
@@ -749,7 +860,7 @@ focusPrimary.addEventListener("click", async () => {
     setFocusActionPending(true);
     try {
       const result = await endFocusGuard();
-      if (!result?.ok) showNotice("Couldn't end Focus.");
+      if (!result?.ok) showNotice(localeMessage("focus_end_failed"));
       await refreshFocusChrome();
     } finally {
       setFocusActionPending(false);
@@ -763,8 +874,8 @@ focusPrimary.addEventListener("click", async () => {
     const result = await startFocusGuard();
     if (!result?.ok) {
       showNotice(result?.reason === "no-during-rules"
-        ? "Add a During Focus site first."
-        : "Couldn't start Focus.");
+        ? localeMessage("focus_start_needs_during")
+        : localeMessage("focus_start_failed"));
     }
     await refreshFocusChrome();
   } finally {
@@ -777,11 +888,14 @@ async function refreshFocusNav() {
   const active = Boolean(focusNavStatus?.active);
   const duringCount = Number(focusNavStatus?.duringCount) || 0;
   const ready = duringCount > 0;
-  const label = active ? "End Focus" : ready ? "Start Focus" : "Set up Focus";
-  const actionTip = active ? "End the active Focus run" : ready
-    ? "Start Focus with your saved duration and guarded sites"
-    : "Choose the sites and duration that work for you";
-  const tip = `${label}, ${duringCount} guarded site${duringCount === 1 ? "" : "s"}. ${actionTip}`;
+  const label = active ? localeMessage("focus_action_active")
+    : ready ? localeMessage("focus_action_ready") : localeMessage("focus_action_setup");
+  const actionTip = active ? localeMessage("focus_action_active_tip") : ready
+    ? localeMessage("focus_action_ready_tip")
+    : localeMessage("focus_action_setup_tip");
+  const tip = duringCount === 1
+    ? localeMessage("focus_action_summary_one", [label, formatNumber(duringCount), actionTip])
+    : localeMessage("focus_action_summary_other", [label, formatNumber(duringCount), actionTip]);
   const state = active ? "active" : ready ? "ready" : "setup";
   focusUtility.dataset.focusState = state;
   focusUtility.classList.toggle("is-active", active);
@@ -805,40 +919,64 @@ async function refreshFocusNav() {
 /* Quick theme controls are a permanent part of the sidebar. */
 const quickTheme = el("span", { class: "quick-theme" });
 const themePop = el("div", {
-  class: "theme-pop hidden", role: "menu", "aria-label": settingsStatic.colorScheme()
+  id: "sidebar-scheme-picker",
+  class: "theme-pop hidden",
+  role: "dialog",
+  "aria-hidden": "true",
+  "aria-label": settingsStatic.schemePickerTitle()
 });
 let themeTrigger = null;
-function closeThemePop() {
+let themeOpenTimer = 0;
+let themeCloseTimer = 0;
+let themeRestoreFocusAfterClose = false;
+function finishThemePopClose() {
+  if (!themePop.classList.contains("closing")) return;
+  clearTimeout(themeCloseTimer);
+  themeCloseTimer = 0;
+  themePop.classList.remove("closing");
   themePop.classList.add("hidden");
+  if (themeRestoreFocusAfterClose) {
+    requestAnimationFrame(() => themeTrigger?.focus({ preventScroll: true }));
+  }
+  themeRestoreFocusAfterClose = false;
+}
+function closeThemePop({ restoreFocus = false } = {}) {
+  if (themePop.classList.contains("hidden")) return;
+  themeRestoreFocusAfterClose ||= restoreFocus;
+  clearTimeout(themeOpenTimer);
+  themeOpenTimer = 0;
+  themePop.classList.remove("opening");
+  themePop.classList.add("closing");
+  themePop.setAttribute("aria-hidden", "true");
   themeTrigger?.setAttribute("aria-expanded", "false");
+  clearTimeout(themeCloseTimer);
+  themeCloseTimer = setTimeout(finishThemePopClose, 240);
 }
-function positionThemePop(trigger) {
-  const r = trigger.getBoundingClientRect();
-  const gap = 8;
-  const edge = 6;
-  const width = Math.min(408, window.innerWidth - edge * 2);
-  const left = Math.max(edge, Math.min(r.right - width, window.innerWidth - width - edge));
-  const availableAbove = Math.max(0, r.top - gap - edge);
-  themePop.style.width = `${Math.round(width)}px`;
-  themePop.style.left = `${Math.round(left)}px`;
-  themePop.style.right = "auto";
-  themePop.style.top = "auto";
-  themePop.style.bottom = `${Math.round(window.innerHeight - r.top + gap)}px`;
-  themePop.style.maxHeight = `${Math.round(availableAbove)}px`;
-}
-document.addEventListener("click", (e) => {
-  if (!themePop.classList.contains("hidden") &&
-      !themePop.contains(e.target) && !quickTheme.contains(e.target)) {
-    closeThemePop();
+themePop.addEventListener("animationend", (event) => {
+  if (event.target !== themePop) return;
+  if (themePop.classList.contains("closing")) finishThemePopClose();
+  else {
+    clearTimeout(themeOpenTimer);
+    themeOpenTimer = 0;
+    themePop.classList.remove("opening");
   }
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !themePop.classList.contains("hidden")) {
-    closeThemePop();
-    themeTrigger?.focus();
+    closeThemePop({ restoreFocus: true });
   }
 });
-function renderQuickTheme(settings, customRecords = []) {
+document.addEventListener("pointerdown", (event) => {
+  if (themePop.classList.contains("hidden") || themePop.classList.contains("closing")) return;
+  // Quick light/dark/scheme-default previews belong to the palette workflow.
+  // They update the live canvas without dismissing the catalogue beneath it.
+  if (themePop.contains(event.target) || event.target.closest?.(".quick-theme")) return;
+  closeThemePop();
+}, true);
+function renderQuickTheme(settings = {
+  uiMode: document.documentElement.dataset.mode || "light",
+  uiScheme: globalThis.__everyTabBootThemeSelection || "ink"
+}, customRecords = []) {
   const scheme = resolveSchemeSelection(settings.uiScheme, customRecords);
   const resolved = resolveCustomSchemeMode(
     settings.uiMode, scheme, matchMedia("(prefers-color-scheme: dark)").matches
@@ -852,6 +990,21 @@ function renderQuickTheme(settings, customRecords = []) {
     { id: "dark", tip: settingsStatic.modeDarkTip(), icon: "moon" },
     { id: "scheme", tip: settingsStatic.modeSchemeTip(), icon: "smartviews" }
   ];
+  // Hydration updates the permanent controls in place, retaining pointer and
+  // keyboard focus even when optional library data resolves later.
+  if (quickTheme.children.length) {
+    for (const [index, button] of [...quickTheme.querySelectorAll(".mode-choice")].entries()) {
+      const choice = modeChoices[index];
+      const followsSystem = settings.uiMode === "system" && choice.id === resolved;
+      const title = followsSystem ? settingsStatic.followingSystem(choice.tip) : choice.tip;
+      button.classList.toggle("on", quickMode === choice.id);
+      button.title = title;
+      button.dataset.tip = title;
+      button.setAttribute("aria-label", `${settingsModeChoiceLabel(choice.id)}. ${title}`);
+      button.setAttribute("aria-pressed", String(quickMode === choice.id));
+    }
+    return;
+  }
   quickTheme.replaceChildren(
     el("span", { class: "mode-switch", role: "group", "aria-label": settingsStatic.appearanceModeAria() },
       ...modeChoices.map((choice) => {
@@ -869,79 +1022,207 @@ function renderQuickTheme(settings, customRecords = []) {
     (() => {
       const trigger = el("button", { class: "gear", title: settingsStatic.colorSchemeTrigger(),
         "aria-label": settingsStatic.colorScheme(),
-        "aria-haspopup": "menu", "aria-expanded": "false", onclick: () => {
+        "aria-haspopup": "dialog", "aria-controls": themePop.id,
+        "aria-expanded": String(!themePop.classList.contains("hidden")), onclick: async () => {
+        if (!themePop.classList.contains("hidden")) {
+          closeThemePop({ restoreFocus: true });
+          return;
+        }
+        // The button exists with the shell; fetch the current catalogue only
+        // when opening it, rather than making its presence wait for the library.
+        const data = await Promise.all([getSettings(), listItems(STORE_KEYS.customSchemes)])
+          .catch(() => null);
+        if (!data) { showNotice(localeMessage("settings_scheme_catalogue_failed")); return; }
+        const [settings, customRecords] = data;
         const custom = customSchemeCatalogue(customRecords);
         const customById = new Map(custom.map((entry) => [entry.id, entry]));
         const schemeIds = availableSchemeIds(customRecords);
         const favorites = new Set(Array.isArray(settings.schemeFavorites) ? settings.schemeFavorites : []);
-        const optionRow = (s) => {
+        let favoritesSection;
+        let currentBlock;
+        let catalogue;
+        const optionRow = (s, list) => {
           const entry = customById.get(s);
           const label = entry?.label ?? SCHEME_LABELS[s] ?? s;
           const accent = entry?.accent ?? SCHEME_ACCENTS[s];
           const star = el("button", {
             class: `theme-star${favorites.has(s) ? " on" : ""}`,
+            "data-scheme-id": s,
             type: "button",
             title: settingsFavoriteAria(favorites.has(s), label),
             "aria-label": settingsFavoriteAria(favorites.has(s), label),
-            role: "menuitemcheckbox",
-            "aria-checked": String(favorites.has(s)),
             "aria-pressed": String(favorites.has(s)),
             onclick: async () => {
+              const sourceWasFavorite = Boolean(star.closest(".theme-favorites"));
               if (favorites.has(s)) favorites.delete(s); else favorites.add(s);
               settings.schemeFavorites = schemeIds.filter((id) => favorites.has(id));
+              renderFavorites();
+              syncFavoriteButtons();
+              if (sourceWasFavorite) {
+                requestAnimationFrame(() => {
+                  const matching = [...catalogue.querySelectorAll(".theme-star")]
+                    .find((button) => button.dataset.schemeId === s);
+                  matching?.focus({ preventScroll: true });
+                });
+              }
               await patchSettings({ schemeFavorites: settings.schemeFavorites });
-              const on = favorites.has(s);
-              star.classList.toggle("on", on);
-              star.textContent = on ? "★" : "☆";
-              star.setAttribute("aria-checked", String(on));
-              star.setAttribute("aria-pressed", String(on));
-              star.title = settingsFavoriteAria(on, label);
-              star.setAttribute("aria-label", star.title);
             }
-          }, favorites.has(s) ? "★" : "☆");
-          return el("div", { class: "theme-opt-row", role: "none" },
-            el("button", { class: `theme-opt${settings.uiScheme === s ? " on" : ""}`, role: "menuitemradio",
-              "aria-checked": String(settings.uiScheme === s), title: label, onclick: async () => {
+          }, icon("favorite", 17));
+          const active = settings.uiScheme === s;
+          return el("div", {
+            class: `theme-opt-row${list === "favorites" ? " theme-favorite-row" : ""}`,
+            "data-scheme-id": s
+          },
+            el("button", { class: `theme-opt${active ? " on" : ""}`,
+              type: "button", "aria-pressed": String(active), title: label, onclick: async () => {
+              settings.uiScheme = s;
+              syncSelection();
               await patchSettings({ uiScheme: s });
-              closeThemePop();
             } },
             el("span", { class: "sw", style: `background:${accent}` }),
-            el("span", { class: "theme-opt-label" }, label)),
+            el("span", { class: "theme-opt-label" }, label),
+            ...(active
+              ? [el("span", { class: "theme-current-mark" }, settingsStatic.schemePickerCurrent())]
+              : [])),
             star);
         };
-        const quadrants = el("div", { class: "theme-quadrants", role: "presentation" },
-          ...SCHEME_GROUPS.map((group) => el("div", {
-            class: "theme-quadrant", role: "group",
+        const syncFavoriteButtons = () => {
+          for (const button of themePop.querySelectorAll(".theme-star")) {
+            const id = button.dataset.schemeId;
+            const label = customById.get(id)?.label ?? SCHEME_LABELS[id] ?? id;
+            const favorite = favorites.has(id);
+            button.classList.toggle("on", favorite);
+            button.setAttribute("aria-pressed", String(favorite));
+            button.setAttribute("aria-label", settingsFavoriteAria(favorite, label));
+            button.title = settingsFavoriteAria(favorite, label);
+            button.replaceChildren(icon("favorite", 17));
+          }
+        };
+        const renderFavorites = () => {
+          const favoriteIds = schemeIds.filter((id) => favorites.has(id));
+          favoritesSection.replaceChildren(
+            el("h3", { class: "theme-section-title" }, settingsStatic.schemePickerFavorites()),
+            ...(favoriteIds.length
+              ? [el("div", { class: "theme-favorites-list" },
+                  ...favoriteIds.map((id) => optionRow(id, "favorites")))]
+              : [el("p", { class: "theme-empty-favorites" },
+                  settingsStatic.schemePickerEmptyFavorites())])
+          );
+        };
+        const currentView = () => {
+          const current = resolveSchemeSelection(settings.uiScheme, customRecords);
+          const currentGroup = current.kind === "custom"
+            ? settingsStatic.yours()
+            : (() => {
+                const group = SCHEME_GROUPS.find(({ ids }) => ids.includes(current.id));
+                return group
+                  ? settingsSchemeGroupLabel(group.defaultMode, group.tone)
+                  : settingsStatic.colorScheme();
+              })();
+          return { current, currentGroup };
+        };
+        const syncSelection = () => {
+          const { current, currentGroup } = currentView();
+          currentBlock.replaceChildren(
+            el("span", { class: "theme-current-swatch", style: `background:${current.accent}` }),
+            el("div", { class: "theme-current-copy" },
+              el("strong", {}, current.label),
+              el("span", {}, `${settingsStatic.schemePickerCurrent()} · ${currentGroup}`))
+          );
+          for (const option of themePop.querySelectorAll(".theme-opt")) {
+            const active = option.closest(".theme-opt-row")?.dataset.schemeId === settings.uiScheme;
+            option.classList.toggle("on", active);
+            option.setAttribute("aria-pressed", String(active));
+            option.querySelector(".theme-current-mark")?.remove();
+            if (active) {
+              option.append(el("span", { class: "theme-current-mark" },
+                settingsStatic.schemePickerCurrent()));
+            }
+          }
+        };
+        const renderCatalogue = () => {
+          favoritesSection = el("section", { class: "theme-section theme-favorites" });
+          currentBlock = el("div", { class: "theme-current" });
+          const groupColumns = SCHEME_GROUPS.map((group) => el("div", {
+            class: "theme-group", role: "group",
             "aria-label": settingsSchemeGroupLabel(group.defaultMode, group.tone),
             "data-default-mode": group.defaultMode, "data-tone": group.tone
           },
-          el("div", { class: "theme-group-label", role: "presentation" },
+          el("div", { class: "theme-group-label" },
             settingsSchemeGroupLabel(group.defaultMode, group.tone)),
-          el("div", { class: "theme-quadrant-options", role: "presentation" },
-            ...group.ids.map(optionRow)))));
-        const yours = custom.length
-          ? el("div", { class: "theme-custom-group", role: "group", "aria-label": settingsStatic.yours() },
-            el("div", { class: "theme-group-label", role: "presentation" }, settingsStatic.yours()),
-            el("div", { class: "theme-custom-options", role: "presentation" },
-              ...custom.map(({ id }) => optionRow(id))))
-          : null;
-        themePop.replaceChildren(
-          quadrants,
-          ...(yours ? [yours] : []),
-          el("button", { class: "theme-manage", role: "menuitem", onclick: () => {
-            closeThemePop();
-            location.href = chrome.runtime.getURL("scheme-editor.html?return=dashboard");
-          } }, settingsStatic.schemeEditorAction())
-        );
-        positionThemePop(trigger);
-        const open = themePop.classList.toggle("hidden") === false;
-        trigger.setAttribute("aria-expanded", String(open));
+          el("div", { class: "theme-group-options" },
+            ...group.ids.map((id) => optionRow(id, "catalogue")))));
+          catalogue = el("section", { class: "theme-section theme-catalogue" },
+            el("h3", { class: "theme-section-title" }, settingsStatic.schemePickerAll()),
+            el("div", { class: "theme-groups-grid" },
+              ...groupColumns));
+          const customSection = custom.length
+            ? el("section", { class: "theme-section theme-custom-section" },
+                el("h3", { class: "theme-section-title" }, settingsStatic.yours()),
+                el("div", { class: "theme-group-options" },
+                  ...custom.map(({ id }) => optionRow(id, "catalogue"))))
+            : null;
+          const sheetSetting = (rowId, key, optionKind) => {
+            const copy = settingsRowCopy(rowId);
+            const select = el("select", {
+              class: "theme-sheet-select",
+              "aria-label": copy.title,
+              onchange: async (event) => {
+                const value = event.currentTarget.value;
+                settings[key] = value;
+                await patchSettings({ [key]: value });
+              }
+            }, ...settingsOptions(optionKind).map(([value, label]) =>
+              el("option", { value }, label)));
+            select.value = settings[key];
+            return el("label", { class: "theme-sheet-setting" },
+              el("span", {}, copy.title), select);
+          };
+          themePop.replaceChildren(
+            el("header", { class: "theme-sheet-head" },
+              el("h2", {}, settingsStatic.schemePickerTitle()),
+              currentBlock,
+              el("div", { class: "theme-sheet-settings" },
+                sheetSetting("interfaceStyle", "uiInterfaceStyle", "interfaceStyle"),
+                sheetSetting("rotation", "schemeRotate", "rotation")),
+              el("div", { class: "theme-sheet-actions" },
+                el("button", { class: "theme-manage", type: "button", onclick: () => {
+                  closeThemePop();
+                  location.href = chrome.runtime.getURL("scheme-editor.html?return=dashboard");
+                } }, settingsStatic.schemeEditorAction()),
+                el("button", { class: "theme-close", type: "button",
+                  "aria-label": settingsStatic.schemePickerBack(),
+                  onclick: () => closeThemePop({ restoreFocus: true }) }, icon("close", 16)))),
+            el("div", { class: "theme-takeover-scroll" },
+              el("div", { class: "theme-first-column" },
+                favoritesSection, ...(customSection ? [customSection] : [])),
+              catalogue)
+          );
+          renderFavorites();
+          syncFavoriteButtons();
+          syncSelection();
+        };
+        renderCatalogue();
+        clearTimeout(themeCloseTimer);
+        themeCloseTimer = 0;
+        themeRestoreFocusAfterClose = false;
+        themePop.classList.remove("hidden", "closing");
+        themePop.classList.add("opening");
+        clearTimeout(themeOpenTimer);
+        themeOpenTimer = setTimeout(() => {
+          themeOpenTimer = 0;
+          themePop.classList.remove("opening");
+        }, 220);
+        themePop.setAttribute("aria-hidden", "false");
+        trigger.setAttribute("aria-expanded", "true");
       } }, icon("palette", 16));
       themeTrigger = trigger;
       return trigger;
     })()
   );
 }
+
+renderQuickTheme();
 
 /* ---- D4-3a: one navigation model, three presentations ----
  * `settings.uiSidebarCollapsed` is the user's remembered WIDE-layout choice.
@@ -1107,16 +1388,12 @@ const sidebar = el(
     el("div", { class: "side-vault-row" }, el("div", { class: "vault-slot" }, vaultPill)),
     el("div", { class: "appearance-row" },
       quickTheme,
-      el("button", { class: "gear", title: shellStatic.settings(), "aria-label": shellStatic.settings(),
-        onclick: () => go("settings") }, icon("settings", 16)))
+      el("button", { class: "gear navitem", title: shellStatic.settings(),
+        "aria-label": shellStatic.settings(), "data-tip": shellStatic.settings(),
+        "data-page": "settings", onclick: () => go("settings", { origin: "rail" }) },
+        icon("settings", 16)))
   )
 );
-
-window.addEventListener("resize", closeThemePop);
-// The scroll that can move the palette trigger now belongs to the nav region,
-// and to the sidebar itself in the horizontal header presentation.
-sidebar.addEventListener("scroll", closeThemePop);
-sidebar.querySelector(".side-scroll")?.addEventListener("scroll", closeThemePop);
 
 let libOpen = new Set(JSON.parse(localStorage.getItem("tvNavOpen") ?? '["labels"]'));
 /**
@@ -1140,8 +1417,26 @@ function navBtn(iconName, label, page, count) {
       onclick: () => go(page, { origin: "rail" }) },
     icon(iconName, 16),
     el("span", { class: "navtext" }, label),
-    count !== undefined ? el("span", { class: "n" }, String(count)) : null
+    count !== undefined ? el("span", { class: "n" }, String(count))
+      : ["open", "snoozed", "duplicates", "inbox", "sessions", "labels", "archive", "snapshots"]
+          .includes(page) ? startupArrival.pendingCount() : null
   );
+}
+
+function updateNavCount(container, page, count) {
+  if (count === undefined) return;
+  const button = container.querySelector(`.navitem[data-page="${page}"]`);
+  if (!button) return;
+  const label = shellNavLabel(page);
+  const name = navName(label, count);
+  button.setAttribute("aria-label", name);
+  button.dataset.tip = name;
+  let counter = button.querySelector(".n");
+  if (!counter) {
+    counter = startupArrival.pendingCount();
+    button.append(counter);
+  }
+  startupArrival.settleCount(counter, count, `nav:${page}`);
 }
 /**
  * Nav group: the twist arrow ONLY folds/unfolds (stopPropagation); clicking
@@ -1155,8 +1450,13 @@ function navGroup(id, iconName, label, page, count, subItems) {
     if (libOpen.has(id)) libOpen.delete(id);
     else libOpen.add(id);
     localStorage.setItem("tvNavOpen", JSON.stringify([...libOpen]));
-    group.classList.toggle("open", libOpen.has(id));
-    twist.setAttribute("aria-expanded", String(libOpen.has(id)));
+    const open = libOpen.has(id);
+    if (!open && subnav.contains(document.activeElement)) twist.focus({ preventScroll: true });
+    animateDisclosure(subnav, () => {
+      subnav.inert = !open;
+      group.classList.toggle("open", open);
+      twist.setAttribute("aria-expanded", String(open));
+    });
   };
   twist.addEventListener("click", (e) => { e.stopPropagation(); toggleGroup(); });
   twist.addEventListener("keydown", (e) => {
@@ -1174,11 +1474,12 @@ function navGroup(id, iconName, label, page, count, subItems) {
     el("span", { class: "n" }, String(count)),
     twist
   );
+  const subnav = el("div", { class: "subnav", id: `nav-branch-${id}` }, el("div", {}, ...subItems));
+  subnav.inert = !libOpen.has(id);
+  twist.setAttribute("aria-controls", subnav.id);
   const group = el(
     "div",
-    { class: `navgroup${libOpen.has(id) ? " open" : ""}` },
-    head,
-    el("div", { class: "subnav" }, el("div", {}, ...subItems))
+    { class: `navgroup${libOpen.has(id) ? " open" : ""}` }, head, subnav
   );
   return group;
 }
@@ -1197,22 +1498,20 @@ function syncNavSelection() {
 function renderNavShell() {
   navMain.replaceChildren(
     navBtn("open", shellNavLabel("open"), "open"),
-    navBtn("inbox", shellNavLabel("inbox"), "inbox"),
     navBtn("snooze", shellNavLabel("snoozed"), "snoozed"),
     navBtn("duplicates", shellNavLabel("duplicates"), "duplicates")
   );
   navLib.replaceChildren(
+    navBtn("inbox", shellNavLabel("inbox"), "inbox"),
     navBtn("sessions", shellNavLabel("sessions"), "sessions"),
-    navBtn("labels", shellNavLabel("labels"), "labels"),
-    navBtn("archive", shellNavLabel("archive"), "archive"),
-    navBtn("snapshots", shellNavLabel("snapshots"), "snapshots")
+    navBtn("labels", shellNavLabel("labels"), "labels")
   );
   navMore.replaceChildren(
-    navBtn("stats", shellNavLabel("stats"), "stats"),
     navBtn("activity", shellNavLabel("activity"), "activity"),
+    navBtn("archive", shellNavLabel("archive"), "archive"),
+    navBtn("snapshots", shellNavLabel("snapshots"), "snapshots"),
     navBtn("data", shellNavLabel("data"), "data"),
-    navBtn("vault", shellNavLabel("vault"), "vault"),
-    navBtn("settings", shellNavLabel("settings"), "settings")
+    navBtn("stats", shellNavLabel("stats"), "stats")
   );
 }
 
@@ -1220,11 +1519,18 @@ async function readNavLibraryData() {
   return readLabelNavigationSnapshot();
 }
 
-function replaceNavLibrary({ archiveCount, labelGroups, namedSessions, snapshotCount }) {
-  navLib.replaceChildren(
-    navGroup("sessions", "sessions", shellNavLabel("sessions"), "sessions", namedSessions.length, [
+let navLibrarySnapshot = null;
+let pendingSessionNavigation = null;
+
+function replaceNavLibrary({ archiveCount, inboxCount = navLibrarySnapshot?.inboxCount,
+  labelGroups, namedSessions, snapshotCount }) {
+  navLibrarySnapshot = { archiveCount, inboxCount, labelGroups, namedSessions, snapshotCount };
+  const nextSessionBranch = navGroup(
+    "sessions", "sessions", shellNavLabel("sessions"), "sessions", namedSessions.length, [
       ...namedSessions.slice(0, 7).map((session) => {
-        const tabCount = session.windows.reduce((total, refs) => total + refs.length, 0);
+        const tabCount = Number.isFinite(session.tabCount)
+          ? session.tabCount
+          : (session.windows ?? []).reduce((total, refs) => total + refs.length, 0);
         return el("div", { class: "subrow" },
           el("button", { class: "navitem sub", title: session.name,
             "aria-label": navName(session.name, tabCount), onclick: () => goToSession(session.id) },
@@ -1232,17 +1538,20 @@ function replaceNavLibrary({ archiveCount, labelGroups, namedSessions, snapshotC
             el("span", { class: "n" }, String(tabCount))),
           el("button", { class: "subact", title: shellRestoreSessionTitle(session.name),
             "aria-label": shellRestoreSessionAria(session.name),
-            onclick: (event) => { event.stopPropagation(); restoreSession(session); } },
+            onclick: (event) => {
+              event.stopPropagation();
+              void restoreSessionById(session.id);
+            } },
             icon("switch", 13)));
       }),
       namedSessions.length > 7
         ? el("button", { class: "navitem sub", onclick: () => go("sessions", { origin: "rail" }) },
             el("span", { class: "navtext" }, shellAllLink("sessions")))
         : null
-    ].filter(Boolean)),
-    // Subnav caps: 14 labels / 14 views / 7 sessions; past the cap an
-    // "All … →" tail links to the full page (user question 2026-07-12).
-    navGroup("labels", "labels", shellNavLabel("labels"), "labels", labelGroups.length, [
+    ].filter(Boolean));
+  // Longer label lists remain available through the full Labels page.
+  const nextLabelBranch = navGroup(
+    "labels", "labels", shellNavLabel("labels"), "labels", labelGroups.length, [
       // Sidebar shows the most recently used labels first (matches the Labels
       // page's default "recent" sort) — quick access to what you just touched.
       ...sortLabelGroups(labelGroups, "recent").slice(0, 14).map((g) =>
@@ -1252,10 +1561,20 @@ function replaceNavLibrary({ archiveCount, labelGroups, namedSessions, snapshotC
         ? el("button", { class: "navitem sub", onclick: () => go("labels", { origin: "rail" }) },
             el("span", { class: "navtext" }, shellAllLink("labels")))
         : null
-    ].filter(Boolean)),
-    navBtn("archive", shellNavLabel("archive"), "archive", archiveCount),
-    navBtn("snapshots", shellNavLabel("snapshots"), "snapshots", snapshotCount)
-  );
+    ].filter(Boolean));
+  // Keep Inbox and utility buttons mounted so a background Snapshot refresh
+  // can update counts without taking keyboard focus away from those routes.
+  const oldSessionHead = navLib.querySelector('.navitem[data-page="sessions"]');
+  const oldLabelHead = navLib.querySelector('.navitem[data-page="labels"]');
+  const oldSessionBranch = oldSessionHead?.closest(".navgroup") ?? oldSessionHead;
+  const oldLabelBranch = oldLabelHead?.closest(".navgroup") ?? oldLabelHead;
+  oldSessionBranch?.replaceWith(nextSessionBranch);
+  oldLabelBranch?.replaceWith(nextLabelBranch);
+  updateNavCount(navLib, "sessions", namedSessions.length);
+  updateNavCount(navLib, "labels", labelGroups.length);
+  updateNavCount(navLib, "inbox", inboxCount);
+  updateNavCount(navMore, "archive", archiveCount);
+  updateNavCount(navMore, "snapshots", snapshotCount);
 }
 
 const renderNavLibrary = coalesce(async () => {
@@ -1263,8 +1582,25 @@ const renderNavLibrary = coalesce(async () => {
   syncNavSelection();
 });
 
-const renderNav = coalesce(renderNavInner);
-async function renderNavInner() {
+/**
+ * Session writes already deliver their fresh map in storage.onChanged. Patch
+ * only the Session branch + Snapshot count from that event payload, retaining
+ * the existing Label/Archive navigation snapshot. This avoids a second full
+ * saved-library read and its mature-profile main-thread stall.
+ */
+const renderNavSessions = coalesce(async () => {
+  const sessionNavigation = pendingSessionNavigation;
+  pendingSessionNavigation = null;
+  // The ordinary post-Open navigation hydration will read the fresh state. Do
+  // not start a second complete library scan if a user saves unusually early.
+  if (!navLibrarySnapshot) return;
+  if (!sessionNavigation) return;
+  replaceNavLibrary({ ...navLibrarySnapshot, ...sessionNavigation });
+  syncNavSelection();
+});
+
+const renderNav = coalesceLatest(renderNavInner);
+async function renderNavInner(reads = createRefreshReads()) {
   const [settings, customRecords] = await Promise.all([
     getSettings(), listItems(STORE_KEYS.customSchemes)
   ]);
@@ -1272,46 +1608,53 @@ async function renderNavInner() {
   // the live reconciliation path when another surface flips the preference.
   if (!navWritePending) sidebarCollapsed = settings.uiSidebarCollapsed === true;
   applyNavMode();
-  // E3-2: Inbox, Snoozed, and Archive contribute only a NUMBER to the sidebar,
-  // so they are counted rather than listed and sorted. Sessions and Labels
-  // still need their records, because each renders a subnav.
-  const [tabs, inboxCount, snoozeCount, library] =
+  renderQuickTheme(settings, customRecords);
+  // The Inbox and Snoozed lists come from this refresh's shared saved reads, so
+  // Needs you and the Label navigation snapshot reuse the same clones instead
+  // of cloning each map again for a count. Inbox counts saved tabs inside
+  // bundles; Snoozed keeps its record count.
+  const [tabs, inboxItems, snoozes, library] =
     await Promise.all([
-      chrome.tabs.query({}),
-      countItems(STORE_KEYS.inbox),
-      countItems(STORE_KEYS.snoozes),
-      readNavLibraryData()
+      reads.tabs(),
+      reads.inboxItems(),
+      reads.snoozeItems(),
+      readLabelNavigationSnapshot(reads)
     ]);
-  const groups = await findDuplicateGroups();
+  const inboxCount = inboxItems.reduce((total, item) => total + inboxItemTabCount(item), 0);
+  const groups = await reads.groups();
   const dupCount = groups.reduce((n, g) => n + g.close.length, 0);
-  navMain.replaceChildren(
-    navBtn("open", shellNavLabel("open"), "open", tabs.length),
-    navBtn("inbox", shellNavLabel("inbox"), "inbox", inboxCount),
-    navBtn("snooze", shellNavLabel("snoozed"), "snoozed", snoozeCount),
-    navBtn("duplicates", shellNavLabel("duplicates"), "duplicates", dupCount)
-  );
-  replaceNavLibrary(library);
-  navMore.replaceChildren(
-    navBtn("stats", shellNavLabel("stats"), "stats"),
-    navBtn("activity", shellNavLabel("activity"), "activity"),
-    navBtn("data", shellNavLabel("data"), "data"),
-    navBtn("vault", shellNavLabel("vault"), "vault"),
-    navBtn("settings", shellNavLabel("settings"), "settings")
-  );
+  updateNavCount(navMain, "open", tabs.length);
+  updateNavCount(navMain, "snoozed", snoozes.length);
+  updateNavCount(navMain, "duplicates", dupCount);
+  replaceNavLibrary({ ...library, inboxCount });
   // A route may have changed while counts/Vault state were being read.
   syncNavSelection();
 
-  renderQuickTheme(settings, customRecords);
   await refreshFocusNav();
 
 }
 
+/**
+ * Tab and window signals change only the Open and Duplicates counts here. The
+ * Inbox, Snoozed, Session and Label branches depend on saved data alone and
+ * keep refreshing through storage changes, so a tab burst no longer clones and
+ * scans the complete saved library.
+ */
+const renderNavOpen = coalesceLatest(async (reads = createRefreshReads()) => {
+  const [tabs, groups] = await Promise.all([reads.tabs(), reads.groups()]);
+  updateNavCount(navMain, "open", tabs.length);
+  updateNavCount(navMain, "duplicates", groups.reduce((n, g) => n + g.close.length, 0));
+});
+
 /* ---- hero + page utilities (F37) ----
- * Search stays one sticky row. Starred is a top-right overlay rail that never
- * changes page geometry; Needs you is ordinary flow immediately below Search. */
+ * Search stays one sticky row. Starred is an edge rail that yields real space
+ * wherever the primary column remains useful; Needs you shares the top utility line. */
 function transitionStarredRail(update) {
   const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  if (reduced || typeof document.startViewTransition !== "function") {
+  const scrollTop = globalThis.scrollY ?? document.scrollingElement?.scrollTop ?? 0;
+  if (!shouldTransitionStarredRail({
+    reduced, scrollTop, hasApi: typeof document.startViewTransition === "function"
+  })) {
     update();
     return;
   }
@@ -1321,12 +1664,16 @@ function transitionStarredRail(update) {
 const pageUtilities = createPageUtilities({
   go, showNotice, onRailTransition: transitionStarredRail
 });
-// Needs you keeps the `attention` scheduler task because its duplicate count
+// Status keeps the `attention` scheduler task because its duplicate count
 // follows live tabs. Starred is separate and follows only the Starred store.
-const renderAttention = coalesce(() => pageUtilities.refreshAttention());
+const renderAttention = coalesceLatest((reads) => pageUtilities.refreshAttention(reads));
+// Tab signals reuse the saved-store inputs of the last complete Needs-you
+// refresh and re-read only live tabs, duplicates and Session drift.
+const renderAttentionLive = coalesceLatest((reads) =>
+  pageUtilities.refreshAttention(reads, { liveOnly: true }));
 
 const historyBtn = el("button", { type: "button", class: "search-history-invite linklike" },
-  "Use browser History");
+  localeMessage("history_access_invite"));
 let historyDisclosure = null;
 function dismissHistoryInvite() {
   historyDisclosure?.remove();
@@ -1338,7 +1685,7 @@ historyBtn.addEventListener("click", async () => {
   if (historyDisclosure) return;
   historyBtn.hidden = true;
   historyDisclosure = createHistoryAccessDisclosure({
-    purpose: "Allow Browser History to include pages you visited recently after EveryTab's local results.",
+    purpose: localeMessage("history_access_search_purpose"),
     onGranted: dismissHistoryInvite,
     onDismiss: () => {
       historyDisclosure?.remove();
@@ -1350,6 +1697,7 @@ historyBtn.addEventListener("click", async () => {
   historyBtn.closest(".search-footer")?.append(historyDisclosure);
 });
 const searchBox = createSearchBox({
+  preloadEmptySuggestions: "after-paint",
   enterFallback: true, // F2: Enter with no result → open the typed URL / web-search it
   footer: true,
   // N23: ↓ in the EMPTY box jumps straight to the first visible row
@@ -1378,8 +1726,10 @@ onHistoryAccessChanged((enabled) => {
     searchFooter.append(historyBtn);
   }
 });
-const searchOverlay = el("div", { class: "hero-search-overlay" }, searchResults, searchFooter);
+const searchOverlay = el("div", { class: "hero-search-overlay" },
+  el("div", { class: "hero-search-content" }, searchResults, searchFooter));
 const heroPanel = el("div", { class: "hero-panel" }, searchBox, searchOverlay);
+bindSearchReveal(searchResults, searchOverlay);
 
 /** True only when dashboard.js is mounted inside Chrome's static New Tab host. */
 const isNewTabHost = () => document.documentElement.dataset.newTabHost === "true";
@@ -1391,6 +1741,7 @@ const { element: focusStrip, announcer: focusAnnouncer, refresh: refreshFocusStr
   createFocusStrip({
     getSearchInput: () => searchInput,
     onMeasure: measureHero,
+    getLayoutFollower: () => dailyStage,
     // F48: the guarded count jumps to the Blocked sites editor.
     openBlockedSites: () => {
       go("settings-focus", { origin: "rail" });
@@ -1411,10 +1762,11 @@ const heroUtility = el("div", { class: "hero-utility" },
 const hero = el(
   "div",
   { class: "hero" },
-  el("h1", { class: "sr-only" }, "EveryTab"),
+  el("h1", { class: "sr-only" }, shellStatic.brand()),
   el("div", { class: "hero-top" }, heroPanel),
   heroUtility,
   pageUtilities.starred,
+  reconnectBanner,
   focusStrip
 );
 document.body.append(focusAnnouncer);
@@ -1494,6 +1846,8 @@ function isTyping(t) {
 // consume the event. Search fields and popover controls return before any
 // list logic, so their native arrow behavior remains untouched.
 document.addEventListener("keydown", (e) => {
+  if (currentPage === "open" && openSurface?.handleFilterShortcut(e)) return;
+  if (currentPage === "inbox" && inboxSurface?.handleFilterShortcut(e)) return;
   if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) {
     e.preventDefault();
     searchInput?.focus();
@@ -1619,6 +1973,23 @@ function rowFocusTarget(row, lane) {
 const ARROW_OWNERS = '[popover], .action-popover, .tagmenu, [role="listbox"], [role="dialog"], ' +
   '.close-day-review';
 
+let lastListPosition = null;
+document.addEventListener("focusin", (event) => {
+  const unit = event.target.closest?.(".trow, .item");
+  if (!unit || !unit.closest(".sections") || unit.offsetParent === null) return;
+  const units = [...document.querySelectorAll(".sections .trow, .sections .item")]
+    .filter((node) => node.offsetParent !== null);
+  const ordinal = units.indexOf(unit);
+  if (ordinal < 0) return;
+  lastListPosition = {
+    page: currentPage,
+    ordinal,
+    kind: unit.matches(".trow") ? "row" : "card",
+    key: unit.dataset.tablistRow ?? unit.dataset.tablistCard ?? "",
+    lane: rowFocusDescriptor(event.target, unit)
+  };
+}, true);
+
 document.addEventListener("keydown", (e) => {
   const vertical = e.key === "ArrowDown" || e.key === "ArrowUp";
   if (!vertical && e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -1647,12 +2018,33 @@ document.addEventListener("keydown", (e) => {
   if (units.length === 0) return;
   const node = t.closest?.(".trow, .item");
   if (!node) {
-    // N40: ANY arrow pressed while the list is not already being walked enters
-    // it at the first unit's checkbox — from a nav item, a section control, or
-    // nowhere at all. Previously only ↑/↓ from a bare <body> did anything, so
-    // the keys read as dead everywhere else. The search field is an input and
-    // returned above, so its own handler still owns its arrows (an empty box
-    // hands ArrowDown to the list through exitToList).
+    if (!vertical) return;
+    // When an action or Escape left focus on the document body, resume from
+    // the exact row/card this route last owned. Navigation controls still
+    // enter at the first unit; an unrelated route never inherits an old index.
+    if (t === document.body && lastListPosition?.page === currentPage) {
+      const remembered = lastListPosition;
+      const same = units.findIndex((unit) =>
+        (remembered.kind === "row" ? unit.dataset.tablistRow : unit.dataset.tablistCard) === remembered.key &&
+        Boolean(remembered.key));
+      if (same === 0 && e.key === "ArrowUp") {
+        e.preventDefault();
+        searchInput?.focus({ preventScroll: true });
+        return;
+      }
+      const targetIndex = same >= 0
+        ? e.key === "ArrowDown" ? (same + 1) % units.length : same - 1
+        : e.key === "ArrowDown"
+          ? Math.min(remembered.ordinal, units.length - 1)
+          : Math.max(0, Math.min(remembered.ordinal - 1, units.length - 1));
+      if (targetIndex >= 0) {
+        e.preventDefault();
+        focusRow(units[targetIndex], remembered.lane);
+        return;
+      }
+    }
+    // An arrow from a navigation or section control starts a fresh list walk.
+    // Search inputs and active palettes keep ownership of their own arrows.
     e.preventDefault();
     focusRow(units[0]);
     return;
@@ -1688,6 +2080,7 @@ document.addEventListener("keydown", (e) => {
 let currentPage = "open";
 let pendingRouteOrigin = "hash";
 let pendingScrollY = null;
+let dataRouteState = { hash: null, generation: 0 };
 function go(page, { origin = "route" } = {}) {
   pendingRouteOrigin = origin;
   // F34-4: the inline navigator is gone, so no navigation preserves a scroll
@@ -1711,26 +2104,37 @@ function route() {
   pendingScrollY = null;
   const routeSearchIntent = dashboardSearchIntent(location.hash);
   const raw = routeSearchIntent.raw;
+  // go() routes synchronously and Chrome follows with one hashchange pass. A
+  // generation represents a real hash identity, not those two passes, so an
+  // explicit Vault-details action survives its own trailing route while any
+  // later destination still invalidates its pending anchor.
+  dataRouteState = nextDataRouteState(dataRouteState, location.hash);
+  const routeGeneration = dataRouteState.generation;
   // P11-05 fallback for Chromium versions without action.openPopup(): open the
   // dashboard and land directly in its existing Search field.
   const searchDeepLink = routeSearchIntent.searchDeepLink;
   // The popup's "Focus settings" deep link → the Settings page, then a scroll to
   // the Focus group below the measured hero once the async form mounts.
   const focusDeepLink = raw === "settings-focus";
-  const settingsDeepLink = /^settings:(appearance|newtab|focus|autosave|suspension|sessions|duplicates|privacy|intro|keyboard)$/.exec(raw);
+  const settingsDeepLink = /^settings:(appearance|newtab|focus|autosave|suspension|protection|sessions|duplicates|privacy|intro|keyboard)$/.exec(raw);
   const deepSettingsGroup = settingsDeepLink?.[1] ?? null;
   // F16 (item): the popup's tab-label chips deep-link to a specific label card —
   // `#label:<encoded name>` → the Labels page, positioned on that card.
   const labelDeepLink = raw.startsWith("label:");
   const deepLabel = labelDeepLink ? safeDecode(raw.slice("label:".length)) : null;
+  const activityDeepLink = raw.startsWith("activity:");
+  const deepActivityId = activityDeepLink ? safeDecode(raw.slice("activity:".length)) : null;
   const groupDeepLink = /^(label|session)-group:(.+)$/.exec(raw);
   const deepGroupKind = groupDeepLink?.[1] ?? null;
   const deepGroupId = groupDeepLink ? safeDecode(groupDeepLink[2]) : null;
   // `#home` and `#overview` are kept as aliases so old links and pinned tabs
   // still resolve, now to the Open tabs landing.
-  const requested = searchDeepLink || raw === "overview" || raw === "home" ? "open" : (raw || "open");
+  const requestedData = dataRoute(raw);
+  const requested = searchDeepLink || raw === "overview" || raw === "home" ? "open"
+    : requestedData?.page ?? (raw || "open");
   const want = focusDeepLink || deepSettingsGroup ? "settings"
     : labelDeepLink ? "labels"
+      : activityDeepLink ? "activity"
       : deepGroupKind === "label" ? "labels"
         : deepGroupKind === "session" ? "sessions" : requested;
   if (routeSearchIntent.dismiss) searchBox.dismissSearch({ blur: true });
@@ -1743,12 +2147,19 @@ function route() {
   syncNavSelection();
   const visible = new Set(PAGES[currentPage]);
   for (const s of ALL_SECS) s.root.style.display = visible.has(s) ? "" : "none";
+  automationAwareness.sync();
   watchSectionChrome();
   renderStats();
   renderOpen(); // self-gates: builds only if the open section is now on-screen
   if (currentPage === "close-day") renderCloseDay();
   // E3-2: whatever changed while it was hidden catches up now, once.
   flushStaleSections();
+  // Data is one retained continuous workspace. Vault renders independently of
+  // a jump target, while an explicit area route anchors only after its target
+  // exists. Background Vault refreshes never enter this scrolling path.
+  if (currentPage === "data") {
+    void renderDataArea(requestedData?.area ?? null, routeGeneration);
+  }
   // F27: rail/default routes are orientation actions; they always reset to a
   // clear entrance. The inline collection tabs are content swaps, so they keep
   // the viewport pinned while only the mounted collection below changes.
@@ -1759,6 +2170,7 @@ function route() {
   if (focusDeepLink) scrollToFocusSettings();
   if (deepSettingsGroup) scrollToSettingsGroup(deepSettingsGroup);
   if (labelDeepLink && deepLabel) openLabelDeepLink(deepLabel);
+  if (activityDeepLink && deepActivityId) openActivityDeepLink(deepActivityId);
   if (deepGroupKind && deepGroupId) openOrganizationGroupDeepLink(deepGroupKind, deepGroupId);
   if (searchDeepLink) requestAnimationFrame(() => searchInput.focus({ preventScroll: true }));
   routeSpan(`${prev} → ${currentPage}`);
@@ -1776,6 +2188,14 @@ async function openLabelDeepLink(label) {
   history.replaceState(null, "", "#labels");
   await renderLabels();
   positionLabelCard(label);
+  settleAnchor(() => positionLabelCard(label));
+}
+
+/** Needs you opens the exact durable Activity record, then settles its route. */
+async function openActivityDeepLink(entryId) {
+  history.replaceState(null, "", "#activity");
+  const surface = await getActivitySurface();
+  await surface.goToEntry(entryId);
 }
 
 /** P11-14: Search navigates to one Label/Session group lens; it never opens
@@ -1804,6 +2224,32 @@ async function scrollToSettingsGroup(groupId, { focusSelector = null } = {}) {
   });
 }
 
+/** Open one Data destination after its retained core and, for Vault, its async
+ * surface have mounted. Plain #data deliberately stays at the page entrance. */
+async function renderDataArea(area, routeGeneration) {
+  const coreReady = renderData();
+  const vaultReady = renderVault();
+  if (!area) {
+    await coreReady;
+    return;
+  }
+  const ready = area === "vault"
+    ? (await Promise.all([coreReady, vaultReady])).every(Boolean)
+    : await coreReady;
+  if (!ready) return;
+  if (!dataAreaRouteIsCurrent(area, routeGeneration)) return;
+  settleAnchor(() => {
+    if (!dataAreaRouteIsCurrent(area, routeGeneration)) return;
+    document.getElementById(`data-area-${area}`)
+      ?.scrollIntoView({ block: "start", behavior: "auto" });
+  });
+}
+
+function dataAreaRouteIsCurrent(area, routeGeneration) {
+  return currentPage === "data" && routeGeneration === dataRouteState.generation &&
+    dataRoute(dashboardSearchIntent(location.hash).raw)?.area === area;
+}
+
 /** Legacy Focus-only route used by popup and Focus surfaces. */
 async function scrollToFocusSettings({ focusSites = false } = {}) {
   return scrollToSettingsGroup("focus", {
@@ -1811,8 +2257,7 @@ async function scrollToFocusSettings({ focusSites = false } = {}) {
   });
 }
 
-const dailyStage = el("div", { class: "daily-stage" },
-  reconnectBanner, sectionsWrap);
+const dailyStage = el("div", { class: "daily-stage" }, sectionsWrap);
 const main = el("main", { class: "content", id: "main", tabindex: "-1" },
   hero, dailyStage);
 /* D4-3a: a keyboard user meets fifteen-plus navigation items before the first
@@ -1827,7 +2272,7 @@ const main = el("main", { class: "content", id: "main", tabindex: "-1" },
  * navigation, which is the only job the skip control ever had. Focus arriving
  * from INSIDE the page (a real Shift+Tab) still gets the visible control. */
 const skipLink = el("button", { class: "skip-link", type: "button",
-  onclick: () => searchInput.focus() }, "Skip to search");
+  onclick: () => searchInput.focus() }, localeMessage("shell_skip_to_search"));
 skipLink.addEventListener("focus", (e) => {
   // `relatedTarget` is the element that LOST focus. A real in-page Shift+Tab
   // names one, so the visible control stays. Arriving from browser chrome or
@@ -1836,14 +2281,50 @@ skipLink.addEventListener("focus", (e) => {
   if (e.relatedTarget && e.relatedTarget !== document.body) return;
   searchInput.focus();
 });
-// The palette is a viewport popover, not sidebar content. Keeping it inside the
-// sticky, overflow-hidden sidebar trapped its z-index and made the part drawn
-// over the content column visible but unclickable. Portal it beside the shell.
-app.append(el("div", { class: "app" }, skipLink, sidebar, main), themePop, toast);
+// The catalogue belongs to the shell so it inherits the resolved navigation
+// width, but it overlays only the Dashboard content column. The sidebar and its
+// original trigger stay visible and stationary while the sheet is open.
+app.append(el("div", { class: "app" }, skipLink, sidebar, main, themePop), toast);
+
+function focusFirstCurrentSectionPosition() {
+  const focusFirst = () => {
+    const unit = [...sectionsWrap.querySelectorAll(".trow, .item")]
+      .find((node) => node.offsetParent !== null);
+    if (unit) {
+      focusRow(unit);
+      return true;
+    }
+    const section = PAGES[currentPage]?.find((candidate) => candidate.root.style.display !== "none");
+    const control = section?.root.querySelector("button:not([disabled]), input:not([disabled]), a[href]");
+    if (!control || control.offsetParent === null) return false;
+    control.focus({ preventScroll: true });
+    return true;
+  };
+  if (focusFirst()) return;
+  const observer = new MutationObserver(() => {
+    if (!focusFirst()) return;
+    observer.disconnect();
+    clearTimeout(expiry);
+  });
+  observer.observe(sectionsWrap, { childList: true, subtree: true });
+  const expiry = setTimeout(() => observer.disconnect(), 1500);
+}
+
+const dashboardFocusBridge = createDashboardFocusBridge({
+  sidebar,
+  content: main,
+  getCurrentPage: () => currentPage,
+  activatePage: (page) => go(page, { origin: "rail" }),
+  enterContent: focusFirstCurrentSectionPosition,
+  isContentLeftEdge: (target) => {
+    const row = target.closest?.(".trow, .item");
+    return !row || target === row || target === rowEntryControl(row);
+  }
+});
+window.addEventListener("pagehide", () => dashboardFocusBridge.destroy(), { once: true });
 
 // Publish the real hero height as `--hero-h` and keep it current as the section
-// intros / wrapping change it. One observer, no polling. (F8-R1: the retired Focus
-// strip no longer contributes to the hero; Batch 2's site-guard status will reuse this.)
+// intros / wrapping change it. One observer, no polling.
 measureHero();
 new ResizeObserver(() => measureHero()).observe(hero);
 sectionChromeObserver = new ResizeObserver(() => measureSectionChrome());
@@ -1919,7 +2400,7 @@ primaryPaintReady.then(() => {
       }));
   });
 });
-setInterval(renderAttention, 30_000);
+setInterval(() => dashboardStorageRefresh.request(["attention"]), 30_000);
 // A connected Vault can spend meaningful time reading its folder and merging a
 // mature library. It is important, but it is not part of the Open-tabs answer.
 // Give the primary ledger a real paint before starting file and storage work so
@@ -1931,6 +2412,10 @@ primaryPaintReady.then(() => {
   // debounce is already three seconds, so use the same quiet period here.
   setTimeout(() => {
     vaultPrimaryReady = true;
+    if (document.visibilityState === "hidden") {
+      vaultSchedulePending = true;
+      return;
+    }
     void getVaultSurface().then((surface) => {
       surface.start();
       if (vaultSchedulePending) {
@@ -1958,12 +2443,12 @@ primaryPaintReady.then(() =>
   const notice = el(
     "div",
     { class: "banner" },
-    el("span", {}, "EveryTab is now your new-tab page."),
-    el("button", { onclick: dismiss }, "Keep it"),
+    el("span", {}, localeMessage("new_tab_notice_text")),
+    el("button", { onclick: dismiss }, localeMessage("new_tab_notice_keep")),
     el("button", { onclick: async () => {
       await patchSettings({ newTabMode: "minimal" });
       dismiss();
-    } }, "Show a minimal page instead")
+    } }, localeMessage("new_tab_notice_minimal"))
   );
   hero.after(notice);
 })();
@@ -1987,35 +2472,68 @@ const DASHBOARD_REFRESH_RUNNERS = {
   snoozes: renderSnoozes,
   duplicates: renderDuplicates,
   vault: renderVault,
+  vaultPill: refreshVaultPill,
   activity: renderActivity,
   stats: renderStats,
   nav: renderNav,
+  navOpen: renderNavOpen,
   navLibrary: renderNavLibrary,
+  navSessions: renderNavSessions,
   attention: renderAttention,
+  attentionLive: renderAttentionLive,
+  openWarm: warmHiddenOpen,
   focus: refreshFocusChrome,
   settings: refreshMountedSettings
 };
 const REFRESH_SECTION = {
   open: "open", closeDay: "close-day", inbox: "inbox", labels: "labels", archive: "archive",
   sessions: "sessions", snapshots: "snapshots",
-  snoozes: "snoozed", duplicates: "duplicates", vault: "vault",
+  snoozes: "snoozed", duplicates: "duplicates", vault: "data",
   activity: "activity", stats: "stats", settings: "settings"
 };
+/** Tasks that read this refresh's shared live-tab and saved-store snapshot. */
+const SHARED_READ_TASKS = new Set(["nav", "navOpen", "attention", "attentionLive", "duplicates"]);
 function refreshPriority(task) {
   const section = REFRESH_SECTION[task];
   if (!section) return 2; // global counts/status, after visible content
   if (section === currentPage) return 0;
   return sectionVisible(section) ? 1 : 3;
 }
-async function runDashboardRefresh(tasks) {
+/**
+ * One refresh's lazy reads. Live tabs, duplicate rules and groups come from the
+ * display snapshot; the Inbox and Snoozed lists are read at most once so the
+ * navigation counts, Label navigation and Needs you share one clone each.
+ */
+function createRefreshReads() {
+  const reads = createDisplayTabReads();
+  let inboxRead;
+  let snoozeRead;
+  return {
+    ...reads,
+    inboxItems: () => inboxRead ??= listItems(STORE_KEYS.inbox),
+    snoozeItems: () => snoozeRead ??= listItems(STORE_KEYS.snoozes)
+  };
+}
+async function runDashboardRefresh(requested) {
   // Scheme rotation and other early events can fire while cold Open is still
   // reading. They must not sneak global counts back onto the B3 critical path.
   await primaryOpenReady.catch(() => {});
+  const tasks = withoutSupersededLiveTasks(requested);
   const started = perfActive() ? performance.now() : 0;
+  const reads = createRefreshReads();
   for (let priority = 0; priority <= 3; priority++) {
+    // A focus/visibility change during startup or a preceding render must not
+    // start another band of reads. Running work may finish; untouched tasks wait.
+    if (!dashboardCanRefreshLiveTabs()) {
+      dashboardStorageRefresh.request(tasks.filter((task) => refreshPriority(task) >= priority));
+      return;
+    }
     const band = tasks.filter((task) => refreshPriority(task) === priority);
     if (!band.length) continue;
-    await Promise.allSettled(band.map((task) => DASHBOARD_REFRESH_RUNNERS[task]?.()));
+    await Promise.allSettled(band.map((task) =>
+      SHARED_READ_TASKS.has(task)
+        ? DASHBOARD_REFRESH_RUNNERS[task]?.(reads)
+        : DASHBOARD_REFRESH_RUNNERS[task]?.()));
   }
   if (perfActive()) {
     const ms = performance.now() - started;
@@ -2023,66 +2541,131 @@ async function runDashboardRefresh(tasks) {
     pcount("refresh tasks (total)", tasks.length, ms);
   }
 }
-const dashboardRefreshScheduler = createFrameRefreshScheduler(runDashboardRefresh);
+const dashboardRefreshScheduler = createFrameRefreshScheduler(runDashboardRefresh, {
+  canRun: () => dashboardCanRefreshLiveTabs()
+});
+// Placement feedback must not queue behind an earlier saved-library/count read.
+// All Open requests share this lane so foreground replay rebuilds only once.
+const dashboardOpenRefresh = createFrameRefreshScheduler(runDashboardRefresh, {
+  canRun: () => dashboardCanRefreshLiveTabs()
+});
 function queueDashboardRefresh(tasks) {
-  dashboardRefreshScheduler.request(tasks);
+  if (tasks.includes("open")) dashboardOpenRefresh.request(["open"]);
+  dashboardRefreshScheduler.request(tasks.filter((task) => task !== "open"));
 }
 
-// First event reaches the next frame immediately; one 120ms quiet-tail pass
-// reconciles Chrome's multi-event drag/create/remove storms.
-const tabRefreshBurst = createLeadingTrailingRefresh(
-  () => queueDashboardRefresh(TAB_REFRESH_TASKS),
-  { delay: 120 }
+let dashboardWindowId = null;
+let dashboardWindowFocused = false;
+const dashboardCanRefreshLiveTabs = () =>
+  dashboardWindowFocused && document.visibilityState !== "hidden";
+const dashboardStorageRefresh = createForegroundTaskQueue(
+  queueDashboardRefresh,
+  { isForeground: dashboardCanRefreshLiveTabs }
+);
+
+// A newly opening Dashboard must not compete with every older EveryTab page.
+// Inactive documents retain one dirty bit; the focused document reconciles the
+// complete Chrome event burst once, after the new surface has had its first
+// useful paint.
+const tabRefreshBurst = createForegroundTrailingRefresh(
+  () => {
+    if (currentPage === "close-day") getCloseDaySurface().checkFreshnessSoon();
+    warmHiddenOpen();
+    queueDashboardRefresh(TAB_REFRESH_TASKS);
+  },
+  { delay: 180, isForeground: dashboardCanRefreshLiveTabs }
 );
 function tabsSoon() {
-  if (currentPage === "close-day") getCloseDaySurface().checkFreshnessSoon();
-  warmHiddenOpen();
-  tabRefreshBurst();
+  tabRefreshBurst.request();
+}
+function tabsMoved() {
+  // Placement is already visible in Chrome. Reconcile Open at the next frame;
+  // its scheduler and interaction gate retain hidden or held work. Counts and
+  // other tab-dependent surfaces still use the normal quiet-window refresh.
+  queueDashboardRefresh(["open"]);
+  tabsSoon();
+}
+function resumeDashboardRefreshes() {
+  if (!dashboardCanRefreshLiveTabs()) return;
+  tabRefreshBurst.foreground();
+  dashboardStorageRefresh.foreground();
+  dashboardRefreshScheduler.foreground();
+  dashboardOpenRefresh.foreground();
 }
 chrome.tabs.onCreated.addListener(tabsSoon);
 chrome.tabs.onRemoved.addListener(tabsSoon);
-chrome.tabs.onUpdated.addListener((_id, info) => {
-  if (info.url || info.title || info.status === "complete" || info.pinned !== undefined) tabsSoon();
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!reconcileOpenTabUpdate(openSec.body, tabId, info)) tabsSoon();
 });
-chrome.tabs.onMoved.addListener(tabsSoon);
-chrome.tabs.onAttached.addListener(tabsSoon);
-chrome.windows.onFocusChanged.addListener(tabsSoon);
+chrome.tabs.onMoved.addListener(tabsMoved);
+chrome.tabs.onAttached.addListener(tabsMoved);
+chrome.tabs.onDetached.addListener(tabsMoved);
+chrome.tabGroups?.onUpdated?.addListener(tabsSoon);
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  dashboardWindowFocused = windowId === dashboardWindowId;
+  resumeDashboardRefreshes();
+});
+window.addEventListener("focus", resumeDashboardRefreshes);
+document.addEventListener("visibilitychange", () => {
+  resumeDashboardRefreshes();
+  if (document.visibilityState !== "hidden" && vaultPrimaryReady && vaultSchedulePending) {
+    vaultSchedulePending = false;
+    void getVaultSurface().then((surface) => surface.schedule());
+  }
+});
+void Promise.all([
+  chrome.windows.getCurrent().catch(() => null),
+  chrome.windows.getLastFocused().catch(() => null)
+]).then(([ownWindow, focusedWindow]) => {
+  dashboardWindowId = ownWindow?.id ?? null;
+  dashboardWindowFocused = dashboardWindowId !== null && focusedWindow?.id === dashboardWindowId;
+  resumeDashboardRefreshes();
+});
 
 // storage events (M0 lesson: live refresh on every store key this page renders)
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
+  changes = expandStorageChanges(changes);
+  if (changes[SESSION_NAVIGATION_REVISION_KEY]?.newValue) {
+    pendingSessionNavigation = changes[SESSION_NAVIGATION_REVISION_KEY].newValue;
+  } else if (changes[STORE_KEYS.sessions]?.newValue) {
+    pendingSessionNavigation = sessionNavigationSnapshot(
+      changes[STORE_KEYS.sessions].newValue
+    );
+  } else if (changes[NAMED_SESSION_RECORDS_KEY]?.newValue) {
+    // The small physical named-record map intentionally carries no automatic
+    // Snapshots. Patch only the named branch and retain the existing Snapshot
+    // count from the hydrated navigation snapshot.
+    pendingSessionNavigation = {
+      namedSessions: sessionNavigationSnapshot(
+        changes[NAMED_SESSION_RECORDS_KEY].newValue
+      ).namedSessions
+    };
+  }
   if (changes[CUSTOM_SCHEME_NOTICE_KEY]?.newValue) void consumeCustomSchemeNotice();
   if (["inbox", "archive", ARCHIVE_OVERLAY_KEY].some((key) => key in changes)) {
     getOpenSurface().invalidateSavedLabels();
   }
-  if (SESSION_IDENTITY_INDEX_KEY in changes) {
-    // A pre-index profile may have painted generic Window names while the
-    // delayed additive backfill ran. Apply the names immediately when Open is
-    // visible; otherwise retain the existing hidden prewarm behavior.
-    if (openSectionVisible()) renderOpen();
-    else warmHiddenOpen();
-  } else if ([STORE_KEYS.sessions, "sessionWindows"].some((key) => key in changes)) {
-    warmHiddenOpen();
-  }
+  // Session identity refresh/prewarm is part of dashboardTasksForStorage below,
+  // so background documents retain dirty work instead of reading full windows.
   if (currentPage === "close-day" &&
-      [STORE_KEYS.inbox, STORE_KEYS.archive, ARCHIVE_OVERLAY_KEY, STORE_KEYS.sessions]
+      [STORE_KEYS.inbox, STORE_KEYS.archive, ARCHIVE_OVERLAY_KEY,
+        STORE_KEYS.sessions, NAMED_SESSION_RECORDS_KEY]
         .some((key) => key in changes)) {
     getCloseDaySurface().checkFreshnessSoon();
   }
-  queueDashboardRefresh(dashboardTasksForStorage(changes, {
+  dashboardStorageRefresh.request(dashboardTasksForStorage(changes, {
     statsVisible: document.body.dataset.page === "stats"
   }));
 
   if (changes.journal) {
-    const head = (changes.journal.newValue ?? [])[0];
-    if (head && !head.undone && head.at > lastToastAt) {
-      lastToastAt = head.at;
-      showToast(head);
-    }
+    void showLatestJournalToast(changes.journal);
   }
 
   if (changes.settings) applyIntroPref(); // N15
-  const dataKeys = [...Object.values(STORE_KEYS), ARCHIVE_OVERLAY_KEY, "settings"];
+  const dataKeys = [
+    ...Object.values(STORE_KEYS), ARCHIVE_OVERLAY_KEY, NAMED_SESSION_RECORDS_KEY, "settings"
+  ];
 
   // M5 write-through: any data change while the dashboard is open syncs the
   // vault after a 3s debounce. Sync's own storage writes re-enter here, but

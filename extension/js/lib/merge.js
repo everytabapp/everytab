@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "./failure-diagnostic.js";
 /**
  * M5 — pure merge logic (PRD §4). No chrome APIs: Node-testable.
  *
@@ -62,7 +66,7 @@ export function mergeMaps(local, remote) {
     let r = usable(remote[id]) ? remote[id] : undefined;
     if (r && !acceptableSchema(r)) {
       // Future-schema record: keep whatever we have locally, never rewrite theirs.
-      console.warn(`EveryTab: skipping record ${id} with newer schemaVersion ${r.schemaVersion}`);
+      reportFailure("merge-newer-schema", undefined);
       if (l) merged[id] = l;
       continue;
     }

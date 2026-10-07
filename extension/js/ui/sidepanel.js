@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "../lib/failure-diagnostic.js";
 /**
  * F14 — EveryTab side panel (Chrome global Side Panel API).
  *
@@ -17,30 +21,41 @@ import { initTheme } from "./theme.js";
 import { createSearchBox } from "./searchbox.js";
 import { dashboardHref } from "../lib/newtab-focus.js";
 import { createOpenSurface } from "./open-surface.js";
+import { reconcileOpenTabUpdate } from "./open-surface.js";
 import { createInboxSurface } from "./inbox-surface.js";
 import { createSessionsSurface } from "./sessions-surface.js";
 import { createLabelsSurface } from "./labels-surface.js";
 import { createFocusStrip } from "./focus-strip.js";
 import { initTooltips } from "./tooltip.js";
-import { createLeadingTrailingRefresh } from "./refresh-scheduler.js";
+import { createInteractionRefreshGate, createLeadingTrailingRefresh } from "./refresh-scheduler.js";
+import { createVisibleDocumentTasks } from "./visible-document-tasks.js";
+import { createListArrowNavigator } from "./arrow-navigation.js";
 import { showLoadingFeedback } from "./loading.js";
 import { createUndoToast, bindUndoShortcut } from "./toast.js";
 import { createCopyHelpers, mark, flashNote, cardLabelPanel, sessionComboboxButton, confirmDelete, buildSnoozePanel } from "./list-helpers.js";
-import { createTabList, fromSnoozes } from "./tablist.js";
+import {
+  anchoredPanelOpenWithin, createTabList, fromSnoozes, subscribeAnchoredPanelChange
+} from "./tablist.js";
 import { buildSnoozedListConfig } from "./list-configs.js";
 import { labelTabsFromItems } from "../lib/labels.js";
 import { LABEL_META_KEY } from "../lib/label-meta.js";
-import { listItems } from "../lib/store.js";
+import { getSettings, listItems, listNamedSessions } from "../lib/store.js";
+import { listActions } from "../lib/journal.js";
 import { deleteSavedItem } from "../lib/saved-item-actions.js";
 import { deleteNamedSession } from "../lib/organization.js";
 import { STORE_KEYS, ARCHIVE_OVERLAY_KEY } from "../lib/types.js";
-import { SESSION_IDENTITY_INDEX_KEY } from "../lib/session-identity-index.js";
-import { applyDocumentLocale, msg as localeMessage } from "../lib/i18n.js";
+import {
+  SESSION_IDENTITY_INDEX_KEY, NAMED_SESSION_RECORDS_KEY
+} from "../lib/session-identity-index.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
+import { applyDocumentLocale, applyUiLanguage, msg as localeMessage } from "../lib/i18n.js";
 import {
   shellLoadingSection, shellMoreSelected, shellNavLabel, shellPanelTabLabel, shellSectionCountTitle,
   shellSectionTitle, shellStatic
 } from "./shell-copy.js";
 
+// The chosen interface language must be in place before the panel's first text.
+await applyUiLanguage((await getSettings()).uiLanguage);
 initTheme(); // passive utility surface: paint current scheme, reserve the next New Tab draw
 applyDocumentLocale();
 document.title = localeMessage("shell_side_panel_title");
@@ -61,6 +76,14 @@ const HEADINGS = Object.fromEntries(
 );
 const SECTION_ACTION_HOSTS = Object.fromEntries(Object.keys(HEADINGS).map((id) =>
   [id, el("div", { class: "panel-section-actions", "data-panel-actions": id })]));
+const OPEN_FILTER_HOST = el("div", {
+  class: "open-filter-strip section-local-sticky",
+  "data-panel-local": "open"
+});
+const INBOX_FILTER_HOST = el("div", {
+  class: "open-filter-strip section-local-sticky",
+  "data-panel-local": "inbox"
+});
 let activeSection = "open";
 
 /* ---- open a dashboard route in a tab (More menu targets) ---- */
@@ -71,13 +94,14 @@ SECTION_ACTION_HOSTS.open.replaceChildren(el("button", {
 }, shellStatic.closeDay()));
 
 /* ---- global search (shared component, unchanged behavior) ---- */
+let focusPanelListFromSearch = () => {};
 const searchBox = createSearchBox({
   enterFallback: true,
   // ↓ from the empty search box enters the first visible list row (once lists render)
-  exitToList: () => {
-    const first = panelBody.querySelector(".trow, .item");
-    if (first) first.focus?.();
-  }
+  exitToList: () => focusPanelListFromSearch(),
+  // Escape dismisses the Search overlay first; restore list focus on the next
+  // frame so the browser cannot let the outgoing combobox blur win afterward.
+  escapeToList: () => requestAnimationFrame(() => focusPanelListFromSearch())
 });
 const searchInput = searchBox.querySelector("input");
 
@@ -186,13 +210,16 @@ function getOpenSurface() {
     msg: panelMsg,
     rerender: () => renderOpen(),
     sectionActionHost: SECTION_ACTION_HOSTS.open,
+    filterHost: OPEN_FILTER_HOST,
     shouldRenderBody: () => activeSection === "open",
     getFlashAnchor: () => heading,
     showNotice, flashNote, mark,
     cardLabelPanel, sessionComboboxButton, copyRefs,
     renderArchive: () => {},   // no Archive section in the panel
-    renderLabels, goToLabel,
-    presentation: "compact"
+    renderLabels, goToLabel, goToSession,
+    presentation: "compact",
+    rowCap: 20,
+    openSettings: (group) => openDash(`#settings:${group}`)
   });
   return openSurface;
 }
@@ -200,10 +227,24 @@ async function buildOpenSection(state, generation) {
   const { heading: h, node } = await getOpenSurface().render();
   if (!sectionCanCommit("open", generation)) return false;
   setSectionHeading("open", h);
-  if (node) state.host.replaceChildren(node);
+  if (node) {
+    if (openRefreshGate.isHeld()) {
+      openRefreshGate.defer();
+      return true;
+    }
+    state.host.replaceChildren(OPEN_FILTER_HOST, node);
+  }
   return true;
 }
-function renderOpen() { return markSectionDirty("open"); }
+const openRefreshGate = createInteractionRefreshGate(
+  () => markSectionDirty("open"),
+  {
+    isHeld: () => anchoredPanelOpenWithin(SECTION_LIFECYCLE.open.host),
+    subscribe: subscribeAnchoredPanelChange
+  }
+);
+function renderOpen() { return openRefreshGate.request(); }
+window.addEventListener("pagehide", () => openRefreshGate.dispose(), { once: true });
 
 /* ---- Inbox section: rendered through the SAME createInboxSurface the dashboard
    uses. openRowLabel is thin surface glue (open the shared cardLabelPanel, apply
@@ -213,14 +254,15 @@ const openRowLabel = (rowCtx, store, rerender) => {
     await labelTabsFromItems([{ item: rowCtx.group.data, indexes: [rowCtx.index] }], labels, store);
     rerender();
     renderLabels();
-  }, "Add labels", rowCtx.panel), "label");
+  }, localeMessage("list_add_labels"), rowCtx.panel), "label");
 };
 let inboxSurface = null;
 function getInboxSurface() {
   if (!inboxSurface) inboxSurface = createInboxSurface({
     rerender: () => renderInbox(),
     shouldRenderBody: () => activeSection === "inbox",
-    renderLabels, goToLabel,
+    filterHost: INBOX_FILTER_HOST,
+    renderLabels, goToLabel, goToSession,
     showNotice, showToast, flashNote,
     copyRefs, sessionComboboxButton, cardLabelPanel, confirmDelete,
     buildSnoozePanel, openRowLabel,
@@ -232,7 +274,9 @@ async function buildInboxSection(state, generation) {
   const { heading: h, node } = await getInboxSurface().render();
   if (!sectionCanCommit("inbox", generation)) return false;
   setSectionHeading("inbox", h);
-  if (node) state.host.replaceChildren(node);
+  if (node) {
+    state.host.replaceChildren(INBOX_FILTER_HOST, node);
+  }
   return true;
 }
 function renderInbox() { return markSectionDirty("inbox"); }
@@ -243,7 +287,7 @@ function renderInbox() { return markSectionDirty("inbox"); }
    Session snoozes render their session's tabs live (via fromSnoozes). ---- */
 async function buildSnoozedSection(state, generation) {
   const snoozes = (await listItems(STORE_KEYS.snoozes)).sort((a, b) => a.dueAt - b.dueAt);
-  const sessionsById = new Map((await listItems(STORE_KEYS.sessions)).map((s) => [s.id, s]));
+  const sessionsById = new Map((await listNamedSessions()).map((s) => [s.id, s]));
   if (!sectionCanCommit("snoozed", generation)) return false;
   setSectionHeading("snoozed", shellSectionCountTitle("snoozed", snoozes.length));
   state.host.replaceChildren(createTabList(buildSnoozedListConfig({
@@ -251,7 +295,7 @@ async function buildSnoozedSection(state, generation) {
     data: { groups: fromSnoozes(snoozes, sessionsById) },
     renderSnoozes: () => renderSnoozed(),
     renderSessions: () => renderSessions(), // a wake into a session refreshes Sessions
-    msg: panelMsg, copyRefs
+    msg: panelMsg, copyRefs, showNotice
   })));
   return true;
 }
@@ -304,6 +348,19 @@ async function buildSessionsSection(state, generation) {
   return true;
 }
 function renderSessions() { return markSectionDirty("sessions"); }
+async function goToSession(id) {
+  const state = SECTION_LIFECYCLE.sessions;
+  state.dirty = false;
+  const generation = ++state.generation;
+  await getSessionsSurface().goToSession(id);
+  if (!sectionCanCommit("sessions", generation)) {
+    state.dirty = true;
+    return;
+  }
+  state.rendered = true;
+  watchPanelChrome();
+  state.scrollTop = currentScrollTop();
+}
 
 /* ---- Labels section: the shared surface owns collect/sort, the compact
    filter/sort/jump index, card filtering, and N29's instant cold-jump quick
@@ -362,6 +419,18 @@ const SECTION_RENDERERS = {
   labels: buildLabelsSection, snoozed: buildSnoozedSection
 };
 
+const panelRefreshTasks = createVisibleDocumentTasks((tasks) => {
+  for (const task of tasks) {
+    const refresh = async () => {
+      if (task === "focus") await refreshFocusStrip();
+      else await refreshSection(task);
+    };
+    void refresh().catch((error) => {
+      reportFailure("Side Panel refresh", error, console.error);
+    });
+  }
+});
+
 /**
  * Refresh one visible section. A second invalidation while a read is in flight
  * queues exactly one follow-up pass; changing sections invalidates the generation.
@@ -369,6 +438,11 @@ const SECTION_RENDERERS = {
 function refreshSection(id) {
   const state = SECTION_LIFECYCLE[id];
   if (!state || activeSection !== id) return Promise.resolve();
+  if (!panelRefreshTasks.isVisible()) {
+    state.dirty = true;
+    panelRefreshTasks.request(id);
+    return Promise.resolve();
+  }
   if (state.refreshing) {
     state.dirty = true;
     return state.refreshing;
@@ -494,7 +568,11 @@ function toggleMoreMenu() {
     onclick: () => { closeMoreMenu(); run(); } }, label);
   moreMenu = el("div", { class: "panel-menu", role: "menu", "aria-label": shellStatic.moreSections() },
     item(shellNavLabel("snoozed"), () => { selectSection("snoozed"); moreBtn.focus({ preventScroll: true }); }),
+    item(shellNavLabel("activity"), () => openDash("#activity")),
     item(shellNavLabel("archive"), () => openDash("#archive")),
+    item(shellNavLabel("snapshots"), () => openDash("#snapshots")),
+    item(shellNavLabel("data"), () => openDash("#data")),
+    item(shellNavLabel("stats"), () => openDash("#stats")),
     item(shellStatic.openDashboard(), () => openDash(dashRouteFor(activeSection))),
     item(shellStatic.settings(), () => openDash("#settings")));
   moreBtn.setAttribute("aria-expanded", "true");
@@ -562,10 +640,67 @@ const panel = document.getElementById("panel");
 panel.append(el("div", { class: "sidepanel-shell" }, chrome_, sectionLead, panelBody), toast);
 document.body.append(focusAnnouncer);
 selectSection("open");
+const selectedSectionControl = () =>
+  tabButtons.find((button) => button.getAttribute("aria-selected") === "true") ?? moreBtn;
+const panelArrowNavigation = createListArrowNavigator({
+  root: document,
+  unitSelector: ".panel-body .trow, .panel-body .item",
+  headerTarget: selectedSectionControl
+});
+focusPanelListFromSearch = () => panelArrowNavigation.focusEntry({ preferLast: true });
+
+/** A shortcut-opened panel starts on its selected section tab. Left/Right can
+ * switch sections immediately; Down enters the current list through the shared
+ * Side Panel walk. Chrome has no separate focus API, so the document claims
+ * focus once its command owner confirms keyboard entry. */
+function focusPanelNavigation() {
+  window.focus();
+  selectedSectionControl()?.focus({ preventScroll: true });
+}
+
+let panelWindowId = null;
+const panelWindow = chrome.windows.getCurrent().then((win) => {
+  panelWindowId = win?.id ?? null;
+  return win;
+}).catch(() => null);
+chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+  if (message?.type === "probe-side-panel-navigation") {
+    if (Number.isInteger(panelWindowId)) {
+      if (message.windowId !== panelWindowId) return;
+      respond({ open: true });
+      return false;
+    }
+    void panelWindow.then((win) => {
+      if (win?.id === message.windowId) respond({ open: true });
+    });
+    return true;
+  }
+  if (message?.type !== "focus-side-panel-navigation") return;
+  void panelWindow.then((win) => {
+    if (!win || message.windowId !== win.id) {
+      respond({ focused: false });
+      return;
+    }
+    focusPanelNavigation();
+    respond({ focused: document.activeElement === selectedSectionControl() });
+  });
+  return true;
+});
+
+void panelWindow.then(async (win) => {
+  if (!win) return;
+  try {
+    const reply = await chrome.runtime.sendMessage({
+      type: "side-panel-navigation-ready",
+      windowId: win.id
+    });
+    if (reply?.keyboardEntry) focusPanelNavigation();
+  } catch { /* The panel remains pointer/Tab accessible if its worker restarted. */ }
+});
 const panelChromeObserver = new ResizeObserver(() => measurePanelChrome());
 panelChromeObserver.observe(chrome_);
 panelChromeObserver.observe(sectionLead);
-refreshFocusStrip(); // paint the strip if a site-guard run is already active
+panelRefreshTasks.request("focus"); // paint an existing site-guard run when visible
 
 // Keep the visible section's document-scroll memory current between switches.
 window.addEventListener("scroll", () => {
@@ -589,8 +724,8 @@ const tabRefreshBurst = createLeadingTrailingRefresh(
 function tabsSoon() { tabRefreshBurst(); }
 chrome.tabs.onCreated.addListener(tabsSoon);
 chrome.tabs.onRemoved.addListener(tabsSoon);
-chrome.tabs.onUpdated.addListener((_id, info) => {
-  if (info.url || info.title || info.status === "complete" || info.pinned !== undefined) tabsSoon();
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!reconcileOpenTabUpdate(SECTION_LIFECYCLE.open.host, tabId, info)) tabsSoon();
 });
 chrome.tabs.onMoved.addListener(tabsSoon);
 chrome.tabs.onAttached.addListener(tabsSoon);
@@ -599,18 +734,34 @@ chrome.windows.onFocusChanged.addListener(tabsSoon);
 // Explicit store dependency matrix. Open reads saved-copy labels from Inbox/Archive
 // and named session bindings, so those stores legitimately dirty its cached host.
 const STORAGE_DIRTY_MATRIX = [
+  { keys: ["tabActivity", "suspendTemporaryExemptions", "automationTabProtections"], sections: ["open"] },
+  { keys: ["settings"], sections: ["open", "inbox"] },
   { keys: [STORE_KEYS.inbox], sections: ["inbox", "labels", "open"] },
   { keys: [STORE_KEYS.archive, ARCHIVE_OVERLAY_KEY], sections: ["labels", "open"] },
-  { keys: [STORE_KEYS.sessions, SESSION_IDENTITY_INDEX_KEY], sections: ["sessions", "snoozed", "labels", "open"] },
+  { keys: [STORE_KEYS.sessions, NAMED_SESSION_RECORDS_KEY, SESSION_IDENTITY_INDEX_KEY],
+    sections: ["sessions", "snoozed", "labels", "open"] },
   { keys: [STORE_KEYS.snoozes], sections: ["snoozed", "inbox", "sessions"] },
   { keys: [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships], sections: ["labels", "sessions"] },
   { keys: [LABEL_META_KEY], sections: ["labels"] }
 ];
 
 let lastToastAt = 0;
+
+async function showLatestJournalToast(change) {
+  const direct = (change?.newValue ?? [])[0];
+  const head = direct ?? (await listActions())[0];
+  if (head && !head.undone && head.at > lastToastAt) {
+    lastToastAt = head.at;
+    showToast(head);
+  }
+}
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.focusGuardState || changes.focusTemporaryAccess || changes.settings) refreshFocusStrip();
+  changes = expandStorageChanges(changes);
+  if (changes.focusGuardState || changes.focusTemporaryAccess || changes.settings) {
+    panelRefreshTasks.request("focus");
+  }
   if ([STORE_KEYS.inbox, STORE_KEYS.archive, ARCHIVE_OVERLAY_KEY]
     .some((key) => changes[key])) {
     getOpenSurface().invalidateSavedLabels();
@@ -621,11 +772,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (affected.length) markSectionsDirty(affected);
   if (changes.journal) {
-    const head = (changes.journal.newValue ?? [])[0];
-    if (head && !head.undone && head.at > lastToastAt) {
-      lastToastAt = head.at;
-      showToast(head);
-    }
+    void showLatestJournalToast(changes.journal);
   }
 });
 
@@ -635,6 +782,8 @@ function isTyping(t) {
     t.tagName === "SELECT" || t.isContentEditable);
 }
 document.addEventListener("keydown", (e) => {
+  if (activeSection === "open" && openSurface?.handleFilterShortcut(e)) return;
+  if (activeSection === "inbox" && inboxSurface?.handleFilterShortcut(e)) return;
   if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) {
     e.preventDefault();
     searchInput?.focus();

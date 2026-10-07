@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { canonicalRef, urlOf } from "./tabs.js";
 import { hostnameOf } from "./organize.js";
 import { msg } from "./i18n.js";
@@ -5,7 +8,7 @@ import { msg } from "./i18n.js";
 /** One-shot worker -> popup focus handoff. It carries no tab or browsing data. */
 export const SEARCH_POPUP_MODE_KEY = "searchPopupMode";
 export const SEARCH_POPUP_MODE_TTL_MS = 5_000;
-export const RECENT_TAB_LIMIT = 6;
+export const RECENT_TAB_LIMIT = 10;
 
 /** @param {unknown} value @param {number} [now] */
 export function isFreshSearchPopupMode(value, now = Date.now()) {
@@ -63,7 +66,7 @@ function pageContext(url) {
 }
 
 /**
- * Shape every focused Search host's six most recently used open tabs. Only
+ * Shape every focused Search host's ten most recently used open tabs. Only
  * normal, non-incognito windows participate. The active tab underneath the
  * surface is excluded, while pinned, discarded, and suspended tabs remain
  * valid switch targets.

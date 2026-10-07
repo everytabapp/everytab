@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EveryTab · a small guide to a big codebase</title>
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#f5f5ef,#151c1b);--paper:light-dark(#fffefa,#1e2826);--ink:light-dark(#1b3430,#e6ede7);--muted:light-dark(#51645c,#b4c5bb);--line:light-dark(#d1dcd3,#3e5148);--accent:light-dark(#126452,#8bddbc)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,sans-serif}header,main{max-width:1320px;margin:auto;padding:36px}header{padding-bottom:16px}h1{font-size:clamp(28px,4vw,46px);line-height:1.15;letter-spacing:-.04em;margin:6px 0 16px}h2{font-size:24px;line-height:1.3}p{max-width:78ch}.eyebrow{color:var(--accent);font-size:13px;letter-spacing:.1em;text-transform:uppercase}.map{display:flex;align-items:stretch;gap:12px;flex-wrap:wrap;margin:28px 0}.map div{flex:1;min-width:160px;border-top:3px solid var(--accent);padding-top:12px}.map small{display:block;color:var(--muted);line-height:1.45;margin-top:6px}.arrow{align-self:center;color:var(--muted)}.scope{font-size:14px;color:var(--muted)}a{color:var(--accent)}.explorer{display:grid;grid-template-columns:minmax(230px,32%) 1fr;gap:28px}aside{position:sticky;top:16px;align-self:start}.controls{display:grid;gap:8px}input,select{font:inherit;width:100%;padding:10px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:6px}label{font-size:14px}#list{height:56vh;overflow:auto;border-top:1px solid var(--line);margin-top:12px}button{font:inherit;color:var(--ink);cursor:pointer}#list button{display:block;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:12px 8px;width:100%;overflow-wrap:anywhere;font-size:14px}#list button[aria-current=true]{background:var(--paper);border-left:4px solid var(--accent)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}#detail{background:var(--paper);padding:24px;border:1px solid var(--line);border-radius:10px;min-width:0}#path{font:13px/1.5 ui-monospace,monospace;overflow-wrap:anywhere;color:var(--muted)}#purpose{font-size:21px;line-height:1.5}#detail h3{font-size:15px;margin:24px 0 8px}#detail ul{padding-left:20px}#detail li{margin:6px 0;overflow-wrap:anywhere}.related{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;text-align:left;font-size:14px}code{font-size:13px;overflow-wrap:anywhere}#count{font-size:13px;color:var(--muted);margin:8px 0}footer{max-width:1320px;margin:auto;padding:0 36px 36px;color:var(--muted);font-size:14px}@media(max-width:720px){header,main{padding:20px}.explorer{grid-template-columns:1fr}aside{position:static}#list{height:220px}.arrow{display:none}#detail{padding:18px}footer{padding:20px}}
+</style>
+<header>
+ <div class="eyebrow">EveryTab / source {{VERSION}}</div>
+ <h1>A desk, a filing cabinet,<br>and a backup folder.</h1>
+ <p>Your tabs are cards on a desk. <b>Inbox</b> is the tray for later. <b>Sessions</b> are named sets of cards. <b>Labels</b> are stickers. <b>Snooze</b> adds an alarm clock. <b>Snapshots</b> remember what was open. <b>Vault</b> keeps a second copy in your own folder.</p>
+ <div class="map" aria-label="Architecture: screens request operations, operations use storage, storage can be copied to Vault">
+  <div><b>1. Screens</b><small>HTML + ui + CSS<br>The rooms, buttons, and clothes.</small></div><span class="arrow" aria-hidden="true">→</span>
+  <div><b>2. Helpers</b><small>background + lib<br>Check requests and do the work.</small></div><span class="arrow" aria-hidden="true">→</span>
+  <div><b>3. Filing cabinet</b><small>store + storage<br>Keep saved cards and recovery lists.</small></div><span class="arrow" aria-hidden="true">↔</span>
+  <div><b>4. Backup folder</b><small>vault<br>Copy changes when connected.</small></div>
+ </div>
+ <p class="scope">Saving, closing a browser tab, and copying a file are separate steps. The code needs receipts and fresh identity checks between them. Cards remember addresses, not every unfinished form on a page.</p>
+</header>
+<main>
+ <h2>Meet each file</h2>
+ <p class="scope">Generated from current maintained source. <a href="handoff-prompt.md">Current handoff</a> · <a href="CODEBASE-ATLAS.json">Source inventory</a></p>
+ <p>Choose a file to see its job, what it uses, and who uses it. “Uses” means a literal module import, not a complete record of calls or test coverage.</p>
+ <div class="explorer">
+  <aside>
+   <div class="controls">
+    <label for="search">Find a file or job</label><input id="search" type="search" placeholder="Try snooze, selection, or store">
+    <label for="area">Part of the project</label><select id="area"><option value="runtime">Runtime JavaScript</option><option value="pages">Pages, styles, text, and assets</option><option value="tests">Tests and fixtures</option><option value="tools">Developer tools</option><option value="guides">Guides and automation</option><option value="all">All indexed files</option></select>
+   </div>
+   <p id="count" aria-live="polite"></p><nav id="list" aria-label="Files"></nav>
+  </aside>
+  <article id="detail" aria-label="Selected file"><p id="path"></p><h2 id="name"></h2><p id="purpose"></p><p id="size" class="scope"></p><div id="relations"></div></article>
+ </div>
+</main>
+<footer>Includes regular maintained files in extension, tools and .github, plus explicitly selected root guides. Generated learning files, symlinks and hidden/dependency files are excluded. Archive, launch/design assets, preserved packages, evidence collections, installed browser data, personal data folders, and hidden skill packages are outside the source audit. Message routing and browser events are explained in <a href="CODEBASE-GUIDE.md">the full written guide</a>. See <a href="handoff-prompt.md">the current review handoff</a> for defects and limitations. This page makes no external requests. Opening local source links reads local project files.</footer>
+<script id="atlas-data" type="application/json">{{ATLAS_DATA}}</script>
+<script>
+const data=JSON.parse(document.getElementById('atlas-data').textContent);
+const byPath=new Map(data.map(item=>[item.path,item]));
+const nodes=Object.fromEntries(['search','area','count','list','path','name','purpose','size','relations'].map(id=>[id,document.getElementById(id)]));
+let selected='extension/js/background.js';
+function category(path){if(path.startsWith('extension/js/'))return'runtime';if(path.startsWith('extension/test/'))return'tests';if(path.startsWith('extension/'))return'pages';if(path.startsWith('tools/'))return'tools';return'guides';}
+function related(title,paths,empty){const heading=document.createElement('h3');heading.textContent=title;nodes.relations.append(heading);if(!paths.length){const p=document.createElement('p');p.textContent=empty;p.className='scope';nodes.relations.append(p);return;}const list=document.createElement('ul');for(const path of paths){const li=document.createElement('li');const button=document.createElement('button');button.type='button';button.className='related';button.textContent=path;button.addEventListener('click',()=>{nodes.area.value=category(path);nodes.search.value='';select(path);renderList();});li.append(button);list.append(li);}nodes.relations.append(list);}
+function select(path){const item=byPath.get(path);if(!item)return;selected=path;nodes.path.textContent=path;nodes.name.textContent=path.split('/').at(-1);nodes.purpose.textContent=item.description;nodes.size.textContent=item.lines===null?'Packaged binary asset':`${item.lines.toLocaleString()} lines · ${category(path)==='runtime'?'Production JavaScript':'Supporting file'}`;nodes.relations.replaceChildren();const source=document.createElement('a');source.href=item.path.split('/').map(encodeURIComponent).join('/');source.textContent='Open source file';nodes.relations.append(source);related('Uses these modules',item.imports,'No literal local module imports.');related('Imported by',item.importedBy,'No direct importer found. This may be an entry point, fixture, stylesheet, or file loaded another way.');const other=item.references.filter(path=>!item.imports.includes(path));if(other.length)related('Other literal file references',other,'');if(item.exports.length){const h=document.createElement('h3');h.textContent='Named things other code can use';const p=document.createElement('p');const code=document.createElement('code');code.textContent=item.exports.join(', ');p.append(code);nodes.relations.append(h,p);}for(const button of nodes.list.querySelectorAll('button'))button.setAttribute('aria-current',String(button.dataset.path===selected));}
+function renderList(){const query=nodes.search.value.trim().toLowerCase();const matches=data.filter(item=>(nodes.area.value==='all'||category(item.path)===nodes.area.value)&&(!query||(item.path+' '+item.description).toLowerCase().includes(query)));nodes.count.textContent=`${matches.length} of ${data.length} indexed files`;nodes.list.replaceChildren();for(const item of matches){const button=document.createElement('button');button.type='button';button.dataset.path=item.path;button.textContent=item.path;button.setAttribute('aria-current',String(item.path===selected));button.addEventListener('click',()=>select(item.path));nodes.list.append(button);}if(!matches.length){const p=document.createElement('p');p.textContent='No matching files.';nodes.list.append(p);}}
+nodes.search.addEventListener('input',renderList);nodes.area.addEventListener('change',renderList);renderList();select(selected);
+</script>
+</html>

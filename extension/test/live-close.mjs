@@ -46,10 +46,16 @@ globalThis.chrome = {
   }
 };
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
 const { JOURNAL_KEY, listActions, recordAction, undoAction } =
   await import("../js/lib/journal.js");
 const {
-  closeLiveTabsById, closeTabsWithReceipt, recoverPendingLiveCloses
+  closeLiveTabsById, closeTabsWithReceipt, closeUnsaveableTabsById,
+  recoverPendingLiveCloses
 } = await import("../js/lib/live-close.js");
 
 const closed = await closeLiveTabsById([1, 2]);
@@ -95,6 +101,20 @@ assert.equal(privateClose.ok, false);
 assert.equal(live.has(3), true);
 assert.equal((await listActions()).length, 0,
   "incognito tabs are neither closed nor persisted by the worker boundary");
+
+live.set(4, { id: 4, windowId: 20, index: 0, pinned: false,
+  url: "file:///Users/example/notes.html", title: "Local notes", incognito: false });
+const localClose = await closeUnsaveableTabsById([4]);
+assert.equal(localClose.ok, true);
+assert.equal(live.has(4), false);
+assert.equal((await listActions()).length, 0,
+  "an explicitly confirmed local page closes without inventing a recoverable receipt");
+live.set(5, { id: 5, windowId: 20, index: 0, pinned: false,
+  url: "https://saveable.example/", title: "Saveable", incognito: false });
+const bypass = await closeUnsaveableTabsById([5]);
+assert.equal(bypass.reason, "forbidden");
+assert.equal(live.has(5), true,
+  "the non-recoverable route cannot bypass Undo for an ordinary web page");
 
 await storage.local.set({ [JOURNAL_KEY]: [] });
 live.set(20, { id: 20, windowId: 77, index: 4, pinned: true,

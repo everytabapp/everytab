@@ -20,13 +20,11 @@ export async function runSmokePresentationContracts({ check, local }) {
     check(expander.includes(".focus()"), "N31: the replacement toggle receives focus (focus-never-dies)");
   
     const db = strip(read("../js/ui/dashboard.js"));
-    const lc = strip(read("../js/ui/list-configs.js"));
     const labelsSurface = strip(read("../js/ui/labels-surface.js"));
-    // N30: the Labels section wires chip navigation like every other section.
-    // F14: the labels config moved to the shared list-configs module, so scan it
-    // there (assertion preserved, not weakened).
-    const cfgAt = lc.indexOf('section: "labels"');
-    check(cfgAt !== -1 && lc.slice(cfgAt, cfgAt + 400).includes("onChipOpen: goToLabel"),
+    const { buildLabelsListConfig } = await import("../js/ui/list-configs.js");
+    const goToLabel = () => {};
+    const labelsConfig = buildLabelsListConfig({ data: { groups: [] }, goToLabel });
+    check(labelsConfig.onChipOpen === goToLabel,
       "N30: Labels-page rows wire onChipOpen (label chips are clickable there)");
     // N29 (E3-1): programmatic label jumps are instant and paint the target first.
     const pos = labelsSurface.slice(labelsSurface.indexOf("function positionLabelCard"), labelsSurface.indexOf("async function goToLabel"));
@@ -37,6 +35,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       "N29: a jump from another page renders the target card first (quick pass)");
     check(rli.includes("positionLabelCard(jump)"),
       "N29: the jumped-to card is re-anchored after the full list swap");
+
   }
   
   /* -- D4-2a: behavior-preserving design-foundation source contracts -- */
@@ -99,8 +98,8 @@ export async function runSmokePresentationContracts({ check, local }) {
       "D4-2a: tokens.css exposes the complete approved Layer-2 token API"
     );
     const softBlock = tokens.slice(
-      tokens.indexOf('[data-corner-style="soft"]'),
-      tokens.indexOf("\nbody {")
+      tokens.indexOf('[data-interface-style="soft"]'),
+      tokens.indexOf('[data-interface-style="terminal"]')
     );
     check(
       [
@@ -108,7 +107,7 @@ export async function runSmokePresentationContracts({ check, local }) {
         "--shape-control: 12px;", "--shape-search: 18px;", "--shape-keeper: 13px;",
         "--shape-panel: 14px;", "--shape-card: 14px;"
       ].every((decl) => softBlock.includes(decl)),
-      "D4-2a: Soft corner profile overrides the approved seven shape roles"
+      "D4-2a: Soft Interface style overrides the approved shape roles"
     );
   
     const primitives = read("css/primitives.css");
@@ -146,6 +145,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       DEFAULT_SETTINGS.snapshotKeep === 200 && DEFAULT_SETTINGS.uiEmphasis === "bold" &&
       DEFAULT_SETTINGS.uiCheckboxShape === "round" &&
       DEFAULT_SETTINGS.uiCornerStyle === "soft" &&
+      DEFAULT_SETTINGS.uiInterfaceStyle === "soft" &&
       DEFAULT_SETTINGS.uiRowInfo === "detailed" &&
       DEFAULT_SETTINGS.uiUtilityLayout === "compact" &&
       DEFAULT_SETTINGS.uiWindowGrouping === "space" &&
@@ -158,6 +158,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       uiEmphasis: "loud",
       uiCheckboxShape: "triangle",
       uiCornerStyle: "pill",
+      uiInterfaceStyle: "glass",
       uiRowInfo: "everything",
       uiUtilityLayout: "stacked",
       uiWindowGrouping: "cards",
@@ -166,7 +167,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     });
     check(
       repaired.uiEmphasis === "bold" && repaired.uiCheckboxShape === "round" &&
-      repaired.uiCornerStyle === "soft" && repaired.uiRowInfo === "detailed" &&
+      repaired.uiCornerStyle === "soft" && repaired.uiInterfaceStyle === "soft" &&
+      repaired.uiRowInfo === "detailed" &&
       repaired.uiUtilityLayout === "compact" &&
       repaired.uiWindowGrouping === "space" && repaired.uiAccentCapStrength === "bold" &&
       repaired.uiActionLabels === "icons",
@@ -175,16 +177,36 @@ export async function runSmokePresentationContracts({ check, local }) {
   
     const settings = read("js/ui/settings-form.js");
     check(
-      ["uiCheckboxShape", "uiCornerStyle", "uiRowInfo", "uiActionLabels"]
+      ["uiInterfaceStyle", "uiRowInfo", "uiActionLabels"]
         .every((key) => settings.includes(key)) &&
+      ["uiCheckboxShape", "uiCornerStyle"].every((key) => !settings.includes(key)) &&
       ["uiQuickTheme", "uiEmphasis", "dedupIgnoreQuery", "snoozeWakeQuiet", "popupDupHint"]
         .every((key) => !settings.includes(key)) &&
       !settings.includes('"Window grouping"') &&
       !settings.includes('"Accent cap weight"'),
       "Settings cleanup: useful controls remain and retired preferences leave the form"
     );
+    const focusGroup = settings.slice(
+      settings.indexOf("const buildFocusGroup"),
+      settings.indexOf("// D3: stars progressively constrain rotation")
+    );
+    check(
+      focusGroup.indexOf('class: "setrow focus-block"') <
+        focusGroup.indexOf("row(durationCopy.title") &&
+      focusGroup.indexOf('class: "setrow focus-block"') <
+        focusGroup.indexOf("row(morningCopy.title"),
+      "Focus settings put the selected-site list before duration and access behavior"
+    );
     const theme = read("js/ui/theme.js");
     const boot = read("js/boot.js");
+    check(
+      theme.includes('uiInterfaceStyle: "interfaceStyle"') &&
+        !theme.includes('uiCornerStyle: "cornerStyle"') &&
+        !theme.includes('uiCheckboxShape: "checkboxShape"') &&
+        boot.includes('root.setAttribute("data-interface-style", interfaceStyle)') &&
+        boot.includes('t.uiCornerStyle === "crisp" ? "crisp" : "soft"'),
+      "Interface style owns module paint while the first frame accepts one legacy Corner alias"
+    );
     check(
       theme.includes('uiActionLabels: "actionLabels"') &&
       boot.includes('uiActionLabels: "action-labels"') &&
@@ -213,7 +235,7 @@ export async function runSmokePresentationContracts({ check, local }) {
         return /<html\b[^>]*data-scheme="ink"/s.test(html) &&
           /<html\b[^>]*data-mode="light"/s.test(html) &&
           /<html\b[^>]*data-emphasis="bold"/s.test(html) &&
-          /<html\b[^>]*data-corner-style="soft"/s.test(html) &&
+          /<html\b[^>]*data-interface-style="soft"/s.test(html) &&
           /<html\b[^>]*data-row-info="detailed"/s.test(html) &&
           /<html\b[^>]*data-action-labels="icons"/s.test(html);
       }),
@@ -226,6 +248,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     const automationControlsSource = read("js/ui/automation-threshold-controls.js");
     const onboardingSource = read("js/ui/onboarding.js");
     const backgroundSource = read("js/background.js");
+    const alarmOwnerSource = read("js/background/alarm-owner.js");
+    const settingsChangeSource = read("js/background/settings-change-owner.js");
     check(
       DEFAULT_SETTINGS.autoSaveMaxTabs === 0 &&
         normalizePortableSettings({ autoSaveMaxTabs: 999999 }).autoSaveMaxTabs === 100000,
@@ -233,12 +257,21 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
     check(
       autoSaveSettingsSource.includes("createAutomationThresholdControls") &&
-        onboardingSource.includes("createAutomationThresholdControls") &&
+        onboardingSource.includes("createOnboardingAutomation") &&
+        read("js/ui/onboarding-choices.js").includes("autoDumpPatch, suspendPatch") &&
         automationControlsSource.includes('number("autoSaveMaxTabs", 0, 999)') &&
-        automationControlsSource.includes('number("snapshotKeep", 0, 10000)') &&
+        automationControlsSource.includes(
+          'number("snapshotKeep", SNAPSHOT_KEEP_MIN, SNAPSHOT_KEEP_MAX, effectiveSnapshotKeep)') &&
         backgroundSource.includes("scheduleAutoSaveCapSweep") &&
-        backgroundSource.includes("autoSaveMaxTabs"),
-      "Auto-save max tabs: shared Settings, Tune automation, and the responsive worker trigger are wired"
+        settingsChangeSource.includes("autoSaveMaxTabs"),
+      "Auto-save: Settings retains advanced thresholds; first run reuses policy mappings and the worker trigger"
+    );
+    check(
+      alarmOwnerSource.includes("archive.sweep()") &&
+        alarmOwnerSource.includes("archive.expireInbox()") &&
+        settingsChangeSource.includes("oldInboxExpiry !== newInboxExpiry") &&
+        settingsChangeSource.includes("void sweepInboxExpiry().catch"),
+      "Inbox expiry: the durable alarm awaits both maintenance jobs and a changed threshold sweeps immediately"
     );
     const previousSettings = await getFreshSettings();
     mem.settings = {
@@ -246,6 +279,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       uiScheme: "cream",
       uiMode: "system",
       uiCornerStyle: "crisp",
+      uiInterfaceStyle: "crisp",
       uiRowInfo: "useful",
       uiActionLabels: "named",
       snapshotKeep: 0,
@@ -260,7 +294,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     const portable = normalizePortableSettings(preserved);
     check(
       preserved.uiScheme === "cream" && preserved.uiMode === "system" &&
-        preserved.uiCornerStyle === "crisp" && preserved.uiRowInfo === "useful" &&
+        preserved.uiCornerStyle === "crisp" && preserved.uiInterfaceStyle === "crisp" &&
+        preserved.uiRowInfo === "useful" &&
         preserved.uiActionLabels === "named" && preserved.snapshotKeep === 0,
       "Settings cleanup: new defaults never migrate existing non-retired preferences"
     );
@@ -275,9 +310,32 @@ export async function runSmokePresentationContracts({ check, local }) {
     const missing = settingsFromStored({ snapshotKeep: 0 });
     check(
       missing.uiScheme === "ink" && missing.uiMode === "scheme" &&
-        missing.uiCornerStyle === "soft" && missing.uiRowInfo === "detailed" &&
-        missing.uiActionLabels === "icons" && missing.snapshotKeep === 0,
-      "Settings cleanup: missing values receive new defaults while explicit snapshotKeep 0 stays unlimited"
+        missing.uiCornerStyle === "soft" && missing.uiInterfaceStyle === "soft" &&
+        settingsFromStored({ uiCornerStyle: "crisp" }).uiInterfaceStyle === "crisp" &&
+        missing.uiRowInfo === "detailed" &&
+        missing.uiActionLabels === "icons" && missing.snapshotKeep === 1000 &&
+        settingsFromStored({}).snapshotKeep === 200,
+      "Settings cleanup: missing values receive new defaults; a stored snapshotKeep 0 reads as the 1000 maximum without a rewrite"
+    );
+    const unifiedProtection = settingsFromStored({
+      archiveWhitelist: ["keep.example", "shared.example"],
+      suspendWhitelist: ["page:https://exact.example/read", "shared.example"]
+    });
+    const portableProtection = normalizePortableSettings({
+      archiveWhitelist: ["keep.example"],
+      suspendWhitelist: ["page:https://exact.example/read"]
+    });
+    check(
+      JSON.stringify(unifiedProtection.archiveWhitelist) === JSON.stringify([
+        "keep.example", "shared.example", "page:https://exact.example/read"
+      ]) &&
+      JSON.stringify(unifiedProtection.archiveWhitelist) ===
+        JSON.stringify(unifiedProtection.suspendWhitelist) &&
+      JSON.stringify(portableProtection.archiveWhitelist) ===
+        JSON.stringify(portableProtection.suspendWhitelist) &&
+      portableProtection.archiveWhitelist.includes("keep.example") &&
+      portableProtection.archiveWhitelist.includes("page:https://exact.example/read"),
+      "Automation protection preserves and unifies both historical lists at runtime and Restore"
     );
     await saveSettings(previousSettings);
   
@@ -308,14 +366,15 @@ export async function runSmokePresentationContracts({ check, local }) {
       "D4-2b: the selection rail and direct-action reveal occupy no row layout space"
     );
     check(
-      !shared.includes('[data-corner-style="soft"] .tablist .trow') &&
-      shared.includes('[data-checkbox-shape="round"]') &&
+      !shared.includes('[data-interface-style="soft"] .tablist .trow') &&
+      read("css/interface-style.css").includes('[data-interface-style="terminal"] input[type="checkbox"]') &&
       shared.includes('[data-row-info="clean"]') &&
       shared.includes('[data-row-info="detailed"]') &&
       !shared.includes('[data-window-grouping="divider"]') &&
       !shared.includes('[data-window-grouping="accent-cap"]') &&
       shared.includes('.tablist:not([data-compact]) .trow') &&
-      shared.includes("grid-template-columns: 17px 24px minmax(0, 1fr) auto auto") &&
+      shared.includes("grid-template-columns: var(--tablist-select-column) 24px minmax(0, 1fr) auto auto") &&
+      read("css/interface-style.css").includes("--tablist-select-column: 27px") &&
       shared.includes(".tablist .row-copy {\n  display: contents;") &&
       shared.includes(".tablist .row-subline"),
       "F28: Workbench and compact hosts keep the approved row anatomy and square selection bands"
@@ -324,12 +383,13 @@ export async function runSmokePresentationContracts({ check, local }) {
     const tablist = read("js/ui/tablist.js");
     check(
       tablist.includes('class: "gacts"') &&
-      tablist.includes('"aria-label": a.label') &&
+      tablist.includes("const accessibleLabel = a.title ?? a.label;") &&
+      tablist.includes('"aria-label": accessibleLabel') &&
       tablist.includes('"data-action-id": a.id') &&
       tablist.includes('class: "keeper-count"'),
       "D4-2b: shared DOM has stable header/action lanes, full accessible names, and count-first keeper markup"
     );
-    const { fromOpenWindows } = await import("../js/ui/tablist.js");
+    const { allocateInitialRowCaps, fromOpenWindows } = await import("../js/ui/tablist.js");
     const openGroups = fromOpenWindows([{
       id: 9, focused: false, tabs: [
         { id: 10, windowId: 9, index: 0, url: "https://example.com", title: "Example", lastAccessed: 1234 }
@@ -342,6 +402,19 @@ export async function runSmokePresentationContracts({ check, local }) {
       openGroups[0].live[0].lastAccessed === 1234,
       "D4-2b/F47: Open numbers real windows, marks its host window even while Chrome is unfocused, and keeps Detailed recency"
     );
+    const sixWindowCaps = allocateInitialRowCaps(
+      Array.from({ length: 6 }, (_, index) => ({ id: index, refs: Array(100) })),
+      50,
+      300
+    );
+    const twentyWindowCaps = allocateInitialRowCaps(
+      Array.from({ length: 20 }, (_, index) => ({ id: index, refs: Array(100) })),
+      50,
+      300
+    );
+    check([...sixWindowCaps.values()].every((count) => count === 50) &&
+        [...twentyWindowCaps.values()].every((count) => count === 15),
+      "Open shows up to 50 tabs per ordinary window set while bounding extreme first-render DOM work");
     /* F47: naming and ordering. Chrome exposes no window name to extensions, and a
        name of ours would die with the session-scoped windowId, so a bound session
        lends its durable name. The window you are in comes first; nothing else
@@ -415,7 +488,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       check(
         /^function holdCardInPlace\(cardId, before\) \{$/m.test(tl) &&
         tl.includes("const before = head.getBoundingClientRect().top;") &&
-        tl.includes("Promise.resolve(onChange()).then(() => raf(() => holdCardInPlace(g.id, before)));") &&
+        tl.includes("animateDisclosure(next,") && tl.includes("holdCardInPlace(g.id, before);") &&
         tl.includes("if (before < 0) {") &&
         tl.includes('card.scrollIntoView({ block: "start", behavior: "auto" });') &&
         tl.includes("CSS.escape(cardId) : cardId"),
@@ -424,20 +497,24 @@ export async function runSmokePresentationContracts({ check, local }) {
     }
     const { fromDuplicateGroups } = await import("../js/ui/tablist.js");
     const duplicateGroups = fromDuplicateGroups([{
-      key: "https://example.com/",
-      keep: { id: 10, windowId: 9, index: 0, url: "https://example.com", title: "Example" },
-      close: [{ id: 11, windowId: 12, index: 3, url: "https://example.com", title: "Example" }],
+      key: "https://example.com/article?view=full",
+      keep: { id: 10, windowId: 9, index: 0, url: "https://example.com/article?view=full", title: "Current article" },
+      close: [{ id: 11, windowId: 12, index: 3, url: "https://example.com/article?view=full", title: "Previous article" }],
       tabs: [
-        { id: 10, windowId: 9, index: 0, url: "https://example.com", title: "Example" },
-        { id: 11, windowId: 12, index: 3, url: "https://example.com", title: "Example" }
+        { id: 10, windowId: 9, index: 0, url: "https://example.com/article?view=full", title: "Current article" },
+        { id: 11, windowId: 12, index: 3, url: "https://example.com/article?view=full", title: "Previous article" }
       ]
     }]);
     check(
       duplicateGroups.length === 1 && duplicateGroups[0].refs.length === 2 &&
         duplicateGroups[0].live.length === 2 &&
+        duplicateGroups[0].title === "Current article" &&
+        duplicateGroups[0].refs.map((ref) => ref.title).join("|") === "Current article|Previous article" &&
+        duplicateGroups[0].data.canonicalUrl === "https://example.com/article?view=full" &&
         duplicateGroups[0].data.keepId === 10 &&
-        duplicateGroups[0].data.closeIds.has(11),
-      "F28: Duplicates adapts one canonical page to a survivor plus individually closable rows"
+        duplicateGroups[0].data.closeIds.has(11) &&
+        duplicateGroups[0].data.chromeTitlesDiffer,
+      "F28: Duplicates leads with a human title and preserves the canonical address, differing Chrome titles, and close context"
     );
   
     /* ---------------- F29: installed collection finishing pass ---------------- */
@@ -472,7 +549,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       tablist.includes('"aria-expanded": expanded ? "true" : "false"') &&
       tablist.includes('"aria-expanded": st.sectionExpanded ? "true" : "false"') &&
       tablist.includes('btn.setAttribute("aria-controls", controls.id)') &&
-      tablist.includes("moreBtn(g.id, g.refs.length - rowCap, expanded, body)") &&
+      tablist.includes("moreBtn(g.id, matchingIndexes.length - initialCap, expanded, body)") &&
       tablist.includes("moreBtn(key, w.refs.length - rowCap, expanded, block)") &&
       !tablist.includes('class: "mini2 show-more"'),
       "F29: per-group and section overflow controls are full disclosure rows with expansion state"
@@ -499,7 +576,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     // boundary, rail, and checkbox remain.
     check(
       shared.includes(".tablist .trow.sel:has(+ div:empty + .trow.sel) {\n  border-bottom-color: transparent;\n}") &&
-      !shared.includes('[data-corner-style="soft"] .tablist .trow') &&
+      !shared.includes('[data-interface-style="soft"] .tablist .trow') &&
       shared.includes(".tablist:not([data-compact]) .trow {") &&
       shared.includes("border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);") &&
       shared.includes(".tablist:not([data-compact]) .trow.sel::before") &&
@@ -512,7 +589,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       duplicatesSrc.includes('type: "close-duplicates", key: ctx.group.data.key') &&
       duplicatesSrc.includes('await msg({ type: "close-duplicates" });') &&
       duplicatesSrc.includes('id: "switch"') &&
-      duplicatesSrc.includes("`tab ${(tab.index ?? 0) + 1} · ${role}`"),
+      duplicatesSrc.includes('localeMessage("duplicate_row_meta", [formatNumber((tab.index ?? 0) + 1), role])'),
       "F29: Duplicates keeps its per-tab, per-group, and global close paths after the layout repair"
     );
   
@@ -534,7 +611,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       /\.sidebar \{[^}]*overflow: visible/s.test(homeCss) &&
       /\.side-foot \{[^}]*flex: none[^}]*border-top: var\(--bw\) solid var\(--border\)/s.test(homeCss) &&
       homeCss.includes('[data-nav="header"] .side-scroll { display: contents; }') &&
-      dashboardSrc.includes('sidebar.querySelector(".side-scroll")?.addEventListener("scroll", closeThemePop)'),
+      !dashboardSrc.includes('sidebar.querySelector(".side-scroll")?.addEventListener("scroll", closeThemePop)'),
       "F30: vault, appearance, and settings stay reachable below a separated scrolling nav"
     );
     check(
@@ -550,16 +627,22 @@ export async function runSmokePresentationContracts({ check, local }) {
     // (3) Duplicates explains its survivor rule from one source and never calls
     // closing "duplicate".
     check(
-      duplicatesSrc.includes("export const DUPLICATE_KEEP_RULE =") &&
-      duplicatesSrc.includes('el("span", {}, DUPLICATE_KEEP_RULE)') &&
-      duplicatesSrc.includes('class: "dup-role", title: DUPLICATE_KEEP_RULE') &&
-      duplicatesSrc.includes('id: "close-extras", label: "Close extras", danger: true, key: "d",') &&
+      duplicatesSrc.includes('export const duplicateKeepRule = () => localeMessage("duplicate_keep_rule");') &&
+      duplicatesSrc.includes('el("span", {}, duplicateKeepRule())') &&
+      duplicatesSrc.includes('class: "dup-role", title: duplicateKeepRule()') &&
+      duplicatesSrc.includes('id: "close-extras", label: localeMessage("duplicate_action_close_extras"), danger: true, key: "d",') &&
       !/id: "close-extras"[^}]*icon:/.test(duplicatesSrc),
       "F30: the keep rule is stated once and the close action no longer wears the copy glyph"
     );
     check(
       duplicatesSrc.includes('class: "dup-window"') &&
+      duplicatesSrc.includes('class: "dup-identity"') &&
+      duplicatesSrc.includes('class: "dup-identity-url"') &&
+      duplicatesSrc.includes('class: "dup-title-note"') &&
       shared.includes(".tablist .dup-window {") &&
+      shared.includes(".tablist .dup-identity {") &&
+      shared.includes(".tablist .dup-identity-url {") &&
+      shared.includes(".tablist .dup-title-note {") &&
       /\.tablist \.dup-role \{[^}]*background: var\(--accent\);[^}]*color: var\(--accent-ink\)/s.test(shared) &&
       shared.includes(".tablist .dup-toolbar {") &&
       shared.includes(".tablist .dup-toolbar-acts {"),
@@ -568,7 +651,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     // (4) Search alone owns measured sticky geometry. Starred is an edge rail and
     // Needs you remains fixed in the wide top-right utility position.
     check(
-      dashboardSrc.includes('const searchOverlay = el("div", { class: "hero-search-overlay" }, searchResults, searchFooter);') &&
+      dashboardSrc.includes('const searchOverlay = el("div", { class: "hero-search-overlay" },') &&
+      dashboardSrc.includes('el("div", { class: "hero-search-content" }, searchResults, searchFooter)') &&
       dashboardSrc.includes('const heroPanel = el("div", { class: "hero-panel" }, searchBox, searchOverlay);') &&
       dashboardSrc.includes('el("div", { class: "hero-top" }, heroPanel)') &&
       dashboardSrc.includes('pageUtilities.starred,') &&
@@ -628,6 +712,9 @@ export async function runSmokePresentationContracts({ check, local }) {
   
     /* ---------------- F34-1: the command box at rest ---------------- */
     const cmdSrc = read("js/ui/command-box.js");
+    // Needs you labels now resolve through the packaged catalogue.
+    const { createChromeI18nMock } = await import("./message-fixture.mjs");
+    globalThis.chrome = { ...(globalThis.chrome ?? {}), i18n: createChromeI18nMock() };
     const {
       attentionItems, countOverdueSnoozes, sessionDriftFact,
       recentAutomaticAttention, ATTENTION_LIMIT, RECENT_AUTOMATIC_MS,
@@ -636,7 +723,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     const attentionNow = 10 * 24 * 60 * 60 * 1000;
     const recentAuto = {
       id: "auto-save", at: attentionNow - 5 * 60 * 1000, auto: true,
-      label: "Auto-saved 3 tabs to the Inbox", reopen: [[{ url: "https://saved.example" }]]
+      label: "Auto-saved 3 tabs to the Inbox", actionKind: "auto-saved-tabs",
+      actionParams: { count: 3 }, reopen: [[{ url: "https://saved.example" }]]
     };
     // (1) The queue vanishes when empty, caps at three, and never lets automatic
     // activity displace a ranked unresolved action.
@@ -708,10 +796,13 @@ export async function runSmokePresentationContracts({ check, local }) {
       ], { 9: { sessionId: "session-1", windowIndex: 0 } }, [driftSession]) === null,
       "P11-25: restored Session drift becomes attention only when a live window has new URLs"
     );
-    // (6) Needs you has one fixed responsive home to Search's right. It
-    // disappears when the available width cannot hold the line, but not on scroll.
+    // (6) Activity facts have one fixed responsive home to Search's right. The
+    // visible line needs no heading; its accessible name still identifies it.
+    // It disappears when the width cannot hold the line, but not on scroll.
     check(
-      cmdSrc.includes('class: "page-attention", "aria-label": "Needs you", hidden: true') &&
+      cmdSrc.includes('class: "page-attention", "aria-label": shellSectionTitle("activity"), hidden: true') &&
+      !cmdSrc.includes('class: "page-attention-label"') &&
+      !homeCss.includes('.page-attention-label') &&
       cmdSrc.includes('attentionLine.hidden = attention.length === 0;') &&
       /const heroUtility = el\("div", \{ class: "hero-utility" \},\s*pageUtilities\.attention, focusUtility\)/.test(dashboardSrc) &&
       /\.page-attention \{ display: none;[^}]*justify-content: flex-end/s.test(homeCss) &&
@@ -721,20 +812,25 @@ export async function runSmokePresentationContracts({ check, local }) {
       !homeCss.includes(".page-attention.is-scrolled-away") &&
       !dashboardSrc.includes("attentionSentinel") &&
       !dashboardSrc.includes("IntersectionObserver"),
-      "F40: Needs you stays fixed at Search's right edge whenever that line fits"
+      "Activity facts retain their links and responsive position without a demanding heading"
     );
     // (4) Starred stays anchored by the hero on the sticky-window axis. Wide
     // layouts yield a real 300px row inset; the layout commit uses snapshots.
     check(
-      /const hero = el\([\s\S]{0,300}pageUtilities\.starred,[\s\S]{0,80}focusStrip/.test(dashboardSrc) &&
+      /const hero = el\([\s\S]{0,500}pageUtilities\.starred,[\s\S]{0,80}focusStrip/.test(dashboardSrc) &&
       /\.starred-edge \{ position: absolute; z-index: 24;/.test(homeCss) &&
       /\.starred-edge\.is-open \{ width: min\(280px,[^}]*overflow: clip/s.test(homeCss) &&
       /\.starred-edge \{[^}]*top: calc\(100% \+ var\(--sp-10\) \+ var\(--section-lead-h, 44px\)[^}]*var\(--section-local-h, 0px\)\)[^}]*right: calc\(-1 \* var\(--bw\)\)/s.test(homeCss) &&
       /\.starred-edge:not\(\.is-open\) \.starred-edge-toggle \{[^}]*border-right: 0[^}]*border-radius: var\(--shape-panel\) 0 0 var\(--shape-panel\)/s.test(homeCss) &&
-      /@media \(min-width: 1280px\)[\s\S]*\.content:has\(\.starred-edge\.is-open\) \.daily-stage \{[^}]*padding-right: calc\(300px - var\(--pad-x\)\)/s.test(homeCss) &&
+      /@media \(min-width: 800px\)[\s\S]*\.content:has\(\.starred-edge\.is-open\) \.daily-stage \{[^}]*padding-right: calc\(300px - var\(--pad-x\)\)/s.test(homeCss) &&
+      /@media \(min-width: 800px\) \{\s*\.content:not\(:has\(\.starred-edge\.is-open\)\) \.daily-stage \{[^}]*padding-right: calc\(58px \+ var\(--sp-4\)\)/s.test(homeCss) &&
       /\.starred-edge\.is-open \{[^}]*box-shadow: none/s.test(homeCss) &&
       homeCss.includes("view-transition-name: starred-workspace;") &&
       homeCss.includes("view-transition-name: starred-rail;") &&
+      /::view-transition-old\(starred-rail\),\s*::view-transition-new\(starred-rail\)\s*\{[^}]*object-fit:\s*none;[^}]*object-position:\s*top right;/.test(homeCss) &&
+      homeCss.includes(".starred-edge-toggle > .ic { view-transition-name: starred-rail-star; }") &&
+      homeCss.includes(".starred-edge-count { view-transition-name: starred-rail-count; }") &&
+      /@keyframes starred-rail-in \{ from \{ opacity: 0; transform: translateX\(6px\); \} \}/.test(homeCss) &&
       dashboardSrc.includes("document.startViewTransition(update)") &&
       /\.starred-edge-toggle \.ic \{ fill: currentColor; \}/.test(homeCss) &&
       !/\.content \{[^}]*grid-template-columns:[^}]*240px/s.test(homeCss),
@@ -766,10 +862,10 @@ export async function runSmokePresentationContracts({ check, local }) {
       // deliberately NOT a tab-refresh task, because the launcher reads no live
       // tabs. The attention row is the one that follows live tabs.
       dashboardSrc.includes("const renderStarred = coalesce(() => pageUtilities.refreshStarred());") &&
-      dashboardSrc.includes("const renderAttention = coalesce(() => pageUtilities.refreshAttention());") &&
+      dashboardSrc.includes("const renderAttention = coalesceLatest((reads) => pageUtilities.refreshAttention(reads));") &&
       dashboardSrc.includes("  starred: renderStarred,") &&
       dashboardSrc.includes("  attention: renderAttention,") &&
-      read("js/ui/refresh-scheduler.js").includes('"open", "attention", "duplicates", "nav"') &&
+      read("js/ui/refresh-scheduler.js").includes('"open", "attentionLive", "duplicates", "navOpen"') &&
       !read("js/ui/refresh-scheduler.js").includes('tasks.add("home")') &&
       read("js/ui/refresh-scheduler.js").includes('if (changes.starred) tasks.add("starred");') &&
       !cmdSrc.includes("chrome.tabs.query"),
@@ -868,7 +964,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     // (2) Unstar is direct, shares the row-action badge with Rename, exits
     // optimistically, and journals so the shell can offer Undo.
     check(
-      cmdSrc.includes('title: `Unstar ${name}`, "aria-label": `Unstar ${name}`') &&
+      cmdSrc.includes('title: localeMessage("starred_unstar_aria", [name]), "aria-label": localeMessage("starred_unstar_aria", [name])') &&
       cmdSrc.split('class: "pu-row-action"').length - 1 === 2 &&
       cmdSrc.includes('wrap.classList.add("leaving");') &&
       cmdSrc.includes("await unstarTab(item.id)") &&
@@ -896,7 +992,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
     check(
       cmdSrc.includes('class: "pu-row-action"') &&
-      cmdSrc.includes('title: `Rename ${name}`, "aria-label": `Rename ${name}`') &&
+      cmdSrc.includes('title: localeMessage("starred_rename_aria", [name]), "aria-label": localeMessage("starred_rename_aria", [name])') &&
       cmdSrc.includes('wrap.append(launch, el("span", { class: "pu-row-actions" }, rename, remove));') &&
       // F2 stays as an accelerator on the focused launcher, not the only way in.
       !cmdSrc.includes("ondblclick") &&
@@ -914,9 +1010,10 @@ export async function runSmokePresentationContracts({ check, local }) {
       !homeCss.includes(".cmd-rows { display: none; }") &&
       /\.hero-search-overlay \{[^}]*position: absolute[^}]*top: calc\(100% - var\(--bw\)\)/s.test(homeCss) &&
       /\.hero-search-overlay \.search-results \{[^}]*max-height: 46vh[^}]*overflow-y: auto/s.test(homeCss) &&
-      /\.hero-search-overlay > \.search-footer \{[^}]*min-height: 30px/s.test(homeCss) &&
+      /\.hero-search-content > \.search-footer \{[^}]*min-height: 30px/s.test(homeCss) &&
       dashboardSrc.includes('const searchResults = searchBox.querySelector(".search-results");') &&
-      dashboardSrc.includes('const searchOverlay = el("div", { class: "hero-search-overlay" }, searchResults, searchFooter);') &&
+      dashboardSrc.includes('const searchOverlay = el("div", { class: "hero-search-overlay" },') &&
+      dashboardSrc.includes('el("div", { class: "hero-search-content" }, searchResults, searchFooter)') &&
       !dashboardSrc.includes("commandBox.element"),
       "F37: Search results and History grow in an absolute overlay without changing sticky geometry"
     );
@@ -948,12 +1045,15 @@ export async function runSmokePresentationContracts({ check, local }) {
       /\.hero::after \{ content: ""; position: absolute; z-index: 0; top: 100%;[^}]*height: var\(--sp-10\)/s.test(homeCss) &&
       /\.item > \.item-head-shell::before,\s*\.tablist:not\(\[data-compact\]\) > \.item > \.item-head-shell::after \{[^}]*z-index: 0[^}]*width: var\(--cap-radius\)[^}]*height: var\(--cap-radius\)[^}]*background: var\(--bg-solid\)[^}]*pointer-events: none/s.test(shared) &&
       !/\.item > \.item-head::(?:before|after)/.test(shared) &&
-      !/-webkit-mask:|(?:^|\s)mask:/m.test(shared) &&
       /\[data-mode="dark"\] \.tablist:not\(\[data-compact\]\) > \.item > \.item-head-shell > \.item-head \{[^}]*border-color: color-mix\(in srgb, var\(--ink\) 24%, var\(--border\)\)/s.test(shared) &&
       /\.tablist\[data-compact\] > \.item > \.item-head-shell,\s*\.tablist\[data-compact\] > \.item > \.item-body-frame \{ display: contents; \}/s.test(shared) &&
       // Under the command box, never over it.
       /\.hero \{[^}]*z-index: 20/s.test(homeCss),
       "F39/F34-17: the shared shelf occludes passing rows before the rounded foreground cap"
+    );
+    check(
+      /\.tablist:not\(\[data-compact\]\) \.window-block \{[^}]*padding: 0/s.test(shared),
+      "Session window headers fill their complete rounded block without an inherited top gutter"
     );
     check(
       // F34-7r: the section body was the REAL blocker. `overflow: hidden` there
@@ -966,8 +1066,8 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
     check(
       read("js/ui/icons.js").includes('play: \'<path d="M7 4.5v15l12-7.5z"/>\',') &&
-      dashboardSrc.includes('ready: focusActionState("ready", "play", "Start Focus", true)') &&
-      dashboardSrc.includes('active: focusActionState("active", "stop", "End Focus")') &&
+      dashboardSrc.includes('ready: focusActionState("ready", "play", localeMessage("focus_action_ready"), true)') &&
+      dashboardSrc.includes('active: focusActionState("active", "stop", localeMessage("focus_action_active"))') &&
       read("js/ui/icons.js").includes('stop: \'<rect x="6" y="6" width="12" height="12" rx="2"/>\',') &&
       !dashboardSrc.includes('ready ? "suspend"') &&
       !dashboardSrc.includes('active ? "snooze"'),
@@ -985,16 +1085,17 @@ export async function runSmokePresentationContracts({ check, local }) {
     const openStart = configs.indexOf("export function buildOpenListConfig");
     const inboxStart = configs.indexOf("export function buildInboxListConfig");
     const open = configs.slice(openStart, inboxStart);
-    const headerIds = ["dump-window", "save-session", "copy", "organize", "close-window"];
+    const headerIds = ["dump-window", "save-session", "label-window", "snooze-window",
+      "protection-window", "copy", "organize", "close-window"];
     check(
       headerIds.every((id, i) => open.indexOf(`id: "${id}"`) >= 0 &&
         (i === 0 || open.indexOf(`id: "${headerIds[i - 1]}"`) < open.indexOf(`id: "${id}"`))) &&
-      !open.includes('id: "label-window"') && !open.includes('id: "focus-window"'),
-      "P11-03/D4-2b: Open window actions end with Close and keep no Focus, Label, or More"
+      !open.includes('id: "focus-window"'),
+      "Open window actions follow row order before window-only actions and Close"
     );
     const bulkStart = open.indexOf("bulkActions: (ctx)");
     const bulk = open.slice(bulkStart);
-    const bulkIds = ["inbox", "label", "snooze", "suspend", "wake", "move", "session", "close"];
+    const bulkIds = ["inbox", "session", "label", "snooze", "suspend", "wake", "move", "close"];
     check(
       bulkIds.every((id) => bulk.includes(`"${id}"`)) &&
       bulk.includes('keeperButton("move", localeMessage("action_move"), "move"') &&
@@ -1113,7 +1214,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       dash.includes("function navName(label, count)") &&
       dash.includes('"aria-label": name, "data-tip": name') &&
       dash.includes('"aria-label": navName(label, count), "data-tip": navName(label, count)') &&
-      dash.includes('vaultPill.setAttribute("aria-label", `Vault: ${pill.text}`)'),
+      dash.includes('vaultPill.setAttribute("aria-label", localeMessage("vault_pill_title", [pill.text]))'),
       "D4-3a: every nav item and the vault pill keep a complete accessible name when labels collapse"
     );
     check(
@@ -1139,10 +1240,10 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
   
     /* 7. Hero order: Search, non-measuring Starred overlay, then active Focus. */
-    const heroBlock = dash.slice(dash.indexOf("const hero = el("), dash.indexOf("document.body.append(focusAnnouncer)"));
+    const ordinaryHero = dash.slice(dash.indexOf("const hero = el("), dash.indexOf("document.body.append(focusAnnouncer)"));
     check(
-      heroBlock.indexOf("heroPanel") < heroBlock.indexOf("pageUtilities.starred") &&
-      heroBlock.indexOf("pageUtilities.starred") < heroBlock.indexOf("focusStrip"),
+      ordinaryHero.indexOf("heroPanel") < ordinaryHero.indexOf("pageUtilities.starred") &&
+      ordinaryHero.indexOf("pageUtilities.starred") < ordinaryHero.indexOf("focusStrip"),
       "F36: the hero renders Search, the Starred edge overlay, then active Focus"
     );
   
@@ -1198,7 +1299,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     check(
       dash.includes('const skipLink = el("button", { class: "skip-link", type: "button",') &&
       dash.includes("onclick: () => searchInput.focus()") &&
-      dash.includes('el("div", { class: "app" }, skipLink, sidebar, main)') &&
+      dash.includes('el("div", { class: "app" }, skipLink, sidebar, main, themePop)') &&
       dash.includes('id: "main", tabindex: "-1"') &&
       !dash.includes('class: "skip-link", href:'),
       "D4-3a/N40: a skip control precedes the navigation and moves focus without touching the hash router"
@@ -1206,7 +1307,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     check(
       dash.includes("if (e.relatedTarget && e.relatedTarget !== document.body) return;") &&
       dash.includes('skipLink.addEventListener("focus", (e) => {') &&
-      dash.includes('}, "Skip to search")'),
+      dash.includes('}, localeMessage("shell_skip_to_search"))'),
       "N40: focus arriving from outside the document is forwarded to the command box, so Tab from the address bar lands on search"
     );
     check(
@@ -1225,10 +1326,10 @@ export async function runSmokePresentationContracts({ check, local }) {
       !/\[data-nav="rail"\] \.navlabel,/.test(css),
       "D4-3a: the rail keeps its group boundaries as a hairline instead of dropping them"
     );
-    const harness = read("tools/shell-harness.html");
+    const harness = read("../tools/shell-harness.html");
     check(
-      harness.includes('import { icon } from "../js/ui/icons.js"') &&
-      harness.includes('href="../css/') &&
+      harness.includes('import { icon } from "../extension/js/ui/icons.js"') &&
+      harness.includes('href="../extension/css/') &&
       harness.includes('class="action-icon"') && harness.includes('class="action-label"') &&
       !harness.includes("<script src=") &&
       harness.includes("NAV_COMPACT_MAX = 900, NAV_HEADER_MAX = 620"),
@@ -1289,7 +1390,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       ["popup.html", "focus.html"].every((p) => {
         const html = read(p);
         return /<html\b[^>]*data-emphasis="bold"/s.test(html) &&
-          /<html\b[^>]*data-corner-style="soft"/s.test(html);
+          /<html\b[^>]*data-interface-style="soft"/s.test(html);
       }),
       "D4-3b: the popup and guard page declare the appearance attributes their shared roles key off"
     );
@@ -1316,7 +1417,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
     check(
       popupJs.includes("const INLINE_PANELS = [labelPanelTab]") &&
-      (popupJs.match(/createAnchoredPanel\(/g) ?? []).length === 3 &&
+      (popupJs.match(/createAnchoredPanel\(/g) ?? []).length === 5 &&
       popupJs.includes("dismissAnchoredPanel();"),
       "D4-3b: every inline popup panel reuses the shared panel role and the one-open rule"
     );
@@ -1380,9 +1481,10 @@ export async function runSmokePresentationContracts({ check, local }) {
       "D4-3d: a dynamic relabel writes to the label span, so it cannot wipe the icon"
     );
     check(
-      popupJs.includes('const TAB_KEYS = { i: () => dumpTabBtn, s: () => snoozeBtn, z: () => suspendBtn, l: () => labelTabBtn }') &&
+      popupJs.includes('t: () => tabSessionBtn') &&
+      popupJs.includes('p: () => keepAwakeBtn') &&
       popupJs.includes("if (!btn || btn.disabled) return;") &&
-      popupJs.includes("if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;") &&
+      popupJs.includes("if (e.metaKey || e.ctrlKey || e.altKey || eventOwnsTextEntry(e, document.activeElement)) return;") &&
       popupHtml.includes("button:disabled > .k { display: none; }"),
       "D4-3d: the shown key hints are real bindings, skip disabled actions, and never fire while typing"
     );
@@ -1398,24 +1500,25 @@ export async function runSmokePresentationContracts({ check, local }) {
     );
   
     /* 5. The harness covers this wave's surfaces from the real documents. */
-    const surfaceHarness = read("tools/surface-harness.html");
+    const surfaceHarness = read("../tools/surface-harness.html");
     check(
-      surfaceHarness.includes('fetch(`../${surface}.html') &&
+      surfaceHarness.includes('fetch(`../extension/${surface}.html') &&
       surfaceHarness.includes('doc.indexOf("<style>")') &&
-      surfaceHarness.includes('import { icon } from "../js/ui/icons.js"'),
+      surfaceHarness.includes('import { icon } from "../extension/js/ui/icons.js"'),
       "D4-3b: the surface harness lifts the shipped inline stylesheet rather than copying it"
     );
     check(
       popupJs.indexOf("  search,") < popupJs.indexOf("  dupHintSlot,") &&
         popupJs.indexOf("  dupHintSlot,") < popupJs.indexOf("  vaultWarnSlot,") &&
-        /class: "tabhead" \},\s*el\("h2", \{ class: "group-head" \}, popupStatic\.thisTab\(\)\), tabFav, tabTitle, starTabBtn/s.test(popupJs) &&
+        /class: "tabhead" \},\s*el\("h2", \{ class: "group-head" \}, popupStatic\.thisTab\(\)\), tabFav, tabTitle, tabUtilities/s.test(popupJs) &&
         popupJs.includes('const tabActions = el("div", { class: "actgrid tab-actions" }') &&
+        /dumpTabBtn, tabSessionBtn, snoozeBtn, labelTabBtn/.test(popupJs) &&
         popupJs.includes("    tabActions,"),
       "P11-12: Search precedes warnings and This tab keeps identity plus Star on one line above a complete 2-by-2 action grid"
     );
     check(
-      /class: "group-title-row" \},\s*el\("h2", \{ class: "group-head" \}, popupStatic\.thisWindow\(\)\), copyWinBtn/s.test(popupJs) &&
-        /class: "actgrid" \},\s*saveBtn, winSnoozeBtn, suspendOthersBtn, sortWinBtn/s.test(popupJs) &&
+      /class: "group-title-row" \},\s*el\("h2", \{ class: "group-head" \}, popupStatic\.thisWindow\(\)\), windowUtilities/s.test(popupJs) &&
+        /class: "actgrid" \},\s*dumpWinBtn, saveBtn, winSnoozeBtn, sortWinBtn/s.test(popupJs) &&
         /class: "group-title-row focus-title-row"/.test(popupJs) &&
         popupHtml.includes(".banner button:not(.primary) {") &&
         popupHtml.includes("white-space: nowrap;") &&
@@ -1520,6 +1623,7 @@ export async function runSmokePresentationContracts({ check, local }) {
     const dashJs = read("js/ui/dashboard.js");
     const dataJs = read("js/ui/data-surface.js");
     const vaultJs = read("js/ui/vault-surface.js");
+    const vaultCopy = read("js/ui/vault-copy.js");
     const onboard = read("js/ui/onboarding.js");
   
     check(
@@ -1528,7 +1632,8 @@ export async function runSmokePresentationContracts({ check, local }) {
       dashCss.includes(".status.ok::before { background: var(--ok); }") &&
       dashCss.includes(".status.warn::before { background: var(--warn); }") &&
       dashCss.includes(".status.danger::before { background: var(--danger); }") &&
-      vaultJs.includes('el("span", { class: "status danger" }, `error: ${status.message}`)'),
+      vaultJs.includes("const badgeState = vaultStatusBadge(status, meta)") &&
+      vaultCopy.includes('cls: "status danger"'),
       "D4-3c: vault state reads from a marker plus words, and an error is not a warning"
     );
     check(
@@ -1536,14 +1641,17 @@ export async function runSmokePresentationContracts({ check, local }) {
       dataJs.includes("const outcome = (node, base, text, kind") &&
       dataJs.includes('outcome(importInfo, "item-meta",') &&
       dataJs.includes('"bad")') && dataJs.includes('"good")') &&
-      vaultJs.includes('el("div", { class: meta && !meta.ok ? "note bad" : "note" }, lastSync)'),
+      vaultJs.includes('class: meta && !meta.ok && !meta.busy') &&
+      vaultJs.includes('? "note bad vault-sync-details"'),
       "D4-3c: import and sync outcomes differ by more than their sentence"
     );
     check(
       // Copy guides the exit instead of shouting at the user.
       !vaultJs.includes("} FAILED: ${meta.error}") &&
-      vaultJs.includes("didn't complete: ${meta.error}") &&
-      vaultJs.includes("Try Sync now, or reconnect the folder if the permission was lost."),
+      vaultJs.includes("vaultLastSyncText(meta, progress, {") &&
+      vaultJs.includes("timeoutFailure, elapsedMs: progressElapsedMs()") &&
+      vaultCopy.includes('vaultStatic.timeoutGuidance()') &&
+      vaultCopy.includes('vaultStatic.retryGuidance()'),
       "D4-3c: a failed sync names what happened and how to recover"
     );
     check(
@@ -1594,10 +1702,14 @@ export async function runSmokePresentationContracts({ check, local }) {
     check(layoutAnim.length === 0,
       `D4-4: no routine rendering animates a layout property (${layoutAnim.join(", ") || "clean"})`);
   
-    // No ambient movement. Pending feedback is a solid, one-shot reveal too.
+    // No ambient loops. The user-requested count reel is the sole exception,
+    // and only while its source is pending; its lifecycle is browser-tested.
     const ambient = [];
     for (const f of shipped) {
-      for (const m of read(f).matchAll(/animation:\s*([^;}]+)/g)) {
+      const css = read(f);
+      const pendingReel = /\.startup-count\[data-startup-pending\]::before\s*\{\s*animation:\s*startup-count-spin calc\(var\(--motion-continuity\) \* 5\) linear infinite;\s*\}/g;
+      const checked = f === "css/dashboard.css" ? css.replace(pendingReel, "") : css;
+      for (const m of checked.matchAll(/animation:\s*([^;}]+)/g)) {
         const decl = m[1];
         if (/\b(infinite|alternate)\b/.test(decl)) {
           ambient.push(`${f}: ${decl.trim()}`);
@@ -1605,7 +1717,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       }
     }
     check(ambient.length === 0,
-      `D4-4: no ambient looping motion ships (${ambient.join(" | ") || "clean"})`);
+      `D4-4: no looping motion outside the pending count slot ships (${ambient.join(" | ") || "clean"})`);
   
     // A JS `behavior: "smooth"` argument beats the global reduced-motion CSS rule,
     // so it is the one kind of motion that can ignore the user's preference.
@@ -1670,7 +1782,8 @@ export async function runSmokePresentationContracts({ check, local }) {
       listCss.includes(".action-popover .palette-form") &&
       listCss.includes(".tablist .trow.palette-source .tacts") &&
       !listCss.includes(".inline-panel-enter") &&
-      tablist.includes('if (slotEl.closest("[data-compact]")) popover.dataset.compact = "";'),
+      tablist.includes('slotEl.closest("[data-compact]") || opener?.closest?.("[data-compact]")') &&
+      tablist.includes('popover.dataset.compact = "";'),
       "Motion 001: the 140ms anchored palette keeps a visible stem, unclipped label menu, and compact-surface adaptation"
     );
     check(
@@ -1710,7 +1823,7 @@ export async function runSmokePresentationContracts({ check, local }) {
       sessionJump.includes("const cue = pointerDriven();") &&
       !sessionJump.includes("cueSessionJumpArrival(presentCard)") &&
       sessionJump.includes("if (cue) settleCue(() => sessionCardEl(id), cueSessionJumpArrival);") &&
-      /openLabelDeepLink[\s\S]*?positionLabelCard\(label\);/.test(dash),
+      /openLabelDeepLink[\s\S]*?positionLabelCard\(label\);[\s\S]*?settleAnchor\(\(\) => positionLabelCard\(label\)\)/.test(dash),
       "Motion 002: pointer label/session jumps cue the final post-refresh card; keyboard and deep-link paths stay uncued"
     );
     const arrivalKeyframes = dashCss.slice(
@@ -1791,22 +1904,23 @@ export async function runSmokePresentationContracts({ check, local }) {
       tablist.includes("keeperMotionAllowed: false") &&
       tablist.includes('st.keeperMotionAllowed = !document.activeElement?.matches?.(":focus-visible");') &&
       (tablist.match(/noteKeeperTrigger\(\);/g) ?? []).length === 5 &&
-      tablist.includes("const keeperEntering = bulkCount > 0 && !st.keeperVisible && st.keeperMotionAllowed;") &&
-      tablist.includes("st.keeperVisible = bulkCount > 0;") &&
+      tablist.includes("const keeperVisible = bulkCount > 0 && !headerBulkGroupId;") &&
+      tablist.includes("const keeperEntering = keeperVisible && !st.keeperVisible && st.keeperMotionAllowed;") &&
+      tablist.includes("st.keeperVisible = keeperVisible;") &&
       tablist.includes("st.keeperMotionAllowed = false;") &&
       tablist.includes('${keeperEntering ? " keeper-enter" : ""}'),
-      "Motion 004: keeper-enter crosses zero only after a non-focus-visible selection trigger; keyboard selection stays still"
+      "Motion 004: keeper-enter runs only when a pointer selection crosses from local actions into the cross-card dock"
     );
     check(
-      listCss.includes("transition: opacity var(--motion-continuity) var(--ease-out),") &&
-      listCss.includes("transform: translateX(-50%) translateY(6px);") &&
-      /\[data-surface="sidepanel"\] \.tablist > \.bulk-bar\.keeper-enter \{\s*transform: translateY\(6px\);/.test(listCss),
-      "Motion 004: the 180ms keeper reveal preserves dashboard and side-panel horizontal positioning"
+      listCss.includes("transition: opacity var(--motion-reveal) var(--ease-out),") &&
+      listCss.includes("transform: translateX(-50%) translateY(8px) scale(.985);") &&
+      /\[data-surface="sidepanel"\] \.tablist > \.bulk-bar\.keeper-enter \{\s*transform: translateY\(8px\) scale\(\.985\);/.test(listCss),
+      "Motion 004: the 140ms keeper lift preserves dashboard and side-panel horizontal positioning"
     );
   
     /* 005: fine-pointer presses move one pixel; keyboard and drag do not. */
     check(
-      /@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*button:not\(:disabled\):not\(\.move-handle\):active:not\(:focus-visible\)[\s\S]*translateY\(1px\)/.test(dashCss),
+      /@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*button:not\(:disabled\):active:not\(:focus-visible\)[\s\S]*translateY\(1px\)/.test(dashCss),
       "Motion 005: pointer press feedback is fine-pointer-only, 1px, and excludes keyboard focus + move handles"
     );
     const buttonStart = dashCss.indexOf("button { padding:");

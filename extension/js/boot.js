@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * N2 — synchronous pre-paint boot. Loaded as the FIRST <head> tag on every
  * extension page as a CLASSIC external script (MV3's CSP forbids inline scripts,
@@ -12,8 +15,8 @@
  * this file is a classic script and cannot import them.
  *
  * Caches it reads (localStorage, all written by js/ui/theme.js apply()):
- *   tvTheme       {scheme, mode, gradient, uiCheckboxShape,
- *                  uiCornerStyle, uiRowInfo, uiActionLabels,
+ *   tvTheme       {scheme, mode, gradient, uiInterfaceStyle,
+ *                  uiRowInfo, uiActionLabels,
  *                  uiSidebarCollapsed, customProperties?}
  *   tvBg          the computed --bg-solid color for the current scheme × mode
  *
@@ -37,6 +40,7 @@
       // without a first-frame flash before the module normalizer runs.
       if (painted.scheme === "everforest") painted.scheme = "matcha";
       if (painted.scheme === "catppuccin" || painted.scheme === "rosepine") painted.scheme = "dracula";
+      if (painted.scheme === "perestroika") painted.scheme = "jamon";
       if (typeof painted.scheme === "string") root.setAttribute("data-scheme", painted.scheme);
       if (painted.scheme === "custom" && painted.customProperties) {
         var customProperties = [
@@ -58,9 +62,14 @@
         root.style.colorScheme = painted.mode; // themes even the UA's very first frame
       }
       root.setAttribute("data-gradient", t.gradient ? "true" : "false");
+      // Pre-Interface-style caches retain uiCornerStyle. Use it only as a
+      // first-frame compatibility alias so an upgraded profile never flashes
+      // Soft before its authoritative Crisp setting arrives.
+      var interfaceStyle = ["soft", "crisp", "terminal"].includes(t.uiInterfaceStyle)
+        ? t.uiInterfaceStyle
+        : t.uiCornerStyle === "crisp" ? "crisp" : "soft";
+      root.setAttribute("data-interface-style", interfaceStyle);
       var appearance = {
-        uiCheckboxShape: "checkbox-shape",
-        uiCornerStyle: "corner-style",
         uiRowInfo: "row-info",
         uiActionLabels: "action-labels"
       };

@@ -1,10 +1,14 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F14 — the shared Sessions surface.
  *
  * `createSessionsSurface(ctx)` owns everything the Sessions section needs that is
  * NOT a generic `createTabList` config: the ordered data-gathering, the per-session
- * drag machinery (row drag within a session + the new-window-block between-zone,
- * scoped to the dragged row's own card), the "save all open windows" toolbar, and
+ * selected-set adapter for the shared drag controller (moves within one Session,
+ * terminal window targets, and new-window-block zones scoped to that card), the
+ * "save all open windows" toolbar, and
  * the tab-grain selection/bulk actions. It holds the per-surface drag state those
  * pieces need across renders. It builds Sessions via the shared
  * `buildSessionListConfig` (also used by the dashboard's Snapshots), so there is one
@@ -22,13 +26,14 @@ import { el, coalesce, settleAnchor, settleCue } from "./dom.js";
 import { formatNumber, msg as localeMessage } from "../lib/i18n.js";
 import { pointerDriven } from "./input-modality.js";
 import { createIndexBar } from "./indexbar.js";
-import { createTabList } from "./tablist.js";
+import { clearSelection, createTabList } from "./tablist.js";
 import { buildSessionListConfig } from "./list-configs.js";
+import { createTabDragController, createTabDropZone } from "./tab-drag.js";
 import { selectionActionButton } from "./list-helpers.js";
 import { STORE_KEYS } from "../lib/types.js";
-import { listItems, getSettings, patchSettings } from "../lib/store.js";
+import { listItems, listNamedSessions, getSettings, patchSettings } from "../lib/store.js";
 import {
-  sortSessions, moveSessionTab, moveSessionTabs, restoreSessionTabs,
+  sortSessions, moveSessionTabsWithin, moveSessionTabs, restoreSessionTabs, deleteSessionTabs,
   saveAllWindowsAsSession, addAllWindowsToSession, sessionTabCount
 } from "../lib/sessions.js";
 import { labelSessionTabs } from "../lib/labels.js";
@@ -153,36 +158,37 @@ export function createSessionsSurface(ctx) {
     settleAnchor(() => revealOrganizationLensResult(ctx.getBody(), ctx.stickyOffset()));
   }
 
-  /* ---- P2g-4c: Sessions drag — reorder rows / cross-window drops / new-window
+  /* ---- Sessions drag — reorder selected rows / cross-window drops / new-window
    * block, all WITHIN one session (cross-session moves go through → Session merge).
    * zones reveal on a tick (0.8.29 lesson) and only inside the dragged row's
    * own card (`.drag-home`); nothing steals focus. Snapshots never drag. ---- */
 
-  /** @type {{sessionId: string, wi: number, index: number, modifiedAt: number}|null} */
-  let sessionDrag = null;
-  let sessionRevealTimer = 0;
+  const sessionDrag = createTabDragController({ bodyClass: "session-dragging", scopeHome: true });
+
+  function selectedSessionPicks(entries, sessionId) {
+    return entries?.find((entry) => entry.group.data.id === sessionId)?.picks ?? [];
+  }
+
+  function sourceContains(drag, wi, index) {
+    return drag?.picks.some((pick) =>
+      pick.windowIndex === wi && pick.indexes.includes(index));
+  }
 
   const sessionRowDrag = {
     draggable: (c) => !c.group.data.auto,
     onStart: (c, e) => {
-      sessionDrag = { sessionId: c.group.data.id, wi: c.windowIndex, index: c.index,
-        modifiedAt: c.group.data.modifiedAt };
-      c.rowEl.classList.add("dragging");
-      c.rowEl.closest("[data-tablist-card]")?.classList.add("drag-home");
-      sessionRevealTimer = setTimeout(() => document.body.classList.add("session-dragging"), 0);
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", "");
+      const selected = selectedSessionPicks(c.dragSelection, c.group.data.id);
+      const count = selected.reduce((total, pick) => total + pick.indexes.length, 0);
+      const picks = count > 1 ? selected : [{ windowIndex: c.windowIndex, indexes: [c.index] }];
+      sessionDrag.start(c, e, {
+        session: structuredClone(c.group.data), picks
+      }, picks.reduce((total, pick) => total + pick.indexes.length, 0));
     },
-    onEnd: (c) => {
-      clearTimeout(sessionRevealTimer);
-      sessionDrag = null;
-      c.rowEl.classList.remove("dragging");
-      document.querySelector(".drag-home")?.classList.remove("drag-home");
-      document.body.classList.remove("session-dragging");
-    },
+    onEnd: () => sessionDrag.reset(),
     onOver: (c, e) => {
-      if (!sessionDrag || sessionDrag.sessionId !== c.group.data.id) return; // same session only
-      if (sessionDrag.wi === c.windowIndex && sessionDrag.index === c.index) return;
+      const drag = sessionDrag.current();
+      if (!drag || drag.session.id !== c.group.data.id) return; // same session only
+      if (sourceContains(drag, c.windowIndex, c.index)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       c.rowEl.classList.add("drop-target");
@@ -191,46 +197,49 @@ export function createSessionsSurface(ctx) {
     onDrop: async (c, e) => {
       e.preventDefault();
       c.rowEl.classList.remove("drop-target");
-      await dropSessionTab(c.group.data, { wi: c.windowIndex, index: c.index });
+      await dropSessionTabs(c.group.data, { wi: c.windowIndex, index: c.index });
     }
   };
 
-  /** Perform the drop; `target` per moveSessionTab ({wi,index} or {newAt}). */
-  async function dropSessionTab(session, target) {
-    const d = sessionDrag;
-    if (!d || session.id !== d.sessionId) return;
-    const res = await moveSessionTab(d.sessionId, d.wi, d.index, target, d.modifiedAt);
+  /** Perform the drop; `target` is a saved window position or a new window slot. */
+  async function dropSessionTabs(session, target) {
+    const d = sessionDrag.current();
+    if (!d || session.id !== d.session.id) return;
+    sessionDrag.reset();
+    const res = await moveSessionTabsWithin(d.session, d.picks, target);
     if (!res.ok && res.stale) ctx.showNotice(localeMessage("list_changed_nothing_moved"));
+    if (res.ok && !res.noop) clearSelection("sessions");
     ctx.rerender();
   }
 
   /** The between-blocks zone of a session card: drop = new window block there. */
   function newBlockZone(group, wi) {
-    const z = el("div", { class: "drop-zone-new" }, localeMessage("list_drop_new_session_window"));
-    z.addEventListener("dragover", (e) => {
-      if (!sessionDrag || sessionDrag.sessionId !== group.id) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      z.classList.add("on");
-    });
-    z.addEventListener("dragleave", () => z.classList.remove("on"));
-    z.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      z.classList.remove("on");
-      await dropSessionTab(group.data, { newAt: wi + 1 });
-    });
-    return z;
+    return createTabDropZone({ className: "drop-zone-new",
+      text: localeMessage("list_drop_new_session_window"),
+      canDrop: () => sessionDrag.current()?.session.id === group.id,
+      onDrop: () => dropSessionTabs(group.data, { newAt: wi + 1 }) });
+  }
+
+  function endSessionWindowZone(group, window, wi) {
+    const label = localeMessage("list_move_end_named", [window.meta]);
+    return createTabDropZone({ className: "drop-zone-window-end", label,
+      canDrop: () => sessionDrag.current()?.session.id === group.id,
+      onDrop: () => dropSessionTabs(group.data, { wi, index: -1 }) });
   }
 
   /** Thin adapter over the shared session config, injecting this surface's helpers. */
-  function sessionListConfig(section, sessions, rerender, extra, organizationCardAction = null) {
+  function sessionListConfig(
+    section, sessions, rerender, extra, organizationCardAction = null, sessionTargetCount = 0
+  ) {
     return buildSessionListConfig({
       section, sessions, rerender, extra,
       renderLabels: ctx.renderLabels, renderSnoozes: ctx.renderSnoozes, goToLabel: ctx.goToLabel,
       msg: ctx.msg, cardLabelPanel: ctx.cardLabelPanel, copySession: ctx.copySession,
       buildSnoozePanel: ctx.buildSnoozePanel, confirmDelete: ctx.confirmDelete, delSession: ctx.delSession,
       showNotice: ctx.showNotice,
-      organizationCardAction
+      organizationCardAction,
+      sessionComboboxButton: ctx.sessionComboboxButton,
+      sessionTargetCount
     });
   }
 
@@ -263,7 +272,7 @@ export function createSessionsSurface(ctx) {
 
   const render = coalesce(async () => {
     /** @type {import("../lib/types.js").Session[]} */
-    const all = (await listItems(STORE_KEYS.sessions)).filter((s) => !s.auto);
+    const all = await listNamedSessions();
     const sortMode = (await getSettings()).uiSessionSort ?? "recent";
     const named = sortSessions(all, sortMode); // N32: cards render in this order
     const organizationState = await readOrganizationState("session");
@@ -290,9 +299,11 @@ export function createSessionsSurface(ctx) {
         cls: ctx.sectionActionHost ? "section-session-save tip" : "",
         title: localeMessage("list_save_all_windows_session_title"),
         onPick: async (v) => {
-          if (v.isNew) await saveAllWindowsAsSession(v.name || undefined);
-          else await addAllWindowsToSession(v.id);
-          ctx.rerender();
+          const result = v.isNew
+            ? await saveAllWindowsAsSession(v.name || undefined, v.organization)
+            : await addAllWindowsToSession(v.id);
+          if (result?.id) ctx.rerender();
+          return Boolean(result?.id);
         }
       }
     );
@@ -313,19 +324,9 @@ export function createSessionsSurface(ctx) {
       // (separate section; and draggable() refuses `auto` regardless).
       rowDrag: sessionRowDrag,
       windowGap: (g, wi) => newBlockZone(g, wi),
-      // P2g-4d: keyboard move — within the session only (keyMoveScope "group")
-      keyMoveScope: "group",
-      keyMoveCommit: async (src, slot) => {
-        const target = slot.kind === "row" ? { wi: slot.wi, index: slot.index }
-          : slot.kind === "windowEnd" ? { wi: slot.wi, index: -1 }
-          : { newAt: slot.wi + 1 };
-        const res = await moveSessionTab(src.group.data.id, src.windowIndex, src.index,
-          target, src.group.data.modifiedAt);
-        if (!res.ok && res.stale) ctx.showNotice(localeMessage("list_changed_nothing_moved"));
-        ctx.rerender();
-      },
+      windowEndZone: (g, w, wi) => endSessionWindowZone(g, w, wi),
       onWindowDragOver: (g, _w, _wi, e) => {
-        if (!sessionDrag || sessionDrag.sessionId !== g.id) return;
+        if (sessionDrag.current()?.session.id !== g.id) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         e.currentTarget.classList.add("drop-target");
@@ -334,7 +335,7 @@ export function createSessionsSurface(ctx) {
       onWindowDrop: async (g, _w, wi, e) => {
         e.preventDefault();
         e.currentTarget.classList.remove("drop-target");
-        await dropSessionTab(g.data, { wi, index: -1 }); // append to this window
+        await dropSessionTabs(g.data, { wi, index: -1 }); // append to this window
       },
       toolbar: ctx.sectionActionHost ? null : el("div", { class: "bulk-bar" }, saveOpenWindows),
       selectable: "tab",
@@ -344,17 +345,29 @@ export function createSessionsSurface(ctx) {
             for (const { session, picks } of toSessionSources(c.selection)) {
               await labelSessionTabs(session, labels, flatPicks(picks));
             }
-            c.clear();
+            await Promise.resolve(c.rerender());
             ctx.renderLabels();
         };
         return [
+          ctx.sessionComboboxButton(localeMessage("list_to_session"), {
+            actionId: "session",
+            title: localeMessage("list_sessions_move_selected_title"),
+            onPick: async (v) => {
+              const res = await moveSessionTabs(toSessionSources(c.selection),
+                v.isNew ? "__new" : v.id, v.isNew ? (v.name || undefined) : undefined,
+                v.organization);
+              if (!res?.moved) return false;
+              await Promise.resolve(c.rerender());
+              if (res.entry) ctx.showToast(res.entry);
+              return true;
+            }
+          }),
           selectionActionButton("restore", localeMessage("search_action_restore"), "switch", {
             title: localeMessage("list_sessions_restore_selected_title"),
             onclick: async () => {
               for (const { session, picks } of toSessionSources(c.selection)) {
                 await restoreSessionTabs(session, picks);
               }
-              c.clear();
             }
           }),
           selectionActionButton("copy", localeMessage("action_copy"), "copy", {
@@ -367,22 +380,22 @@ export function createSessionsSurface(ctx) {
             onclick: () => c.panel.toggle(() => ctx.cardLabelPanel(
               applyLabels, localeMessage("list_apply_labels"), c.panel), "bulk-label")
           }),
-          ctx.sessionComboboxButton(localeMessage("list_to_session"), {
-            actionId: "session",
-            title: localeMessage("list_sessions_move_selected_title"),
-            onPick: async (v) => {
-              const res = await moveSessionTabs(toSessionSources(c.selection),
-                v.isNew ? "__new" : v.id, v.isNew ? (v.name || undefined) : undefined);
-              c.clear();
-              if (res?.entry) ctx.showToast(res.entry);
+          ctx.confirmDelete(async () => {
+            const result = await deleteSessionTabs(toSessionSources(c.selection));
+            if (result.stale) {
+              ctx.showNotice(localeMessage("list_changed_review_selection"));
+              return;
             }
-          })
+            await Promise.resolve(c.rerender());
+            ctx.renderLabels();
+            if (result.entry) ctx.showToast(result.entry);
+          }, localeMessage("action_delete"), localeMessage("list_delete_selected_tabs_question"))
         ];
       },
       empty: activeGroupLens === ALL_ORGANIZATION_LENS
         ? localeMessage("list_sessions_empty")
         : localeMessage("list_sessions_group_empty")
-    }, controls.cardAction));
+    }, controls.cardAction, named.length));
 
     const nameById = new Map(visibleSessions.map((session) =>
       [session.id, (session.name || localeMessage("list_unnamed")).toLocaleLowerCase()]));

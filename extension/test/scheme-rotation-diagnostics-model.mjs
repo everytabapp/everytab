@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   SCHEME_ROTATION_DIAGNOSTIC_TRACE_LIMIT,
   buildSchemeRotationDiagnostics
-} from "../js/lib/scheme-rotation-diagnostics.js";
+} from "../../tools/diagnostics/scheme-rotation-diagnostics.js";
 import {
   createCustomSchemeRecord,
   createDefaultCustomSchemeDraft,
@@ -208,7 +208,7 @@ const reverted = report({
 check(reverted.verdict === "rotation-reverted" &&
   reverted.runtime.transition.revertSource === "vault" &&
   reverted.evidence.includes("post-commit-vault-change") &&
-  reverted.summary.includes("Vault"),
+  reverted.summaryId === "rotation-reverted",
 "a successful worker commit followed by a Vault setting write is called out directly");
 
 const exactVaultReversion = report({

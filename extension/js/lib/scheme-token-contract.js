@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Scheme role schema, production pairing ledger, validation, and CSS parser. */
 import {
   colorToCss,

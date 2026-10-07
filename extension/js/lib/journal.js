@@ -1,21 +1,25 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
- * M6 — undo system. Every destructive/creative action records an inverse:
+ * Undo records describe the inverse of a supported saved-data or browser action:
  *   puts   → records to write back (revives tombstoned items, restores
  *            pre-edit versions; upsert stamps a fresh modifiedAt, so undos
  *            win last-write-wins and merge cleanly through the vault)
  *   dels   → record ids to tombstone (removes items an action created)
  *   reopen → TabRef windows to reopen (for closed tabs)
- *   moves  → live-tab positions to move back to (P2g-4, Open-tabs drag):
+ *   moves  → live-tab positions to move back to:
  *            BEST-EFFORT — re-moves each tab to its pre-drag window/index if
  *            it still exists; a gone tab/window is skipped silently
- *            (interaction-model.md [AP]: live drags are best-effort undo,
- *            and the entry label says so).
- * Journal capped at JOURNAL_CAP entries in chrome.storage.local (per device).
- * F46r: the cap is 200. It was 50, which on a busy day scrolled a morning's work
- * out of reach; `unlimitedStorage` is held, so the only real cost is the size of
- * the `puts` snapshots a long history keeps alive.
+ *            and the entry label identifies this best-effort behavior.
+ * The journal is device-local Library state, capped at JOURNAL_CAP entries.
+ * Saved mutations and their Undo records share the store commit boundary.
+ * Browser side effects cannot be committed atomically with those records.
  */
-import { mutateStores, withStoreLock } from "./store.js";
+import {
+  mutateStores, mutateNamedSessionStores, readStoreMap
+} from "./store.js";
+import { STORE_KEYS } from "./types.js";
 import {
   JOURNAL_CAP as CAP, JOURNAL_KEY as KEY,
   hasValidUndoContract, journalStaleStores, journalTargetStores
@@ -66,6 +70,12 @@ export function appendedJournal(arr, entry) {
   return [entry, ...(arr ?? [])].slice(0, CAP);
 }
 
+function canUseNamedSessionStore(entry) {
+  const targets = [...(entry?.puts ?? []), ...(entry?.dels ?? [])]
+    .filter((target) => target?.store === STORE_KEYS.sessions);
+  return targets.length > 0 && targets.every((target) => target?.item?.auto !== true);
+}
+
 /** @typedef {import("./types.js").JournalEntry} JournalEntry */
 
 /**
@@ -82,7 +92,9 @@ export async function recordAction(label, inverse = {}, meta = {}) {
   // post-state contract as an atomic domain mutation. Saved-data operations
   // must append their entry in the same commit as their forward change.
   const stores = journalTargetStores(entry);
-  await mutateStores([...stores, KEY], (maps) => ({
+  const commit = canUseNamedSessionStore(entry)
+    ? mutateNamedSessionStores : mutateStores;
+  await commit([...stores, KEY], (maps) => ({
     [KEY]: appendedJournal(maps[KEY], entry)
   }));
   return entry;
@@ -90,8 +102,8 @@ export async function recordAction(label, inverse = {}, meta = {}) {
 
 /** @returns {Promise<JournalEntry[]>} newest first */
 export async function listActions() {
-  const r = await chrome.storage.local.get(KEY);
-  return r[KEY] ?? [];
+  const journal = await readStoreMap(KEY);
+  return Array.isArray(journal) ? journal : [];
 }
 
 /**
@@ -145,7 +157,9 @@ async function claimGenericUndo(entry) {
   const claimId = crypto.randomUUID();
   const stores = journalTargetStores(entry);
   let result = { status: "unavailable", entry: null, claimId: null };
-  await mutateStores([...stores, KEY], (maps) => {
+  const commit = canUseNamedSessionStore(entry)
+    ? mutateNamedSessionStores : mutateStores;
+  await commit([...stores, KEY], (maps) => {
     const journal = structuredClone(maps[KEY] ?? []);
     const mine = journal.find((candidate) => candidate.id === entry.id);
     if (!mine || isTerminalEntry(mine)) return null;
@@ -352,6 +366,10 @@ export async function undoActionResult(id) {
       if (closed.status === "undone") {
         return { status: "undone", entry: { ...entry, undone: true } };
       }
+      if (["busy", "incomplete"].includes(closed.status)) {
+        const current = (await listActions()).find((candidate) => candidate.id === entry.id);
+        return { status: closed.status, entry: current ?? entry };
+      }
       await terminalizeUnavailableEntry(entry.id);
       if (!explicit) continue;
       return { status: "unavailable", entry: { ...entry, undoStatus: "unavailable" } };
@@ -375,11 +393,21 @@ export async function undoAction(id) {
  * incomplete on the next worker start instead of risking duplicate tabs.
  */
 export async function recoverInterruptedUndos() {
+  // Most worker starts have nothing to repair. Share the ordinary journal
+  // read without holding up reload grace and suspended-tab recovery.
+  const observed = await listActions();
+  // Close-the-day owns an additional durable receipt. Its recovery settles
+  // that receipt and this Journal entry together through its domain module.
+  if (!observed.some((entry) => entry?.undoClaim && !entry.closeDayTransactionId &&
+      !isTerminalEntry(entry))) return 0;
+
   let recovered = 0;
+  // The preflight is not authority for a write: another context may have
+  // completed an Undo while this worker waited for the lock.
   await mutateStores([KEY], (maps) => {
     const journal = structuredClone(maps[KEY] ?? []);
     for (const entry of journal) {
-      if (!entry?.undoClaim || isTerminalEntry(entry)) continue;
+      if (!entry?.undoClaim || entry.closeDayTransactionId || isTerminalEntry(entry)) continue;
       delete entry.undoClaim;
       entry.undoStatus = "incomplete";
       entry.undoEffectResult = { reopened: 0, moved: 0,
@@ -392,7 +420,7 @@ export async function recoverInterruptedUndos() {
 }
 
 export async function clearJournal() {
-  await withStoreLock(() => chrome.storage.local.set({ [KEY]: [] }));
+  await mutateStores([KEY], () => ({ [KEY]: [] }));
 }
 
 /**

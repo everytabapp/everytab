@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Small read model used by Open tabs. Automatic snapshots deliberately share
  * the full `sessions` store for data compatibility, but Open only needs the id,
@@ -8,7 +11,84 @@
 import { normalizeUrl } from "./url-key.js";
 
 export const SESSION_IDENTITY_INDEX_KEY = "sessionIdentityIndex";
+export const NAMED_SESSION_RECORDS_KEY = "namedSessionRecords";
+export const SESSION_NAVIGATION_REVISION_KEY = "sessionNavigationRevision";
 const SESSION_IDENTITY_INDEX_VERSION = 2;
+
+/**
+ * Full named-Session records kept apart from the combined Session/Snapshot
+ * compatibility view. This lossless write model lets named-Session edits avoid
+ * serializing years of automatic Snapshots. Tombstones remain part of the
+ * merge contract.
+ * @param {Record<string, import("./types.js").Session>} sessionMap
+ */
+export function buildNamedSessionRecords(sessionMap = {}) {
+  const records = {};
+  for (const [id, session] of Object.entries(sessionMap ?? {})) {
+    if (!session || session.auto || !session.id || session.id !== id) continue;
+    records[id] = session;
+  }
+  return records;
+}
+
+/** @param {unknown} value */
+export function isNamedSessionRecords(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.entries(value).every(([id, session]) =>
+    session && typeof session === "object" && !session.auto &&
+    typeof session.id === "string" && session.id === id
+  );
+}
+
+/**
+ * Small navigation projection from a Session storage-change payload. It scans
+ * records only: automatic Snapshot tab payloads are never traversed or cloned.
+ * The records are already private structured clones delivered by Chrome, so
+ * callers may retain this projection until the next navigation paint.
+ * @param {Record<string, import("./types.js").Session>} sessionMap
+ */
+export function sessionNavigationSnapshot(sessionMap = {}) {
+  const namedSessions = [];
+  let snapshotCount = 0;
+  for (const session of Object.values(sessionMap ?? {})) {
+    if (!session || session.deletedAt) continue;
+    if (session.auto) snapshotCount += 1;
+    else namedSessions.push(session);
+  }
+  namedSessions.sort((a, b) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0));
+  return { namedSessions, snapshotCount };
+}
+
+/**
+ * Bounded Session projection carried by storage revision pulses. Full
+ * Session records, tab arrays, and favicons never enter chrome.storage events.
+ * The Dashboard fetches a Session by id only when Restore is requested.
+ */
+export function buildSessionNavigationRevision(sessionMap = {}, {
+  includeSnapshotCount = false
+} = {}) {
+  const namedSessions = [];
+  let snapshotCount = 0;
+  for (const session of Object.values(sessionMap ?? {})) {
+    if (!session || session.deletedAt) continue;
+    if (session.auto) {
+      snapshotCount += 1;
+      continue;
+    }
+    namedSessions.push({
+      id: session.id,
+      name: String(session.name ?? "Session"),
+      tabCount: (session.windows ?? []).reduce((total, refs) =>
+        total + (Array.isArray(refs) ? refs.length : 0), 0),
+      modifiedAt: Number(session.modifiedAt) || 0
+    });
+  }
+  namedSessions.sort((a, b) => b.modifiedAt - a.modifiedAt || a.id.localeCompare(b.id));
+  return {
+    namedSessions,
+    ...(includeSnapshotCount ? { snapshotCount } : {})
+  };
+}
 
 /** @param {unknown} value */
 export function isSessionIdentityIndex(value) {
@@ -55,9 +135,9 @@ export function buildSessionIdentityIndex(sessionMap = {}) {
 
 /**
  * URL membership for one restored Session window. A stale binding falls back
- * to the whole Session, matching the historical drift behavior. A malformed or
- * pre-v2 identity returns null so Open skips the optional drift hint instead of
- * risking the primary ledger.
+ * to the whole Session, matching the established drift behavior. A malformed
+ * identity returns null so Open skips the optional drift hint instead of risking
+ * the primary ledger.
  * @param {any} session @param {number} windowIndex
  * @returns {string[]|null}
  */
@@ -69,14 +149,33 @@ export function sessionUrlsForWindow(session, windowIndex) {
 }
 
 /**
- * Read only the compact Open identity projection. A missing pre-index profile
- * returns an empty list rather than falling back to the potentially huge full
- * Session map; the background backfill publishes names and drift membership
- * moments later.
+ * Compact URL → named-Session projection for list-row membership links.
+ * It consumes only the identity index, never automatic Snapshot payloads.
+ * @param {Array<{id:string,name:string,windowUrls:string[][]}>} identities
+ * @returns {Map<string,{id:string,name:string}[]>}
  */
-export async function readSessionIdentities() {
-  const result = await chrome.storage.local.get(SESSION_IDENTITY_INDEX_KEY);
-  const index = result[SESSION_IDENTITY_INDEX_KEY];
-  if (!isSessionIdentityIndex(index)) return [];
-  return Object.values(index.sessionsById).map((session) => ({ ...session }));
+export function buildSessionMembershipsByUrl(identities = []) {
+  const byUrl = new Map();
+  for (const session of identities ?? []) {
+    const id = String(session?.id ?? "").trim();
+    const name = String(session?.name ?? "").trim();
+    if (!id || !name) continue;
+    for (const url of (session.windowUrls ?? []).flat()) {
+      const key = normalizeUrl(String(url ?? ""));
+      if (!key) continue;
+      const memberships = byUrl.get(key) ?? [];
+      if (!memberships.some((entry) => entry.id === id)) memberships.push({ id, name });
+      byUrl.set(key, memberships);
+    }
+  }
+  for (const memberships of byUrl.values()) {
+    memberships.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  }
+  return byUrl;
+}
+
+/** Backward-compatible name-only view for non-interactive consumers. */
+export function buildSessionNamesByUrl(identities = []) {
+  return new Map([...buildSessionMembershipsByUrl(identities)]
+    .map(([url, memberships]) => [url, memberships.map((entry) => entry.name)]));
 }

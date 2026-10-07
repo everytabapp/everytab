@@ -61,6 +61,11 @@ Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }
 });
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
 const { maybeRotateSchemeOnOpen } = await import("../js/lib/scheme-rotation.js");
 const result = await maybeRotateSchemeOnOpen(() => 0.25);
 

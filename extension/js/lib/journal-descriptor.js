@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Convert the established English compatibility label into a stable Activity
  * descriptor. The label remains in the record so old versions and imported

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F13 — open-tab organization. One-shot, user-invoked tidying of live tabs;
  * never automatic reshuffling. This module owns both the DOM-free planning

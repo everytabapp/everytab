@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * The deliberately small seam between EveryTab search and Chrome navigation.
  * It is pure so every Search host (and the omnibox) agrees on when a local

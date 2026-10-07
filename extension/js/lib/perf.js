@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * E3-0 — dev-only performance instrumentation (e3-performance-pass.md §3.2).
  *
@@ -23,16 +26,31 @@
  * back verbatim (§7 protocol). While active, `globalThis.__etPerf` exposes
  * {report, entries, counts} for ad-hoc console use.
  *
- * This module writes NOTHING to storage (E2-0 §5.4 guardrail-clean: it only
- * ever calls chrome.storage.local.get) and imports nothing, so it is safe to
- * import from any context (dashboard, popup, options, Node tests).
+ * This module never writes storage. Activation reads Settings through the
+ * storage authority and works across dashboard, popup, options and Node tests.
+ * Reports retain only fixed operation labels, timings and numeric counts.
  */
 
 const NOOP = Object.freeze(() => {});
+// These labels describe code paths, never pages, search terms or saved records.
+// New instrumentation must name its operation here before it can be exported.
+const LABELS = new Set([
+  "store:lock-wait", "store:locked-read", "store:mutate", "store:commit",
+  "label:confirm-total", "label:metadata", "label:locked-commit",
+  "search:run(B7)", "search:compute", "route", "boot:total(B4)",
+  "boot:starred", "boot:renderOpen(B3)", "boot:nav", "boot:inbox", "boot:labels",
+  "boot:sessions", "boot:snapshots", "boot:archive", "boot:snoozes",
+  "boot:duplicates", "boot:data", "boot:vault", "boot:activity", "boot:attention",
+  "refresh:flush", "refresh tasks (total)", "popup:fill(B2)",
+  "open:saved-label-enrichment", "open:primary-data",
+  "goToLabel:refresh-settled", "goToLabel:first-anchor"
+]);
+const safeLabel = (name) => LABELS.has(name) ? name : "unknown";
+const finiteNumber = (value) => typeof value === "number" && Number.isFinite(value) ? value : 0;
 
 const state = {
   active: false,
-  /** @type {{name: string, at: number, ms: number|null, detail?: string}[]} */
+  /** @type {{name: string, at: number, ms: number|null}[]} */
   entries: [],
   /** @type {Map<string, {n: number, ms: number}>} */
   counts: new Map()
@@ -84,8 +102,15 @@ export function initPerf() {
     /* no usable `location` (worker / Node) — the setting check below stands */
   }
   try {
-    chrome?.storage?.local?.get("settings")
-      .then((r) => activateFromSettings(r?.settings))
+    // Settings moved into the authoritative Library. Keep this
+    // hidden diagnostic reader on that seam so V1 browser maps can retire.
+    import("./storage/authority-runtime.js")
+      .then(async ({ activeStorageAuthority }) => {
+        const authority = await activeStorageAuthority();
+        if (authority) return (await authority.readMaps(["settings"])).settings;
+        return (await chrome.storage.local.get("settings")).settings;
+      })
+      .then(activateFromSettings)
       .catch(() => {});
   } catch {
     /* no chrome (Node) — stays off unless a test activates via settings */
@@ -99,6 +124,7 @@ export function initPerf() {
  */
 export function pmark(name) {
   if (!state.active) return;
+  name = safeLabel(name);
   try { performance.mark(`et:${name}`); } catch { /* timeline only — optional */ }
   state.entries.push({ name, at: round(performance.now()), ms: null });
 }
@@ -108,20 +134,22 @@ export function pmark(name) {
  * once — extra calls record extra entries by design, so guard multi-path call
  * sites). Inactive → a shared frozen no-op, so call sites never branch.
  * @param {string} name
- * @returns {(detail?: string) => void}
+ * Legacy detail arguments are intentionally ignored: arbitrary strings may
+ * contain private page or saved-record text.
+ * @returns {() => void}
  */
 export function pspan(name) {
   if (!state.active) return NOOP;
+  name = safeLabel(name);
   const start = performance.now();
-  return (detail) => {
+  return () => {
     if (!state.active) return;
     const end = performance.now();
     try {
       performance.measure(`et:${name}`, { start, end });
     } catch { /* timeline only — optional */ }
     state.entries.push({
-      name, at: round(start), ms: round(end - start),
-      ...(detail ? { detail: String(detail) } : {})
+      name, at: round(start), ms: round(end - start)
     });
   };
 }
@@ -129,13 +157,12 @@ export function pspan(name) {
 /**
  * Record an externally-measured duration (e.g. the popup's script-start→filled
  * time, whose start predates activation).
- * @param {string} name @param {number} ms @param {string} [detail]
+ * @param {string} name @param {number} ms
  */
-export function precord(name, ms, detail) {
+export function precord(name, ms) {
   if (!state.active) return;
   state.entries.push({
-    name, at: round(performance.now()), ms: round(ms),
-    ...(detail ? { detail: String(detail) } : {})
+    name: safeLabel(name), at: round(performance.now()), ms: round(finiteNumber(ms))
   });
 }
 
@@ -146,9 +173,10 @@ export function precord(name, ms, detail) {
  */
 export function pcount(name, n = 1, ms = 0) {
   if (!state.active) return;
+  name = safeLabel(name);
   const c = state.counts.get(name) ?? { n: 0, ms: 0 };
-  c.n += n;
-  c.ms += ms;
+  c.n += finiteNumber(n);
+  c.ms += finiteNumber(ms);
   state.counts.set(name, c);
 }
 
@@ -167,7 +195,6 @@ export function preport() {
   if (counters.length) console.table(counters);
   const blob = JSON.stringify({
     at: new Date().toISOString(),
-    url: typeof location !== "undefined" ? location.href : "",
     spans, marks, counters
   }, null, 2);
   console.log(`EveryTab perf JSON (copy between the markers):\n----8<----\n${blob}\n---->8----`);

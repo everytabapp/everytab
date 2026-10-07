@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Pure sRGB and bounded gradient helpers for the Scheme Contract. */
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * P2g-1 — the P2 combobox (interaction-model.md v0.3): ONE control for every
  * name-or-pick act. Two flavors:
@@ -11,7 +14,8 @@
  * `swapInCombobox` returns focus to the invoking button. Modals are banned by
  * the spec — this control replaces `promptName` and the add-to-session select.
  */
-import { el } from "./dom.js";
+import { el, isComposingKey } from "./dom.js";
+import { msg as localeMessage } from "../lib/i18n.js";
 
 let seq = 0;
 
@@ -25,17 +29,22 @@ let seq = 0;
  * @param {(v:string)=>string} [o.createLabel] label for the Create entry
  * @param {string|null} [o.emptyCreateLabel] when set, committing an empty input
  *   is allowed and shown as this entry (e.g. "New session (auto-name)")
+ * @param {boolean} [o.allowCreate] false makes this an existing-target picker
+ * @param {boolean} [o.portalMenu] move the choices into the browser top layer
+ *   while open, for controls embedded in sticky/overflowing list headers
  * @param {(v:{id:string|null,name:string,isNew:boolean})=>void|Promise<void>} o.onCommit
  * @param {()=>void} [o.onCancel]
  * @returns {{element: HTMLElement, focus: () => void}}
  */
 export function createCombobox({
-  ariaLabel = "Name or pick",
+  ariaLabel = localeMessage("list_combobox_aria"),
   placeholder = "",
   value = "",
   loadOptions = null,
-  createLabel = (v) => `Create “${v}”`,
+  createLabel = (v) => localeMessage("list_combobox_create", [v]),
   emptyCreateLabel = null,
+  allowCreate = true,
+  portalMenu = false,
   onCommit,
   onCancel = () => {}
 }) {
@@ -58,6 +67,40 @@ export function createCombobox({
   let settled = false;
   let optionLoad = null;
 
+  function hidePortalMenu() {
+    if (!portalMenu || menu.parentElement === box) return;
+    try {
+      if (menu.matches(":popover-open")) menu.hidePopover();
+    } catch { /* The ordinary positioned fallback is removed below. */ }
+    menu.removeAttribute("data-combobox-portal");
+    menu.removeAttribute("data-side");
+    menu.style.removeProperty("left");
+    menu.style.removeProperty("top");
+    menu.style.removeProperty("width");
+    box.append(menu);
+  }
+
+  function showPortalMenu() {
+    if (!portalMenu || !input.isConnected || menu.classList.contains("hidden")) return;
+    if (menu.parentElement !== document.body) document.body.append(menu);
+    menu.setAttribute("data-combobox-portal", "");
+    menu.setAttribute("popover", "manual");
+    const edge = 10;
+    const gap = 4;
+    const anchor = input.closest(".tagbox")?.getBoundingClientRect() ?? input.getBoundingClientRect();
+    const width = Math.min(Math.max(280, anchor.width), window.innerWidth - edge * 2);
+    menu.style.width = `${Math.round(width)}px`;
+    menu.style.left = `${Math.round(Math.max(edge, Math.min(anchor.left, window.innerWidth - width - edge)))}px`;
+    menu.style.top = `${Math.round(anchor.bottom + gap)}px`;
+    try { if (!menu.matches(":popover-open")) menu.showPopover(); }
+    catch { menu.dataset.open = "true"; }
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.bottom > window.innerHeight - edge && anchor.top - menuRect.height - gap >= edge) {
+      menu.style.top = `${Math.round(anchor.top - menuRect.height - gap)}px`;
+      menu.dataset.side = "top";
+    }
+  }
+
   // A pick-or-create combobox is constructed only when its UI is being
   // revealed. Prime that one fresh option list immediately instead of relying
   // exclusively on a focus event: the native Popover API may move focus while
@@ -72,6 +115,7 @@ export function createCombobox({
 
   function close() {
     menu.classList.add("hidden");
+    hidePortalMenu();
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
   }
@@ -83,8 +127,10 @@ export function createCombobox({
     const hits = options.filter((o) => !ql || o.name.toLowerCase().includes(ql));
     const exact = q && options.some((o) => o.name.toLowerCase() === ql);
     entries = [];
-    if (q && !exact) entries.push({ kind: "create", name: q, label: createLabel(q) });
-    if (!q && emptyCreateLabel) entries.push({ kind: "create-empty", name: "", label: emptyCreateLabel });
+    if (allowCreate && q && !exact) entries.push({ kind: "create", name: q, label: createLabel(q) });
+    if (allowCreate && !q && emptyCreateLabel) {
+      entries.push({ kind: "create-empty", name: "", label: emptyCreateLabel });
+    }
     entries.push(...hits.map((o) => ({ kind: "pick", id: o.id, name: o.name, label: o.name })));
     if (entries.length === 0) { close(); sel = -1; return; }
     if (sel >= entries.length) sel = entries.length - 1;
@@ -96,6 +142,7 @@ export function createCombobox({
         onmousedown: (e) => { e.preventDefault(); commit(entries[i]); }
       }, en.label)));
     menu.classList.remove("hidden");
+    showPortalMenu();
     input.setAttribute("aria-expanded", "true");
     if (sel >= 0) input.setAttribute("aria-activedescendant", `${id}-opt-${sel}`);
     else input.removeAttribute("aria-activedescendant");
@@ -120,12 +167,13 @@ export function createCombobox({
 
   input.addEventListener("focus", () => loadAndRenderOptions());
   input.addEventListener("input", () => {
-    sel = input.value.trim() ? 0 : (emptyCreateLabel ? 0 : -1);
+    sel = input.value.trim() ? 0 : (allowCreate && emptyCreateLabel ? 0 : -1);
     renderMenu();
   });
   // Blur = cancel (option mousedown preventDefaults, so picks land first).
   input.addEventListener("blur", () => setTimeout(cancel, 150));
   input.addEventListener("keydown", (e) => {
+    if (isComposingKey(e)) return;
     const open = pickOrCreate && !menu.classList.contains("hidden");
     if (e.key === "ArrowDown" && open) {
       e.preventDefault();
@@ -139,8 +187,8 @@ export function createCombobox({
       e.preventDefault();
       const text = input.value.trim();
       if (open && sel >= 0) commit(entries[sel]);
-      else if (text) commit({ kind: "create", name: text });
-      else if (emptyCreateLabel) commit({ kind: "create-empty", name: "" });
+      else if (allowCreate && text) commit({ kind: "create", name: text });
+      else if (allowCreate && emptyCreateLabel) commit({ kind: "create-empty", name: "" });
       else cancel(); // plain flavor emptied out → nothing to commit
     } else if (e.key === "Escape") {
       e.preventDefault();

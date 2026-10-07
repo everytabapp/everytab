@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Stable focus identities for the re-rendered guard-page surface. */
 export function markGuardFocus(node, identity) {
   node.dataset.guardFocusId = identity;

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Pure state helpers for the dedicated EveryTab colour-scheme editor. */
 import {
   createDraftFixture,

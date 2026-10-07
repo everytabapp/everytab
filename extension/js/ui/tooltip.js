@@ -1,6 +1,9 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * B5 — custom themed tooltip. Native `title` tooltips carry the OS's ~1s delay
- * and can't be themed; this shows a themed bubble after ~300ms instead, for the
+ * and can't be themed; this shows a themed bubble after a short initial delay instead, for the
  * places the backlog names: row actions and nav glyphs.
  *
  * It works by delegation (so it covers rows re-rendered on every tab event) and
@@ -24,11 +27,14 @@
 // part of the selector, so no extra class or re-render is involved. Every nav
 // item carries an explicit aria-label, which the set requires.
 const TRIGGER = '.mini, .mini2, .iconbtn, .gear, .vault-pill, .tip, [data-nav="rail"] .navitem';
-const DELAY = 300;
+const DELAY = 120;
+const WARM_WINDOW = 600;
 
 let tipEl = null;
 let timer = 0;
 let currentTarget = null;
+let warmUntil = 0;
+let initialized = false;
 
 function ensureTipEl() {
   if (!tipEl) {
@@ -64,11 +70,12 @@ function position(node) {
   t.style.top = `${Math.round(top)}px`;
 }
 
-function show(node) {
+function show(node, instant = false) {
   if (!node.isConnected) return; // row may have been re-rendered away
   const text = textFor(node);
   if (!text) return;
   const t = ensureTipEl();
+  t.classList.toggle("instant", instant);
   t.textContent = text;
   t.classList.add("show");
   t.setAttribute("aria-hidden", "false");
@@ -80,21 +87,30 @@ function hide() {
   timer = 0;
   currentTarget = null;
   if (tipEl) {
+    if (tipEl.classList.contains("show")) warmUntil = performance.now() + WARM_WINDOW;
     tipEl.classList.remove("show");
     tipEl.setAttribute("aria-hidden", "true");
   }
 }
 
-function arm(node) {
-  if (node === currentTarget) return; // already armed/showing for this one
+function arm(node, keyboard = false) {
+  if (node === currentTarget && !keyboard) return;
   clearTimeout(timer);
+  textFor(node); // suppress the native title before the first delay starts
   currentTarget = node;
-  timer = setTimeout(() => show(node), DELAY);
+  const instant = keyboard || performance.now() < warmUntil;
+  if (instant) show(node, true);
+  else timer = setTimeout(() => {
+    if (currentTarget === node) show(node);
+  }, DELAY);
 }
 
 /** Call once per page that has row actions / nav glyphs. */
 export function initTooltips() {
+  if (initialized) return;
+  initialized = true;
   document.addEventListener("pointerover", (e) => {
+    if (e.pointerType === "touch") { hide(); return; }
     const node = e.target.closest?.(TRIGGER);
     if (node?.closest(".action-popover")) {
       // Palette controls already have visible labels. Adopt any legacy title so
@@ -114,7 +130,7 @@ export function initTooltips() {
     const node = e.target.closest?.(TRIGGER);
     // Programmatic focus after a pointer-opened palette is functional focus,
     // not a request for a tooltip. Keyboard focus still receives discovery.
-    if (node?.matches?.(":focus-visible") && !node.closest(".action-popover")) arm(node);
+    if (node?.matches?.(":focus-visible") && !node.closest(".action-popover")) arm(node, true);
   });
   document.addEventListener("focusout", (e) => {
     const node = e.target.closest?.(TRIGGER);

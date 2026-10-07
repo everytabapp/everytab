@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F21 — per-label "last used" recency register. A small ambient map
  * (label → lastUsedAt epoch ms), bumped ONLY when a label is applied to a tab or
@@ -14,7 +17,7 @@
  * or run in the background. Synced whole-map by per-key max (merge.js
  * mergeLabelMeta). Stored under chrome.storage.local key "labelMeta".
  */
-import { withStoreLock } from "./store.js";
+import { mutateStores, readStoreMap } from "./store.js";
 
 const KEY = "labelMeta";
 
@@ -70,14 +73,12 @@ export function renamedLabelMeta(map, from, to, now) {
 export async function touchLabels(labels, now = Date.now()) {
   const clean = cleanLabels(labels);
   if (clean.length === 0) return;
-  await withStoreLock(async () => {
-    const r = await chrome.storage.local.get(KEY);
-    await chrome.storage.local.set({ [KEY]: touchedLabelMeta(r[KEY], clean, now) });
-  });
+  await mutateStores([KEY], (maps) => ({
+    [KEY]: touchedLabelMeta(maps[KEY], clean, now)
+  }));
 }
 
 /** @returns {Promise<Record<string, number>>} the label → lastUsedAt map */
 export async function getLabelMeta() {
-  const r = await chrome.storage.local.get(KEY);
-  return r[KEY] ?? {};
+  return await readStoreMap(KEY) ?? {};
 }

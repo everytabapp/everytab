@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F14-2b — the shared site-guard Focus strip.
  *
@@ -30,9 +33,9 @@ export async function getFocusGuardStatus() {
   return result?.status ?? { active: false, guardedCount: 0, duringCount: 0, alwaysCount: 0 };
 }
 
-/** Start Focus with the user's existing duration and rules. */
-export function startFocusGuard() {
-  return sendGuard({ type: "focus-guard-start" });
+/** Start Focus with the saved default or an explicit validated one-run choice. */
+export function startFocusGuard(endChoice) {
+  return sendGuard({ type: "focus-guard-start", ...(endChoice ? { endChoice } : {}) });
 }
 
 /** End the active Focus run from any shared surface. */
@@ -46,13 +49,14 @@ export function endFocusGuard() {
  *   when the strip is about to lose it (on End / on going inactive)
  * @param {() => void} ctx.onMeasure called after each render — the strip changes
  *   the sticky-hero height (dashboard passes `measureHero`)
+ * @param {() => (HTMLElement|null|undefined)} [ctx.getLayoutFollower] page content below the strip
  * @param {() => void} [ctx.openBlockedSites] F48: jump to the Blocked sites
  *   editor. Injected because the router is the host's, not the strip's.
  * @returns {{ element: HTMLElement, strip: HTMLElement, announcer: HTMLElement, refresh: () => void }}
  *   F44: the strip reports state and owns no action, so it needs no toast sink.
  */
 export function createFocusStrip(ctx) {
-  const { getSearchInput, onMeasure, openBlockedSites } = ctx;
+  const { getSearchInput, onMeasure, openBlockedSites, getLayoutFollower = () => null } = ctx;
   const strip = el("div", { class: "focus-strip hidden" });
   const layoutInner = el("div", { class: "focus-strip-layout-inner" }, strip);
   const element = el("div", { class: "focus-strip-layout" }, layoutInner);
@@ -63,51 +67,101 @@ export function createFocusStrip(ctx) {
   };
   const accessPanel = createFocusAccessPanel({ onMeasure, onEmptied: restoreAfterAccess });
   let focusStripTimer = 0;
-  let layoutTimer = 0;
-  let layoutGeneration = 0;
+  let layoutAnimations = [];
+  let finishLayout = null;
+  let layoutTarget = 0;
+  let layoutOpen = false;
+  const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
   let focusWasActive = false;
-  let focusWasVisible = false;
 
   function announce(text) {
     announcer.textContent = "";
     requestAnimationFrame(() => { announcer.textContent = text; });
   }
 
-  async function transitionLayout(open) {
-    const generation = ++layoutGeneration;
-    clearTimeout(layoutTimer);
-    const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    const root = document.documentElement;
-    const currentHeight = element.getBoundingClientRect().height;
-    const targetHeight = open ? layoutInner.scrollHeight : 0;
-    element.classList.toggle("is-open", open);
-    if (Math.abs(targetHeight - currentHeight) <= 0.5) {
-      root.style.setProperty("--focus-layout-h", `${targetHeight}px`);
+  function transitionLayout(open, onSettled = () => {}) {
+    const targetHeight = open ? layoutInner.getBoundingClientRect().height : 0;
+    if (layoutOpen === open && Math.abs(layoutTarget - targetHeight) <= 0.5) {
+      if (!finishLayout) onSettled();
       onMeasure();
       return;
     }
+    const follower = getLayoutFollower();
+    const beforeTop = follower?.getBoundingClientRect().top;
+    const presentation = getComputedStyle(layoutInner);
+    const fromOpacity = presentation.opacity;
+    const fromClip = presentation.clipPath;
+    const wasOpen = layoutOpen;
+    const wasMoving = Boolean(finishLayout);
+    for (const animation of layoutAnimations) animation.cancel();
+    layoutAnimations = [];
+    finishLayout = null;
+    layoutOpen = open;
+    layoutTarget = targetHeight;
+    const root = document.documentElement;
     root.classList.add("focus-layout-transition");
-    // One registered length owns both the wrapper's block size and every
-    // sticky-cap offset. Freezing its presentation value before retargeting
-    // makes the band, window header, and rows share the exact same frames.
-    root.style.setProperty("--focus-layout-h", `${currentHeight}px`);
-    root.getBoundingClientRect();
+    element.classList.toggle("is-open", open);
+    // Publish the final height once. Every sticky offset now reads the same
+    // settled geometry; only the native-size presentation moves between frames.
     root.style.setProperty("--focus-layout-h", `${targetHeight}px`);
+    element.style.overflow = "visible";
     onMeasure();
-    if (reduceMotion) {
+    const delta = follower && Number.isFinite(beforeTop)
+      ? beforeTop - follower.getBoundingClientRect().top : 0;
+    const finish = () => {
+      if (finishLayout !== finish) return;
+      finishLayout = null;
+      for (const animation of layoutAnimations) animation.cancel();
+      layoutAnimations = [];
+      element.style.removeProperty("overflow");
       root.classList.remove("focus-layout-transition");
+      onSettled();
+      onMeasure();
+    };
+    finishLayout = finish;
+    if (reduced?.matches || typeof layoutInner.animate !== "function" ||
+        !element.isConnected || document.visibilityState === "hidden") {
+      finish();
       return;
     }
-    await new Promise((resolve) => {
-      layoutTimer = setTimeout(resolve, 230);
-    });
-    if (generation !== layoutGeneration) return;
-    root.classList.remove("focus-layout-transition");
-    onMeasure();
+    const style = getComputedStyle(element);
+    const token = open ? "--motion-continuity" : "--motion-reveal";
+    const configured = Number.parseFloat(style.getPropertyValue(token));
+    const duration = Number.isFinite(configured) && configured >= 0 ? configured : open ? 180 : 140;
+    const easing = style.getPropertyValue("--ease-out").trim() || "cubic-bezier(.2,.8,.2,1)";
+    // Opening/closing clips one complete band, including its material. A data
+    // refresh with the same target never restarts this effect or its follower.
+    const visual = layoutInner.animate([
+      { opacity: wasMoving ? fromOpacity : wasOpen ? 1 : 0,
+        clipPath: wasMoving ? fromClip : wasOpen ? "inset(0 0 0% 0)" : "inset(0 0 100% 0)" },
+      { opacity: open ? 1 : 0, clipPath: open ? "inset(0 0 0% 0)" : "inset(0 0 100% 0)" }
+    ], { duration, easing });
+    layoutAnimations.push(visual);
+    if (follower && Math.abs(delta) > 0.5) {
+      layoutAnimations.push(follower.animate([
+        { transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }
+      ], { duration, easing }));
+    }
+    Promise.allSettled(layoutAnimations.map((animation) => animation.finished)).then(finish);
   }
+
+  const settleMotion = () => finishLayout?.();
+  const onMotionPreference = () => { if (reduced?.matches) settleMotion(); };
+  reduced?.addEventListener?.("change", onMotionPreference);
+  window.addEventListener("wheel", settleMotion, { passive: true });
+  window.addEventListener("touchmove", settleMotion, { passive: true });
+  window.addEventListener("pagehide", () => {
+    settleMotion();
+    clearInterval(focusStripTimer);
+    accessPanel.destroy();
+    reduced?.removeEventListener?.("change", onMotionPreference);
+    window.removeEventListener("wheel", settleMotion);
+    window.removeEventListener("touchmove", settleMotion);
+  }, { once: true });
 
   function beginExit() {
     strip.classList.add("focus-exit");
+    strip.inert = true;
   }
 
   /** Rebuild the strip from the current site-guard status. Coalesced; never steals focus. */
@@ -124,27 +178,19 @@ export function createFocusStrip(ctx) {
     // replaces it. Hand it to Search only when this surface hides the strip.
     const hadFocus = previouslyHadFocus || strip.contains(document.activeElement);
     if (!status.active && (status.accesses?.length ?? 0) === 0) {
-      if (focusWasVisible) {
-        beginExit();
-        await transitionLayout(false);
-      }
-      strip.replaceChildren();
-      strip.classList.remove("access-only");
+      if (hadFocus) getSearchInput()?.focus({ preventScroll: true });
+      beginExit();
       if (focusWasActive) announce(msg("focus_status_ended"));
       focusWasActive = false;
-      focusWasVisible = false;
-      if (hadFocus) getSearchInput()?.focus();
-      strip.classList.add("hidden");
-      strip.classList.remove("focus-exit");
-      onMeasure();
+      transitionLayout(false, () => {
+        strip.replaceChildren();
+        strip.classList.remove("access-only", "focus-exit");
+        strip.classList.add("hidden");
+      });
       return;
     }
-    const entering = status.active && !focusWasActive;
-    const enteringLayout = !focusWasVisible;
-    strip.classList.remove("hidden");
-    if (entering) {
-      strip.classList.remove("focus-exit");
-    }
+    strip.inert = false;
+    strip.classList.remove("hidden", "focus-exit");
     strip.classList.toggle("access-only", !status.active);
     if (!status.active) {
       strip.classList.remove("focus-exit");
@@ -154,8 +200,7 @@ export function createFocusStrip(ctx) {
       if (focusedAccessDomain) {
         strip.querySelector(`.focus-access-${focusedAccessAction}[data-domain="${CSS.escape(focusedAccessDomain)}"]`)?.focus();
       }
-      focusWasVisible = true;
-      if (enteringLayout) await transitionLayout(true);
+      transitionLayout(true);
       onMeasure();
       return;
     }
@@ -208,8 +253,7 @@ export function createFocusStrip(ctx) {
         if (t !== remain.textContent) remain.textContent = t;
       }, 1000);
     }
-    focusWasVisible = true;
-    if (enteringLayout) await transitionLayout(true);
+    transitionLayout(true);
     onMeasure();
   }
 

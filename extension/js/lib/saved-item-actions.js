@@ -1,11 +1,18 @@
-/** Whole-record saved-item mutations with exact, atomic Undo. */
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+/** Whole-record saved-item deletion with a guarded inverse. */
 import { mutateStores } from "./store.js";
 import { JOURNAL_KEY, makeJournalEntry, appendedJournal } from "./journal.js";
+import { sameSavedRecord } from "./saved-selection-safety.js";
 
 /**
- * Delete one complete saved item and append its exact inverse in the same
- * storage commit. The caller's modifiedAt is an optimistic revision token:
- * a stale confirmation cannot erase a newer version of the item.
+ * Delete one complete saved item and record its exact inverse. Library records
+ * and their Journal entry commit atomically. Recovery Snapshots live in a
+ * separate database: their inverse is persisted before deletion, so failure
+ * can leave a saved copy but cannot remove the only recoverable copy.
+ * The caller's complete record is the optimistic revision
+ * token, so same-tick content changes cannot be erased by stale confirmation.
  *
  * @param {string} store
  * @param {import("./types.js").InboxItem|import("./types.js").Session} item
@@ -18,7 +25,7 @@ export async function deleteSavedItem(store, item, label, descriptor = {}) {
   await mutateStores([store, JOURNAL_KEY], (maps) => {
     const current = maps[store]?.[item?.id];
     if (!current || current.deletedAt) return null;
-    if (current.modifiedAt !== item.modifiedAt) {
+    if (!sameSavedRecord(current, item)) {
       result = { ok: false, reason: "stale", entry: null };
       return null;
     }

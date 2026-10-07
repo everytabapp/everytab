@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** One reversible optional capability used by Search and its suggestions. */
 const HISTORY_PERMISSION = Object.freeze({ permissions: ["history"] });
 

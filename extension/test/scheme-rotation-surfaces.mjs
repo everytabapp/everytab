@@ -66,6 +66,11 @@ if (surface) {
     }
   };
 
+  const { installBrowserMapStorageAuthority } = await import(
+    "./storage-authority-fixture.mjs"
+  );
+  installBrowserMapStorageAuthority();
+
   Math.random = () => 0.25;
 
   const { initTheme } = await import(`../js/ui/theme.js?surface=${surface}`);

@@ -1,16 +1,38 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { faviconSource } from "./favicon-source.js";
 import { el } from "./dom.js";
 import { icon } from "./icons.js";
 import { createLabelInput } from "./labelinput.js";
 import { createCombobox } from "./combobox.js";
 import { createAnchoredPanel } from "./tablist.js";
+import { createInlineOrganizationEditor } from "./organization-controls.js";
+import { buildSnoozePanel } from "./list-helpers.js";
 import { formatList, formatNumber, msg as localeMessage } from "../lib/i18n.js";
 import {
   CLOSE_DAY_ACTIONS, applyCloseDayChoice, applyCloseDayChoices
 } from "../lib/close-day-planner.js";
 
+const LOCKED_REASON_KEYS = {
+  incognito: "close_day_locked_incognito",
+  "protected-review": "close_day_locked_review",
+  "extension-page": "close_day_locked_extension",
+  audible: "close_day_locked_audible",
+  unsaveable: "close_day_locked_unsaveable"
+};
+
+/** Planner reason codes become copy here; a draft captured before codes existed
+ * still shows its recorded text instead of a blank line. */
+export function closeDayLockedReason(reason) {
+  const key = LOCKED_REASON_KEYS[reason];
+  return key ? localeMessage(key) : String(reason ?? "");
+}
+
 const ACTION_LABELS = {
   [CLOSE_DAY_ACTIONS.close]: localeMessage("close_day_action_close_saved"),
   [CLOSE_DAY_ACTIONS.inbox]: localeMessage("close_day_action_inbox"),
+  [CLOSE_DAY_ACTIONS.snooze]: localeMessage("close_day_action_snooze"),
   [CLOSE_DAY_ACTIONS.addSession]: localeMessage("close_day_action_add_current_session"),
   [CLOSE_DAY_ACTIONS.session]: localeMessage("close_day_action_choose_session"),
   [CLOSE_DAY_ACTIONS.newSession]: localeMessage("close_day_action_new_session"),
@@ -22,6 +44,7 @@ const ACTION_LABELS = {
 const ACTION_ICONS = {
   [CLOSE_DAY_ACTIONS.close]: "saved",
   [CLOSE_DAY_ACTIONS.inbox]: "inbox",
+  [CLOSE_DAY_ACTIONS.snooze]: "snooze",
   [CLOSE_DAY_ACTIONS.addSession]: "sessions",
   [CLOSE_DAY_ACTIONS.session]: "switch",
   [CLOSE_DAY_ACTIONS.newSession]: "add",
@@ -30,7 +53,49 @@ const ACTION_ICONS = {
   [CLOSE_DAY_ACTIONS.unfiled]: "close"
 };
 
+// Match the shared tab-list vocabulary wherever the action is the same. Leave
+// open has no main-list equivalent, so O is its one local, mnemonic exception.
+const ACTION_SHORTCUTS = {
+  [CLOSE_DAY_ACTIONS.close]: "w",
+  [CLOSE_DAY_ACTIONS.inbox]: "i",
+  [CLOSE_DAY_ACTIONS.snooze]: "s",
+  [CLOSE_DAY_ACTIONS.addSession]: "a",
+  [CLOSE_DAY_ACTIONS.session]: "t",
+  [CLOSE_DAY_ACTIONS.archiveLabel]: "l",
+  [CLOSE_DAY_ACTIONS.stay]: "o",
+  [CLOSE_DAY_ACTIONS.unfiled]: "w"
+};
+
 const clean = (value) => String(value ?? "").trim();
+
+/** Names chosen in this draft remain reusable before their commit creates data. */
+export function reviewDestinationOptions(plan) {
+  const sessions = [...(plan?.sessions ?? [])];
+  const labels = [...(plan?.labels ?? [])];
+  const sessionNames = new Set(sessions.map((item) => clean(item.name).toLocaleLowerCase()));
+  const labelNames = new Set(labels);
+  for (const group of plan?.groups ?? []) for (const row of group.rows ?? []) {
+    const choice = row.choice ?? {};
+    if (choice.action === CLOSE_DAY_ACTIONS.newSession) {
+      const name = clean(choice.newSessionName);
+      const normalized = name.toLocaleLowerCase();
+      if (name && !sessionNames.has(normalized)) {
+        sessions.push({ id: `pending:${name}`, name, pending: true });
+        sessionNames.add(normalized);
+      }
+    }
+    if (choice.action === CLOSE_DAY_ACTIONS.archiveLabel) {
+      for (const name of Array.isArray(choice.labels) ? choice.labels : [choice.label]) {
+        const label = clean(name);
+        if (label && !labelNames.has(label)) {
+          labels.push(label);
+          labelNames.add(label);
+        }
+      }
+    }
+  }
+  return { sessions, labels };
+}
 
 function quotedList(values) {
   const quoted = [...new Set(values.map(clean).filter(Boolean))]
@@ -39,6 +104,10 @@ function quotedList(values) {
 }
 
 function actionLabel(row, action, sessions = []) {
+  if (action === CLOSE_DAY_ACTIONS.snooze && row?.choice?.action === action &&
+      Number.isFinite(Number(row.choice.dueAt))) {
+    return localeMessage("close_day_snooze_until", [new Date(row.choice.dueAt).toLocaleString()]);
+  }
   if (action === CLOSE_DAY_ACTIONS.addSession) {
     const targetId = clean(row?.choice?.targetSessionId || row?.boundSessionId);
     const target = sessions.find((session) => session.id === targetId);
@@ -87,7 +156,7 @@ function actionLabel(row, action, sessions = []) {
  * all portable writes and live tab effects stay behind one background message.
  */
 export function createCloseDaySurface({
-  msg, rerender, showNotice, onNavigate, onLeave, decisionTimeoutMs = 4_000
+  msg, rerender, showNotice, onNavigate, onSessionOpen, onLeave, decisionTimeoutMs = 4_000
 }) {
   let draftId = null;
   let plan = null;
@@ -109,6 +178,8 @@ export function createCloseDaySurface({
   let stageScrollFrame = 0;
   const pendingChoiceWrites = new Map();
   const selectedRows = new Set();
+  let selectionAnchor = null;
+  let selectionRangeEnd = null;
   const pickerPanel = createAnchoredPanel(document.body);
 
   function syncStageNavigation(preferredId = "") {
@@ -236,6 +307,8 @@ export function createCloseDaySurface({
     stale = false;
     pendingChoiceWrites.clear();
     selectedRows.clear();
+    selectionAnchor = null;
+    selectionRangeEnd = null;
     pickerPanel.close();
     choiceWriteFailed = false;
     clearArms();
@@ -269,7 +342,7 @@ export function createCloseDaySurface({
         draftId = status.draft.id;
         plan = status.draft.plan;
       }
-    } else if (status?.latest && ["complete", "undone"].includes(status.latest.phase) &&
+    } else if (status?.latest && ["complete", "undone", "undo-incomplete"].includes(status.latest.phase) &&
       Date.now() - Number(status.latest.updatedAt ?? 0) < 10 * 60_000) {
       completion = status.latest;
     }
@@ -404,62 +477,118 @@ export function createCloseDaySurface({
     pickerPanel.anchor(anchor);
     pickerPanel.toggle(() => {
       let picker;
+      let organizer;
+      const syncOrganizer = async () => {
+        const entries = await picker.getEntries();
+        await organizer.setMembers(entries.map((entry) => ({
+          key: entry.name, name: entry.name, isNew: entry.isNew
+        })));
+      };
       const apply = el("button", { class: "mini primary palette-commit", type: "button",
-        onclick: () => {
-          const labels = picker.getLabels();
+        onclick: async () => {
+          const entries = await picker.getEntries();
+          const labels = entries.map((entry) => entry.name);
           if (!labels.length) return;
+          await organizer.setMembers(entries.map((entry) => ({
+            key: entry.name, name: entry.name, isNew: entry.isNew
+          })));
+          const organizationPlan = await organizer.getPlan();
           pickerPanel.close();
-          applyLabels(labels);
+          applyLabels(labels, organizationPlan);
         }
       }, localeMessage("close_day_apply_labels"));
+      organizer = createInlineOrganizationEditor({ kind: "label", onSubmit: () => apply.click() });
       picker = createLabelInput({
         placeholder: localeMessage("close_day_labels_placeholder"), ariaLabel,
-        loadOptions: () => plan.labels ?? [],
-        onSubmit: () => apply.click(), onCancel: () => pickerPanel.close()
+        loadOptions: () => reviewDestinationOptions(plan).labels,
+        onSubmit: () => apply.click(), onCancel: () => pickerPanel.close(),
+        onChange: () => { void syncOrganizer(); }
       });
       return el("div", { class: "row-labelbar palette-form close-day-picker-form" },
         el("div", { class: "palette-field palette-label-field" },
           el("span", { class: "palette-field-label" }, localeMessage("close_day_add_labels")), picker.element,
-          el("span", { class: "palette-help" }, localeMessage("close_day_label_input_help"))), apply);
+          el("span", { class: "palette-help" }, localeMessage("close_day_label_input_help"))),
+        organizer.element, apply);
     }, "label");
   }
 
   function sessionPicker(anchor, ariaLabel, sessions, applySession) {
     pickerPanel.anchor(anchor);
     pickerPanel.toggle(() => {
-      const picker = createCombobox({
-        ariaLabel, placeholder: localeMessage("close_day_session_placeholder"),
-        loadOptions: async () => sessions.map((session) => ({ id: session.id, name: session.name })),
-        createLabel: (value) => localeMessage("close_day_new_session_named", [value]),
-        onCommit: (value) => {
-          pickerPanel.close();
-          applySession(value);
-        },
-        onCancel: () => pickerPanel.close()
-      });
-      return el("div", { class: "palette-form close-day-picker-form" },
-        el("label", { class: "palette-field" },
+      const panel = el("div", { class: "palette-form close-day-picker-form" });
+      const showPicker = () => {
+        const picker = createCombobox({
+          ariaLabel, placeholder: localeMessage("close_day_session_placeholder"),
+          loadOptions: async () => sessions.map((session) => ({ id: session.id, name: session.name })),
+          createLabel: (value) => localeMessage("close_day_new_session_named", [value]),
+          onCommit: (value) => { void showSelection(value.id?.startsWith("pending:")
+            ? { id: null, name: value.name, isNew: true } : value); },
+          onCancel: () => pickerPanel.close()
+        });
+        panel.replaceChildren(el("label", { class: "palette-field" },
           el("span", { class: "palette-field-label" }, localeMessage("close_day_choose_or_create_session")),
           picker.element,
           el("span", { class: "palette-help" }, localeMessage("close_day_session_input_help"))));
+        queueMicrotask(() => picker.focus());
+      };
+      const showSelection = async (value) => {
+        const displayName = value.name || localeMessage("list_new_session_auto");
+        const temporaryKey = value.id || `new:${displayName}`;
+        const organizer = createInlineOrganizationEditor({ kind: "session", onSubmit: () => apply.click() });
+        await organizer.setMembers([{ key: temporaryKey, name: displayName, isNew: value.isNew }]);
+        const selected = el("div", { class: "palette-selected-target" },
+          el("span", { class: "chip", title: displayName }, displayName,
+            el("button", { class: "x", type: "button", "aria-label": localeMessage("action_back"),
+              onclick: showPicker }, "×")));
+        const apply = el("button", { class: "primary palette-commit", type: "button", onclick: async () => {
+          const organizationPlan = await organizer.getPlan();
+          pickerPanel.close();
+          applySession(value, organizationPlan);
+        } }, localeMessage("close_day_apply_session"));
+        panel.replaceChildren(
+          el("div", { class: "palette-field session-picker-selected" },
+            el("span", { class: "palette-field-label" }, localeMessage("close_day_choose_or_create_session")),
+            selected),
+          organizer.element,
+          el("div", { class: "organization-form-actions" }, apply)
+        );
+        queueMicrotask(() => apply.focus({ preventScroll: true }));
+      };
+      showPicker();
+      return panel;
     }, "session");
   }
 
+  function snoozePicker(anchor, applySnooze) {
+    pickerPanel.anchor(anchor);
+    pickerPanel.toggle(() => buildSnoozePanel((dueAt, recurrence) => {
+      applySnooze(dueAt, recurrence);
+    }), "snooze");
+  }
+
   function chooseAction(row, action, anchor) {
+    if (action === CLOSE_DAY_ACTIONS.snooze) {
+      snoozePicker(anchor, (dueAt, recurrence) => {
+        void updateChoice(row, { action, dueAt, ...(recurrence ? { recurrence } : {}) });
+      });
+      return;
+    }
     if (action === CLOSE_DAY_ACTIONS.archiveLabel) {
-      labelPicker(anchor, localeMessage("close_day_labels_for", [row.title]), (labels) => {
-        void updateChoice(row, { action, labels });
+      labelPicker(anchor, localeMessage("close_day_labels_for", [row.title]), (labels, organizationPlan) => {
+        void updateChoice(row, { action, labels, organizationPlan });
       });
       return;
     }
     if ([CLOSE_DAY_ACTIONS.session, CLOSE_DAY_ACTIONS.newSession].includes(action)) {
-      const sessions = (plan.sessions ?? []).filter((session) => session.id !== row.boundSessionId);
-      sessionPicker(anchor, localeMessage("close_day_session_for", [row.title]), sessions, (value) => {
+      const sessions = reviewDestinationOptions(plan).sessions
+        .filter((session) => session.id !== row.boundSessionId);
+      sessionPicker(anchor, localeMessage("close_day_session_for", [row.title]), sessions,
+        (value, organizationPlan) => {
         if (value.isNew) void updateChoice(row, {
-          action: CLOSE_DAY_ACTIONS.newSession, newSessionName: value.name
+          action: CLOSE_DAY_ACTIONS.newSession, newSessionName: value.name, organizationPlan
         });
         else void updateChoice(row, {
-          action: CLOSE_DAY_ACTIONS.session, targetSessionId: value.id
+          action: CLOSE_DAY_ACTIONS.session, targetSessionId: value.id, organizationPlan
         });
       });
       return;
@@ -477,7 +606,7 @@ export function createCloseDaySurface({
     const forward = event.key === "ArrowRight";
     const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
       : index + (forward ? 1 : -1);
-    if (next < 0 && event.currentTarget.closest(".close-day-action-set")) return false;
+    if (next < 0) return false;
     event.preventDefault();
     if (next < 0 || next >= buttons.length) return true;
     buttons[next]?.focus({ preventScroll: true });
@@ -501,6 +630,7 @@ export function createCloseDaySurface({
   function actionControl(row, state = selectedActionState(row)) {
     if (row.locked) return el("span", { class: "close-day-outcome locked" },
       icon("eye", 16), localeMessage("close_day_stays_open"));
+    if (selectedRows.size > 1) return null;
     const { selected } = state;
     const actionSet = el("div", {
       class: "close-day-action-set", role: "radiogroup",
@@ -508,10 +638,13 @@ export function createCloseDaySurface({
     }, ...rowActions(row).map((action) => {
       const label = actionLabel(row, action, plan?.sessions);
       const iconName = ACTION_ICONS[action];
+      const shortcut = ACTION_SHORTCUTS[action];
+      const tip = shortcut ? `${label} (${shortcut.toUpperCase()})` : label;
       return el("button", {
       class: "close-day-action-option tip", type: "button", role: "radio",
       "aria-checked": selected === action ? "true" : "false",
-      "aria-label": label, "data-tip": label,
+      "aria-label": label, "aria-keyshortcuts": shortcut?.toUpperCase(), "data-tip": tip,
+      "data-shortcut-key": shortcut,
       "data-action": action, "data-icon": iconName,
       tabindex: selected === action ? "0" : "-1",
       onclick: (event) => chooseAction(row, action, event.currentTarget),
@@ -537,6 +670,35 @@ export function createCloseDaySurface({
       .filter((node) => node.offsetParent !== null);
   }
 
+  function rangeTo(rowKey, { focus = true } = {}) {
+    const checks = enabledRowCheckboxes();
+    const keys = checks.map((node) => node.dataset.rowSelect);
+    const anchorIndex = keys.indexOf(selectionAnchor ?? "");
+    const endIndex = keys.indexOf(rowKey);
+    if (anchorIndex < 0 || endIndex < 0) return false;
+    const span = keys.slice(Math.min(anchorIndex, endIndex), Math.max(anchorIndex, endIndex) + 1);
+    if (selectionRangeEnd === rowKey && span.every((key) => selectedRows.has(key))) {
+      for (const key of span) selectedRows.delete(key);
+      selectionRangeEnd = null;
+    } else {
+      for (const key of span) selectedRows.add(key);
+      selectionRangeEnd = rowKey;
+    }
+    void focusAfterRender(focus
+      ? () => rowNode(rowKey)?.querySelector(".close-day-row-select")
+      : null);
+    return true;
+  }
+
+  function shortcutButton(target, row, shortcut) {
+    const card = target.closest?.("[data-close-day-card]") ?? row?.closest?.("[data-close-day-card]");
+    if (selectedRows.size > 1) {
+      return card?.querySelector(`.close-day-bulk-action[data-shortcut-key="${shortcut}"]`) ?? null;
+    }
+    return row?.querySelector(`.close-day-action-option[data-shortcut-key="${shortcut}"]`) ??
+      card?.querySelector(`.close-day-bulk-action[data-shortcut-key="${shortcut}"]`) ?? null;
+  }
+
   function reviewKeydown(event) {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
     const target = event.target;
@@ -544,6 +706,46 @@ export function createCloseDaySurface({
     const row = target.closest?.("[data-close-day-row]");
     const checks = enabledRowCheckboxes();
     if (!checks.length) return;
+    if ((event.key === "x" || event.key === "X") && row) {
+      event.preventDefault();
+      const key = row.dataset.closeDayRow;
+      if (event.shiftKey && rangeTo(key)) return;
+      const item = (plan?.groups ?? []).flatMap((group) => group.rows ?? [])
+        .find((candidate) => candidate.fingerprintKey === key);
+      if (item) toggleRowSelection(item, undefined, true);
+      return;
+    }
+    if (!event.shiftKey && /^[a-z]$/i.test(event.key)) {
+      const shortcut = event.key.toLocaleLowerCase();
+      const button = shortcutButton(target, row, shortcut);
+      if (button && !button.disabled) {
+        event.preventDefault();
+        button.click();
+      }
+      return;
+    }
+    if (event.key === "ArrowRight" && target.matches?.(".close-day-window-select")) {
+      const first = target.closest(".close-day-window-head")
+        ?.querySelector(".close-day-bulk-action");
+      if (first) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (event.key === "ArrowLeft" && target.matches?.(".close-day-bulk-action")) {
+      const actions = [...target.closest(".close-day-bulk-actions")
+        ?.querySelectorAll(".close-day-bulk-action") ?? []];
+      if (actions[0] === target) {
+        const headerSelect = target.closest(".close-day-window-head")
+          ?.querySelector(".close-day-window-select");
+        if (headerSelect) {
+          event.preventDefault();
+          headerSelect.focus({ preventScroll: true });
+        }
+      }
+      return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!row) {
@@ -602,9 +804,16 @@ export function createCloseDaySurface({
         : "close_day_select_row", [row.title]),
       "data-row-select": row.fingerprintKey
     });
+    checkbox.addEventListener("click", (event) => {
+      if (event.shiftKey && rangeTo(row.fingerprintKey)) event.preventDefault();
+    });
     checkbox.addEventListener("change", () => {
-      if (checkbox.checked) selectedRows.add(row.fingerprintKey);
+      if (checkbox.checked) {
+        selectedRows.add(row.fingerprintKey);
+        selectionAnchor = row.fingerprintKey;
+      }
       else selectedRows.delete(row.fingerprintKey);
+      selectionRangeEnd = null;
       void focusAfterRender(() => [...document.querySelectorAll("[data-row-select]")]
         .find((node) => node.dataset.rowSelect === row.fingerprintKey));
     });
@@ -613,8 +822,12 @@ export function createCloseDaySurface({
 
   function toggleRowSelection(row, checked = !selectedRows.has(row.fingerprintKey), focus = false) {
     if (row.locked) return;
-    if (checked) selectedRows.add(row.fingerprintKey);
+    if (checked) {
+      selectedRows.add(row.fingerprintKey);
+      selectionAnchor = row.fingerprintKey;
+    }
     else selectedRows.delete(row.fingerprintKey);
+    selectionRangeEnd = null;
     void focusAfterRender(focus ? () => rowNode(row.fingerprintKey)?.querySelector(".close-day-row-select") : null);
   }
 
@@ -638,6 +851,8 @@ export function createCloseDaySurface({
     if (!chosen.length) return;
     const keys = chosen.map((row) => row.fingerprintKey);
     for (const key of keys) selectedRows.delete(key);
+    if (keys.includes(selectionAnchor)) selectionAnchor = null;
+    selectionRangeEnd = null;
     const saved = saveChoices(keys, patch, {
       bulk: true,
       focus: () => cardNode(cardKey)?.querySelector(".close-day-window-select")
@@ -648,22 +863,28 @@ export function createCloseDaySurface({
   function chooseBulk(cardKey, rows, action, anchor) {
     const selected = bulkScope(rows);
     const hasSelection = selectedFor(rows).length > 0;
+    if (action === CLOSE_DAY_ACTIONS.snooze) {
+      snoozePicker(anchor, (dueAt, recurrence) => applyBulk(cardKey, rows, {
+        action, dueAt, ...(recurrence ? { recurrence } : {})
+      }));
+      return;
+    }
     if (action === CLOSE_DAY_ACTIONS.archiveLabel) {
       labelPicker(anchor, localeMessage(hasSelection
         ? "close_day_label_selected"
         : "close_day_label_window"),
-        (labels) => applyBulk(cardKey, rows, { action, labels }));
+        (labels, organizationPlan) => applyBulk(cardKey, rows, { action, labels, organizationPlan }));
       return;
     }
     if ([CLOSE_DAY_ACTIONS.session, CLOSE_DAY_ACTIONS.newSession].includes(action)) {
-      const sessions = (plan.sessions ?? []).filter((session) =>
+      const sessions = reviewDestinationOptions(plan).sessions.filter((session) =>
         selected.every((row) => session.id !== row.boundSessionId));
       sessionPicker(anchor, localeMessage(hasSelection
         ? "close_day_session_selected"
         : "close_day_session_window"),
-        sessions, (value) => applyBulk(cardKey, rows, value.isNew
-          ? { action: CLOSE_DAY_ACTIONS.newSession, newSessionName: value.name }
-          : { action: CLOSE_DAY_ACTIONS.session, targetSessionId: value.id }));
+        sessions, (value, organizationPlan) => applyBulk(cardKey, rows, value.isNew
+          ? { action: CLOSE_DAY_ACTIONS.newSession, newSessionName: value.name, organizationPlan }
+          : { action: CLOSE_DAY_ACTIONS.session, targetSessionId: value.id, organizationPlan }));
       return;
     }
     applyBulk(cardKey, rows, { action });
@@ -685,6 +906,8 @@ export function createCloseDaySurface({
     });
     checkbox.indeterminate = chosen.length > 0 && !allSelected;
     checkbox.addEventListener("change", () => {
+      selectionAnchor = null;
+      selectionRangeEnd = null;
       for (const row of selectable) {
         if (checkbox.checked) selectedRows.add(row.fingerprintKey);
         else selectedRows.delete(row.fingerprintKey);
@@ -719,9 +942,13 @@ export function createCloseDaySurface({
             : localeMessage("close_day_close_window_saved")
           : ACTION_LABELS[action];
         const iconName = ACTION_ICONS[action];
+        const shortcut = ACTION_SHORTCUTS[action];
+        const tip = shortcut ? `${label} (${shortcut.toUpperCase()})` : label;
         return el("button", {
           class: "close-day-action-option close-day-bulk-action tip", type: "button",
-          "aria-label": label, "data-tip": label, "data-action": action, "data-icon": iconName,
+          "aria-label": label, "aria-keyshortcuts": shortcut?.toUpperCase(),
+          "data-tip": tip, "data-shortcut-key": shortcut,
+          "data-action": action, "data-icon": iconName,
           onclick: (event) => chooseBulk(cardKey, rows, action, event.currentTarget),
           onkeydown: (event) => {
             if (moveActionFocus(event)) return;
@@ -737,20 +964,47 @@ export function createCloseDaySurface({
   }
 
   function favicon(row) {
-    if (!row.favIconUrl) return el("span", { class: "close-day-favicon fallback" });
-    const image = el("img", { class: "close-day-favicon", src: row.favIconUrl, alt: "" });
+    const source = faviconSource(row);
+    if (!source) return el("span", { class: "close-day-favicon fallback" });
+    const image = el("img", { class: "close-day-favicon", src: source, alt: "" });
     image.addEventListener("error", () => image.replaceWith(el("span", { class: "close-day-favicon fallback" })));
     return image;
   }
 
   function rowLabels(row) {
-    const labels = row.coverage?.kind === "archive"
-      ? [...new Set((row.coverage.labels ?? []).map(clean).filter(Boolean))]
-      : [];
-    if (!labels.length) return null;
+    const labels = [...new Set((row.coverage?.labels ?? []).map(clean).filter(Boolean))];
+    // Older in-progress reviews predate the linked membership projection. They
+    // still carry the primary bound Session id/name, so keep that route useful
+    // instead of silently losing it until the next review is created.
+    const rawSessions = row.coverage?.sessions?.length
+      ? row.coverage.sessions
+      : (row.coverage?.sessionId && row.coverage?.name
+          ? [{ id: row.coverage.sessionId, name: row.coverage.name }]
+          : []);
+    const sessions = rawSessions
+      .map((entry) => ({ id: clean(entry?.id), name: clean(entry?.name) }))
+      .filter((entry, index, all) => entry.id && entry.name &&
+        all.findIndex((candidate) => candidate.id === entry.id) === index);
+    if (!labels.length && !sessions.length) return null;
+    const memberships = sessions.length ? el("span", {
+      class: "session-memberships",
+      title: sessions.map((entry) => entry.name).join(", ")
+    }, el("span", { class: "session-membership-prefix" },
+      localeMessage(sessions.length === 1 ? "list_in_session" : "list_in_sessions"))) : null;
+    sessions.forEach((entry, index) => {
+      if (index) memberships.append(document.createTextNode(", "));
+      memberships.append(onSessionOpen
+        ? el("button", { class: "session-membership-link", type: "button",
+          "aria-label": localeMessage("list_show_session", [entry.name]),
+          onclick: (event) => { event.stopPropagation(); onSessionOpen(entry.id); } }, entry.name)
+        : el("span", { class: "session-membership-name" }, entry.name));
+    });
     return el("span", { class: "chips rowchips close-day-labels",
-      "aria-label": localeMessage("close_day_labels_aria", [formatList(labels)]) },
-      ...labels.map((label) => el("span", { class: "chip is-accented", title: label }, label)));
+      ...(labels.length ? {
+        "aria-label": localeMessage("close_day_labels_aria", [formatList(labels)])
+      } : {}) },
+      ...labels.map((label) => el("span", { class: "chip is-accented", title: label }, label)),
+      memberships);
   }
 
   function reviewRow(row) {
@@ -761,7 +1015,13 @@ export function createCloseDaySurface({
       "data-close-day-row": row.fingerprintKey,
       onclick: (event) => {
         if (row.locked || event.target.closest("button, input, select, textarea, a, label")) return;
+        if (event.shiftKey && rangeTo(row.fingerprintKey, { focus: false })) return;
         toggleRowSelection(row);
+      },
+      onmousedown: (event) => {
+        if (event.shiftKey && !event.target.closest("button, input, select, textarea, a, label")) {
+          event.preventDefault();
+        }
       }
     },
     rowSelection(row),
@@ -769,7 +1029,7 @@ export function createCloseDaySurface({
     el("div", { class: "close-day-copy" },
       el("div", { class: "close-day-title", title: row.title }, row.title),
       el("div", { class: "close-day-subline" },
-        row.locked ? el("span", { class: "close-day-meta" }, row.lockedReason)
+        row.locked ? el("span", { class: "close-day-meta" }, closeDayLockedReason(row.lockedReason))
           : el("span", { class: "close-day-action-copy", title: actionState.selectedText },
             el("strong", {}, localeMessage("close_day_action_prefix")), ` ${actionState.selectedText}`,
             row.pinned ? localeMessage("close_day_pinned_suffix") : ""),
@@ -1009,7 +1269,7 @@ export function createCloseDaySurface({
       void focusAfterRender(() => document.querySelector(".close-day-commit"));
     } }, localeMessage("action_cancel")) : null;
     const noKeepChanges = !summary.sessionCount && !summary.inboxCount &&
-      !summary.archiveCount && !summary.unfiledCount;
+      !summary.archiveCount && !summary.snoozeCount && !summary.unfiledCount;
     return el("section", { class: "close-day-summary section-local-sticky" },
       el("div", { class: "close-day-summary-grid" },
         el("div", {}, el("h3", {}, localeMessage("close_day_keep_first")), el("ul", {},
@@ -1024,6 +1284,8 @@ export function createCloseDaySurface({
           summaryPairLine([
             [summary.archiveCount, localeMessage(summary.archiveCount === 1
               ? "close_day_archive_copy_one" : "close_day_archive_copy_other")],
+            [summary.snoozeCount, localeMessage(summary.snoozeCount === 1
+              ? "close_day_snooze_tab_one" : "close_day_snooze_tab_other")],
             [summary.unfiledCount, localeMessage(summary.unfiledCount === 1
               ? "close_day_unfiled_one" : "close_day_unfiled_other")]
           ]))),
@@ -1049,8 +1311,10 @@ export function createCloseDaySurface({
 
   async function undoCompletion() {
     const result = await msg({ type: "close-day-undo", transactionId: completion.id });
-    if (!result?.ok) {
-      showNotice(localeMessage("close_day_undo_unavailable"));
+    if (!result?.ok && !(result?.status === "incomplete" &&
+        result.receipt?.phase === "undo-incomplete")) {
+      showNotice(localeMessage(result?.status === "busy"
+        ? "close_day_undo_busy" : "close_day_undo_unavailable"));
       return;
     }
     completion = result.receipt;
@@ -1059,22 +1323,29 @@ export function createCloseDaySurface({
 
   function completionView() {
     const undone = completion.phase === "undone";
+    const incomplete = completion.phase === "undo-incomplete";
     const closed = completion.result?.closed ?? 0;
     const skipped = completion.result?.skipped ?? 0;
     const conflicts = completion.storeUndo?.conflicts ?? 0;
     return el("div", { class: "close-day-complete" },
-      el("div", { class: "close-day-complete-mark", "aria-hidden": "true" }, icon(undone ? "refresh" : "mark", 28)),
-      el("h3", { tabindex: "-1" }, localeMessage(undone
+      el("div", { class: "close-day-complete-mark", "aria-hidden": "true" }, icon(undone || incomplete ? "refresh" : "mark", 28)),
+      el("h3", { tabindex: "-1" }, localeMessage(incomplete ? "close_day_undo_incomplete_title" : undone
         ? "close_day_undone_title"
         : "close_day_complete_title")),
-      el("p", {}, undone
+      el("p", {}, incomplete
+        ? localeMessage(completion.reopenResult?.uncertain > 0
+          ? "close_day_undo_uncertain" : "close_day_undo_partial", [
+          formatNumber(completion.reopenResult?.reopened ?? 0),
+          formatNumber(completion.reopenResult?.expected ?? 0)
+        ])
+        : undone
         ? localeMessage(conflicts ? "close_day_undone_conflicts" : "close_day_undone_success", [
           formatNumber(completion.reopenResult?.reopened ?? 0)
         ])
         : localeMessage(skipped ? "close_day_complete_skipped" : "close_day_complete_success", [
           formatNumber(closed), formatNumber(skipped)
         ])),
-      !undone ? el("div", { class: "close-day-complete-actions" },
+      !undone && !incomplete ? el("div", { class: "close-day-complete-actions" },
         el("button", { class: "primary", type: "button", onclick: undoCompletion },
           localeMessage("close_day_undo")),
         skipped ? el("button", { class: "quiet", type: "button", onclick: () => void load({ startOver: true }) },

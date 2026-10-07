@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "../lib/failure-diagnostic.js";
 /**
  * F14-2b — the shared Open-tabs surface.
  *
@@ -21,29 +25,137 @@
  */
 import { el } from "./dom.js";
 import { icon } from "./icons.js";
-import { clearSelection, createTabList, fromOpenWindows, nameAndOrderOpenWindows } from "./tablist.js";
+import {
+  createTabList, reconcileOpenPlacement, fromOpenWindows, lazyOpenRefSubset, nameAndOrderOpenWindows
+} from "./tablist.js";
 import { buildOpenListConfig } from "./list-configs.js";
+import { createTabDragController, createTabDropZone } from "./tab-drag.js";
 import { orderOpenWindowGroups } from "./open-window-order.js";
 import { STORE_KEYS } from "../lib/types.js";
 import { listItems, getSettings, patchSettings } from "../lib/store.js";
 import {
   getSessionBindings, liveSessionBindings, pruneSessionBindings, updateSessionWindow
 } from "../lib/sessions.js";
-import { hasTabGroupsPermission, ensureTabGroupsPermission } from "../lib/tab-groups.js";
+import {
+  ensureTabGroupsPermission, fetchLiveGroupDetails, hasTabGroupsPermission
+} from "../lib/tab-groups.js";
 import { normalizeUrl } from "../lib/dedup.js";
 import { buildSavedLabelsByUrl } from "../lib/saved-label-index.js";
-import { readSessionIdentities, sessionUrlsForWindow } from "../lib/session-identity-index.js";
+import {
+  buildSessionMembershipsByUrl, sessionUrlsForWindow
+} from "../lib/session-identity-index.js";
+import { readSessionIdentities } from "../lib/session-identity-store.js";
 import { isHttpTab, urlOf, toRef, organizeTabOf } from "../lib/tabs.js";
 import { gatherOptionsFor } from "../lib/organize.js";
-import { RECURRENCE_OPTIONS, presetDue } from "../lib/snooze.js";
-import { buildSortChoices } from "./list-helpers.js";
-import { listRecurrenceOptionLabel, listSnoozePresetLabel, listUnit } from "./list-copy.js";
+import { buildSnoozePanel, buildSortChoices } from "./list-helpers.js";
+import { listUnit } from "./list-copy.js";
 import { formatNumber, msg as localeMessage, pluralCategory } from "../lib/i18n.js";
 import { pspan } from "../lib/perf.js";
+import { createTabFilterControl } from "./tab-filter-control.js";
+import { buildProtectionPanel } from "./automation-protection.js";
+import { openDashboard } from "../lib/actions.js";
+import {
+  projectOpenAutomationAwareness, readAutomationAwarenessSnapshot
+} from "../lib/automation-awareness-policy.js";
 
-/** Cap rows shown per window before a "show all" (mirrors Archive's cap of 20). */
-const OPEN_WINDOW_CAP = 20;
+/** Dashboard cap per window; compact surfaces provide their own smaller cap. */
+const OPEN_WINDOW_CAP = 50;
+const OPEN_SURFACE_INITIAL_BUDGET = 300;
 const IDLE_NUDGE_MS = 4 * 3600_000;
+const HOUR_MS = 3600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Apply the only non-structural Chrome tab update Open displays directly.
+ * Returning false asks the caller for a full live-window snapshot because URL
+ * and pinned changes affect actions, labels, Sessions, and automation policy.
+ * Completion status alone changes no rendered Open field.
+ *
+ * @param {ParentNode} root mounted Open section
+ * @param {number} tabId Chrome tab identity
+ * @param {chrome.tabs.TabChangeInfo} changeInfo
+ * @returns {boolean} true when no full Open refresh is needed
+ */
+export function reconcileOpenTabUpdate(root, tabId, changeInfo) {
+  if (changeInfo.url || changeInfo.pinned !== undefined || changeInfo.groupId !== undefined) return false;
+  if (typeof changeInfo.title !== "string") return true;
+  const row = root?.querySelector?.(`[data-tablist-row="t${tabId}"]`);
+  const link = row?.querySelector?.(".row-copy .t a");
+  if (link) link.textContent = changeInfo.title || link.getAttribute("href") || "";
+  return true;
+}
+
+function idleAgeLabel(ageMs) {
+  const days = Math.floor(ageMs / DAY_MS);
+  if (days >= 1) {
+    return localeMessage(
+      pluralCategory(days) === "one" ? "settings_duration_day_one" : "settings_duration_day_many",
+      [formatNumber(days)]
+    );
+  }
+  const hours = Math.max(1, Math.floor(ageMs / HOUR_MS));
+  return localeMessage(
+    pluralCategory(hours) === "one" ? "settings_duration_hour_one" : "settings_duration_hour_many",
+    [formatNumber(hours)]
+  );
+}
+
+/**
+ * Live idle header nudge. Four hours is only its quiet appearance threshold;
+ * once visible, the label follows the oldest tab from hours into days. One
+ * exact boundary timer per visible window is cheaper than polling or
+ * rerendering Open, and it retires itself with the rendered header.
+ * @param {{tabs?: any[]}} win
+ * @param {{now?: () => number, schedule?: typeof setTimeout}} [clock]
+ */
+export function createIdleNudge(win, clock = {}) {
+  const now = clock.now ?? Date.now;
+  const schedule = clock.schedule ?? setTimeout;
+  const tabs = win?.tabs ?? [];
+  const label = el("span", { class: "idle-nudge-label" });
+  const node = el("span", {
+    class: "item-meta idle-nudge",
+    title: localeMessage("list_idle_tabs_title"),
+    hidden: true
+  }, icon("activity", 12), label);
+
+  const refresh = () => {
+    const current = now();
+    let count = 0;
+    let oldestAccessed = Infinity;
+    let nextBoundary = Infinity;
+    for (const tab of tabs) {
+      if (typeof tab.lastAccessed !== "number") continue;
+      const boundary = tab.lastAccessed + IDLE_NUDGE_MS;
+      if (boundary <= current) {
+        count++;
+        oldestAccessed = Math.min(oldestAccessed, tab.lastAccessed);
+      }
+      else nextBoundary = Math.min(nextBoundary, boundary);
+    }
+    node.hidden = count === 0;
+    label.textContent = count
+      ? localeMessage("list_idle_tabs_count", [
+        listUnit("tab", count),
+        idleAgeLabel(current - oldestAccessed)
+      ])
+      : "";
+    if (count) {
+      const unit = current - oldestAccessed < DAY_MS ? HOUR_MS : DAY_MS;
+      const nextAgeBoundary = oldestAccessed +
+        (Math.floor((current - oldestAccessed) / unit) + 1) * unit;
+      nextBoundary = Math.min(nextBoundary, nextAgeBoundary);
+    }
+    if (Number.isFinite(nextBoundary)) {
+      schedule(() => {
+        if (!node.isConnected) return;
+        refresh();
+      }, Math.max(32, nextBoundary - current + 16));
+    }
+  };
+  refresh();
+  return node;
+}
 
 /**
  * Keep the Open scanner a pure view over the already-captured window groups.
@@ -56,13 +168,20 @@ export function filterOpenGroups(groups, rawQuery) {
   const query = String(rawQuery ?? "").trim().toLocaleLowerCase();
   if (!query) return groups;
   return groups.map((group) => {
-    const indexes = group.refs.map((ref, index) => ({ ref, index }))
-      .filter(({ ref }) => `${ref.title ?? ""}\n${ref.url ?? ""}`.toLocaleLowerCase().includes(query))
-      .map(({ index }) => index);
+    const indexes = [];
+    const searchText = Array.isArray(group.searchText) ? group.searchText : null;
+    for (let index = 0; index < group.refs.length; index += 1) {
+      const haystack = searchText?.[index] ??
+        `${group.refs[index]?.title ?? ""}\n${group.refs[index]?.url ?? ""}`.toLocaleLowerCase();
+      if (haystack.includes(query)) indexes.push(index);
+    }
+    const live = indexes.map((index) => group.live?.[index]);
     return {
       ...group,
-      refs: indexes.map((index) => group.refs[index]),
-      live: indexes.map((index) => group.live?.[index])
+      refs: lazyOpenRefSubset(group.refs, indexes),
+      live,
+      searchText: indexes.map((index) => searchText?.[index] ?? ""),
+      selectableCount: live.reduce((count, row) => count + Number(row?.selectable), 0)
     };
   }).filter((group) => group.refs.length > 0);
 }
@@ -72,7 +191,9 @@ export function filterOpenGroups(groups, rawQuery) {
  * @property {(m: object) => Promise<any>} msg background message helper
  * @property {() => void} rerender refresh this surface's Open section
  * @property {() => boolean} shouldRenderBody skip the heavy build when off-screen
+ * @property {() => boolean} [canReconcilePlacement] explicit host permission to mutate its mounted list
  * @property {HTMLElement} [sectionActionHost] stable header action lane
+ * @property {HTMLElement} [filterHost] optional local-control row for the filter
  * @property {() => Element} getFlashAnchor element to flash validation notes near
  * @property {(m: string) => void} showNotice transient notice/toast sink
  * @property {(anchor: Element, text: string) => void} flashNote
@@ -81,6 +202,7 @@ export function filterOpenGroups(groups, rawQuery) {
  * @property {(refs: any[], heading?: string) => void} copyRefs
  * @property {() => void} renderArchive @property {() => void} renderLabels
  * @property {(label: string) => void} goToLabel
+ * @property {(sessionId: string) => void} goToSession
  * @property {() => Promise<any[]|null>|null} [takeInitialSnapshot]
  * @property {"default"|"compact"} [presentation]
  * @property {number|(() => number|undefined)} [rowCap]
@@ -89,24 +211,27 @@ export function filterOpenGroups(groups, rawQuery) {
 /**
  * @param {OpenSurfaceCtx} ctx
  * @returns {{
- *   render: () => Promise<{heading: string, node: Node|null}>,
+ *   render: () => Promise<{heading: string, node: Node|null, placementUpdated?: boolean}>,
  *   warm: (snapshot: Promise<any[]|null>|any[]|null) => void,
  *   invalidateSavedLabels: () => void
  * }}
  */
 export function createOpenSurface(ctx) {
-  /** @type {{sourceTabId:number,tabIds:number[],sourceRowEl:HTMLElement}|null} stable pointer-drag payload */
-  let dragState = null;
-  let dragRevealTimer = 0;
-  let dragPreview = null;
+  const openDrag = createTabDragController({
+    bodyClass: "tab-dragging",
+    onReset: () => {
+      for (const zone of document.querySelectorAll('[data-tablist="open"] .drop-zone-new')) {
+        zone.textContent = localeMessage("list_drop_new_window");
+      }
+    }
+  });
   /** Last visible window-card order for this Dashboard/side-panel surface. */
   let visibleWindowOrder = [];
+  let mountedPlacement = null;
   /** @type {{windowId:number,afterWindowId:number}|null} */
   let pendingWindowPlacement = null;
   /** @type {Map<number, number>} windowId → stray count at dismissal (drift banner) */
   const driftDismissed = new Map();
-  // F18: the contextual group-preservation nudge shows at most once per surface.
-  let groupNudgeRetired = false;
   let bindingPruneScheduled = false;
   let initialSnapshot = ctx.takeInitialSnapshot?.() ?? null;
   // N45: saved labels enrich Open rows, but must never hold the first live
@@ -117,38 +242,14 @@ export function createOpenSurface(ctx) {
   let savedLabelsFresh = false;
   let savedLabelEnrichment = null;
   let savedLabelGeneration = 0;
-  let filterText = "";
-  let filterTimer = 0;
-  const filterInput = el("input", {
-    type: "search",
-    class: "open-filter-input",
+  const filter = createTabFilterControl({
     placeholder: localeMessage("list_filter_tabs_placeholder"),
-    "aria-label": localeMessage("list_filter_open_tabs_aria")
+    ariaLabel: localeMessage("list_filter_open_tabs_aria"),
+    shortcut: "f",
+    rerender: ctx.rerender
   });
-  const filterControl = el("div", { class: "open-filter-control" }, filterInput);
-  const clearFilter = () => {
-    filterText = "";
-    filterInput.value = "";
-    clearTimeout(filterTimer);
-    return Promise.resolve(ctx.rerender());
-  };
-  filterInput.addEventListener("input", () => {
-    filterText = filterInput.value;
-    clearTimeout(filterTimer);
-    filterTimer = setTimeout(() => {
-      const start = filterInput.selectionStart ?? filterText.length;
-      Promise.resolve(ctx.rerender()).then(() => requestAnimationFrame(() => {
-        filterInput.focus({ preventScroll: true });
-        filterInput.setSelectionRange(start, start);
-      }));
-    }, 60);
-  });
-  filterInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    if (filterText) clearFilter();
-  });
-  ctx.sectionActionHost?.prepend(filterControl);
+  const mountedFilterHost = ctx.filterHost ?? ctx.sectionActionHost;
+  mountedFilterHost?.prepend(filter.element);
 
   function startSavedLabelEnrichment(prefetchedItems = null) {
     if (savedLabelsFresh || savedLabelEnrichment) return;
@@ -220,30 +321,24 @@ export function createOpenSurface(ctx) {
     }
   }
 
-  /** Open-tabs per-tab snooze panel (sends snooze-tab per preset, then re-renders). */
-  function buildOpenSnooze(tabIdOrIds, after) {
-    const tabIds = Array.isArray(tabIdOrIds) ? tabIdOrIds : [tabIdOrIds];
-    const recur = el("select", { class: "snooze-recur", "aria-label": localeMessage("list_repeat") },
-      ...RECURRENCE_OPTIONS.map(([v, l]) =>
-        el("option", { value: v }, listRecurrenceOptionLabel(v, l))));
-    const mk = (label, preset) => el("button", { class: "mini", onclick: async () => {
-      const recurrence = recur.value;
-      await Promise.all(tabIds.map((tabId) =>
-        ctx.msg({ type: "snooze-tab", tabId, dueAt: presetDue(preset), ...(recurrence ? { recurrence } : {}) })
-      ));
+  /**
+   * One complete Snooze picker for a row, a selected set, or a whole Chrome
+   * window. The shared builder keeps Custom time and recurrence identical to
+   * Popup, Inbox, Sessions, and Snoozed.
+   */
+  function buildOpenSnooze(target, after) {
+    return buildSnoozePanel(async (dueAt, recurrence) => {
+      if (target && typeof target === "object" && Number.isInteger(target.windowId)) {
+        await ctx.msg({ type: "snooze-window", windowId: target.windowId, dueAt,
+          ...(recurrence ? { recurrence } : {}) });
+      } else {
+        const tabIds = Array.isArray(target) ? target : [target];
+        await Promise.all(tabIds.filter(Number.isInteger).map((tabId) =>
+          ctx.msg({ type: "snooze-tab", tabId, dueAt, ...(recurrence ? { recurrence } : {}) })
+        ));
+      }
       after();
-    } }, label);
-    return el("div", { class: "snoozebar palette-form" },
-      el("div", { class: "palette-field" },
-        el("span", { class: "palette-field-label" }, localeMessage("list_quick_choices")),
-        el("div", { class: "palette-choice-grid" },
-          mk(listSnoozePresetLabel("later-today"), "later-today"),
-          mk(listSnoozePresetLabel("this-evening"), "this-evening"),
-          mk(listSnoozePresetLabel("tomorrow"), "tomorrow"),
-          mk(listSnoozePresetLabel("weekend"), "weekend"),
-          mk(listSnoozePresetLabel("next-week"), "next-week"))),
-      el("label", { class: "palette-field palette-field-inline" },
-        el("span", { class: "palette-field-label" }, localeMessage("list_repeat")), recur));
+    });
   }
 
   /**
@@ -307,7 +402,7 @@ export function createOpenSurface(ctx) {
         ? localeMessage("list_session_drift_one", [boundSession.name])
         : localeMessage("list_session_drift_other", [String(strays.length), boundSession.name])),
       el("button", { class: "mini2", title: localeMessage("list_replace_session_window"),
-        onclick: async () => { await updateSessionWindow(b.sessionId, b.windowIndex ?? 0, httpTabs.map(toRef)); ctx.rerender(); } },
+        onclick: async () => { await updateSessionWindow(b.sessionId, b.windowIndex ?? 0, (win.tabs ?? []).filter(isHttpTab).map(toRef)); ctx.rerender(); } },
         localeMessage("list_update_session")),
       el("button", { class: "mini2", "aria-label": localeMessage("list_dismiss_drift"),
         onclick: () => { driftDismissed.set(win.id, strays.length); ctx.rerender(); } }, "×"));
@@ -320,27 +415,6 @@ export function createOpenSurface(ctx) {
       .filter(Number.isInteger))];
   }
 
-  function resetPointerDrag() {
-    clearTimeout(dragRevealTimer);
-    dragState?.sourceRowEl?.classList.remove("dragging");
-    dragState = null;
-    dragPreview?.remove();
-    dragPreview = null;
-    document.body.classList.remove("tab-dragging");
-    for (const zone of document.querySelectorAll('[data-tablist="open"] .drop-zone-new')) {
-      zone.textContent = localeMessage("list_drop_new_window");
-    }
-  }
-
-  function mountDragPreview(tabCount) {
-    dragPreview?.remove();
-    dragPreview = el("div", { class: "open-drag-preview", "aria-hidden": "true" },
-      icon("open", 16),
-      el("span", {}, listUnit("tab", tabCount)));
-    document.body.append(dragPreview);
-    return dragPreview;
-  }
-
   /**
    * One UI orchestrator for pointer/keyboard Open moves. Validation, Chrome
    * mutation, and whole-set Undo remain behind the worker's move-tabs seam.
@@ -348,7 +422,7 @@ export function createOpenSurface(ctx) {
   async function moveOpenTabs(tabIds, destination, afterWindowId = null) {
     const ids = [...new Set((tabIds ?? []).filter(Number.isInteger))];
     if (ids.length === 0) return { ok: false, reason: "empty", moved: 0 };
-    resetPointerDrag();
+    openDrag.reset();
     const result = await ctx.msg({ type: "move-tabs", tabIds: ids, destination });
     if (!result?.ok) {
       ctx.showNotice?.(result?.reason === "changed"
@@ -360,7 +434,6 @@ export function createOpenSurface(ctx) {
         Number.isInteger(afterWindowId)) {
       pendingWindowPlacement = { windowId: result.windowId, afterWindowId };
     }
-    clearSelection("open");
     await Promise.resolve(ctx.rerender());
     return result;
   }
@@ -369,26 +442,19 @@ export function createOpenSurface(ctx) {
   const openRowDrag = {
     draggable: (c) => c.live.tabId !== undefined && !c.live.pinned,
     onStart: (c, e) => {
-      resetPointerDrag();
       const picked = selectedTabIds(c.dragSelection);
       const tabIds = picked.length > 1 ? picked : [c.live.tabId];
-      dragState = { sourceTabId: c.live.tabId, tabIds, sourceRowEl: c.rowEl };
-      c.rowEl.classList.add("dragging");
+      openDrag.start(c, e, { sourceTabId: c.live.tabId, tabIds }, tabIds.length, c.live.tabId);
       for (const zone of document.querySelectorAll('[data-tablist="open"] .drop-zone-new')) {
         zone.textContent = tabIds.length > 1
           ? localeMessage("list_drop_selected_new_window", [listUnit("tab", tabIds.length)])
           : localeMessage("list_drop_new_window");
       }
-      // P2g-4a fix: Chrome cancels a drag whose source node moves during dragstart.
-      // Reveal the zones one tick later, after dragstart returns.
-      dragRevealTimer = setTimeout(() => document.body.classList.add("tab-dragging"), 0);
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", String(c.live.tabId));
-      e.dataTransfer.setDragImage?.(mountDragPreview(tabIds.length), 18, 18);
     },
-    onEnd: () => resetPointerDrag(),
+    onEnd: () => openDrag.reset(),
     onOver: (c, e) => {
-      if (!dragState || dragState.tabIds.includes(c.live.tabId)) return;
+      const drag = openDrag.current();
+      if (!drag || drag.tabIds.includes(c.live.tabId)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       c.rowEl.classList.add("drop-target");
@@ -397,7 +463,7 @@ export function createOpenSurface(ctx) {
     onDrop: async (c, e) => {
       e.preventDefault();
       c.rowEl.classList.remove("drop-target");
-      const ids = dragState?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
+      const ids = openDrag.current()?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
       if (ids.length === 0 || ids.includes(c.live.tabId)) return;
       await moveOpenTabs(ids, {
         kind: "window", windowId: c.live.windowId, index: c.live.chromeIndex
@@ -408,57 +474,27 @@ export function createOpenSurface(ctx) {
   /** Explicit append target after the last rendered row of one live window. */
   function endWindowZone(group) {
     const label = localeMessage("list_move_end_named", [group.title]);
-    const z = el("div", { class: "drop-zone-window-end", role: "separator",
-      "aria-orientation": "horizontal", "aria-label": label, title: label });
-    z.addEventListener("dragover", (e) => {
-      if (!dragState) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      z.classList.add("on");
-    });
-    z.addEventListener("dragleave", () => z.classList.remove("on"));
-    z.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      z.classList.remove("on");
-      const ids = dragState?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
+    return createTabDropZone({ className: "drop-zone-window-end", label,
+      canDrop: () => Boolean(openDrag.current()), onDrop: async (e) => {
+      const ids = openDrag.current()?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
       if (ids.length === 0) return;
       await moveOpenTabs(ids, { kind: "window", windowId: group.data.id, index: -1 });
-    });
-    return z;
+    } });
   }
 
   /** P2g-4a: the P5 between-containers zone — drop a dragged tab into a new window. */
   function newWindowZone(afterGroup) {
-    const z = el("div", { class: "drop-zone-new" }, localeMessage("list_drop_new_window"));
-    z.addEventListener("dragover", (e) => {
-      if (!dragState) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      z.classList.add("on");
-    });
-    z.addEventListener("dragleave", () => z.classList.remove("on"));
-    z.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      z.classList.remove("on");
-      const ids = dragState?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
+    return createTabDropZone({ className: "drop-zone-new", text: localeMessage("list_drop_new_window"),
+      canDrop: () => Boolean(openDrag.current()), onDrop: async (e) => {
+      const ids = openDrag.current()?.tabIds ?? [Number(e.dataTransfer.getData("text/plain"))];
       if (ids.length === 0) return;
       await moveOpenTabs(ids, { kind: "new-window" }, afterGroup?.data?.id);
-    });
-    return z;
+    } });
   }
 
   /** F10 — a quiet "these have gone stale" nudge on each Open-tabs window header. */
   function idleNudge(win) {
-    const now = Date.now();
-    let n = 0;
-    for (const t of win?.tabs ?? []) {
-      if (typeof t.lastAccessed === "number" && now - t.lastAccessed > IDLE_NUDGE_MS) n++;
-    }
-    if (n === 0) return el("span", {}); // nothing idle (also the lastAccessed-missing case)
-    return el("span", {
-      class: "item-meta idle-nudge",
-      title: localeMessage("list_idle_tabs_title")
-    }, localeMessage("list_idle_tabs_count", [listUnit("tab", n)]));
+    return createIdleNudge(win);
   }
 
   /** F18: does a live window visibly contain any Chrome tab group? */
@@ -466,20 +502,30 @@ export function createOpenSurface(ctx) {
     return (win?.tabs ?? []).some((t) => typeof t.groupId === "number" && t.groupId !== -1);
   }
 
-  /** F18 nudge: a window visibly has tab groups but preservation is off/unpermitted. */
-  function groupNudge(win, unpreserved) {
-    if (groupNudgeRetired || !unpreserved || !windowHasGroups(win)) return null;
-    return el("div", { class: "driftrow group-nudge" },
-      icon("labels", 14),
-      el("span", {}, localeMessage("list_group_preservation_nudge")),
-      el("button", { class: "mini2", onclick: async () => {
-        groupNudgeRetired = true;
-        await ensureTabGroupsPermission();
+  /** F18: keep group access beside the unnamed group it can improve. */
+  function groupAccessAction(group, unpreserved) {
+    if (!unpreserved || group?.named) return null;
+    const title = localeMessage("list_show_group_names_title");
+    return el("button", {
+      class: "mini2 tip open-tab-group-access",
+      type: "button",
+      title,
+      "data-tip": title,
+      "aria-label": localeMessage("list_show_group_names"),
+      onclick: async (event) => {
+        event.stopPropagation();
+        const granted = await ensureTabGroupsPermission();
+        // A denied browser prompt leaves this contextual retry exactly where it
+        // was; no banner disappears and no rows shift underneath the pointer.
+        if (!granted) {
+          ctx.showNotice?.(localeMessage("settings_group_permission_note"));
+          return;
+        }
         await patchSettings({ preserveTabGroups: true });
         ctx.rerender();
-      } }, localeMessage("list_enable")),
-      el("button", { class: "mini2", "aria-label": localeMessage("list_dismiss"),
-        onclick: () => { groupNudgeRetired = true; ctx.rerender(); } }, "×"));
+      }
+    }, icon("labels", 13),
+    el("span", { class: "open-tab-group-access-label" }, localeMessage("list_show_group_names")));
   }
 
   /**
@@ -489,19 +535,30 @@ export function createOpenSurface(ctx) {
    */
   async function render() {
     const endPrimary = pspan("open:primary-data");
+    const renderBody = ctx.shouldRenderBody();
+    const awarenessSnapshotRequest = renderBody && ctx.automationAwareness
+      ? readAutomationAwarenessSnapshot().catch((error) => {
+        reportFailure("Open automation indicators", error);
+        return null;
+      })
+      : null;
     const prefetched = initialSnapshot ? await initialSnapshot : null;
     initialSnapshot = null; // one cold snapshot only; live refreshes always query
     // Start the small Session/binding identity snapshots beside Chrome's live-
     // window query. Full Inbox/Archive label indexing is deliberately excluded
     // from this first-paint gate and starts after the primary node is built.
     // If hidden, retain the old heading-only contract and start neither path.
-    const savedSnapshots = !prefetched && ctx.shouldRenderBody() ? Promise.all([
+    const savedSnapshots = !prefetched && renderBody ? Promise.all([
       readSessionIdentities(),
       getSessionBindings()
     ]) : null;
-    const [windows, currentWindow] = await Promise.all([
+    const currentTabRequest = typeof chrome.tabs?.getCurrent === "function"
+      ? chrome.tabs.getCurrent().catch(() => null)
+      : Promise.resolve(null);
+    const [windows, currentWindow, currentTab] = await Promise.all([
       Promise.resolve(prefetched?.[0] ?? chrome.windows.getAll({ populate: true })),
-      chrome.windows.getCurrent().catch(() => null)
+      chrome.windows.getCurrent().catch(() => null),
+      currentTabRequest
     ]);
     // Incognito windows are never shown or captured — EveryTab stays out of them.
     const browserWindowCount = windows.filter((w) => !w.type || w.type === "normal").length;
@@ -510,7 +567,7 @@ export function createOpenSurface(ctx) {
     const heading = localeMessage("list_open_heading", [
       formatNumber(allTabs.length), listUnit("window", normal.length)
     ]);
-    if (!ctx.shouldRenderBody()) {
+    if (!renderBody) {
       endPrimary("heading only");
       return { heading, node: null };
     }
@@ -530,51 +587,109 @@ export function createOpenSurface(ctx) {
       scheduleBindingPrune();
     }
     const sessionsById = new Map(namedSessions.map((s) => [s.id, s]));
+    const sessionMembershipsByUrl = buildSessionMembershipsByUrl(namedSessions);
 
-    // F18: only pay for the settings/permission read when a window actually has groups.
+    // Live membership comes free with tabs. Dashboard performs one optional
+    // metadata read so its group headers can use Chrome's name and hue; compact
+    // Side Panel remains intentionally flat. Without permission the headers use
+    // the same membership with neutral, theme-safe presentation.
+    const hasLiveGroups = normal.some(windowHasGroups);
+    const needsGroupPermission = hasLiveGroups && ctx.presentation !== "compact";
+    const [withGroupPermission, groupSettings] = await Promise.all([
+      needsGroupPermission ? hasTabGroupsPermission() : false,
+      needsGroupPermission ? getSettings() : null
+    ]);
+    const liveGroupIds = ctx.presentation === "compact" ? [] : normal.flatMap((win) =>
+      (win.tabs ?? []).map((tab) => tab.groupId)
+        .filter((groupId) => Number.isInteger(groupId) && groupId !== -1));
+    const liveGroupDetails = await fetchLiveGroupDetails(liveGroupIds, withGroupPermission);
+
+    // F18: only pay for settings when a window actually has groups.
     let groupsUnpreserved = false;
-    if (!groupNudgeRetired && normal.some(windowHasGroups)) {
-      const settings = await getSettings();
-      groupsUnpreserved = settings.preserveTabGroups === false || !(await hasTabGroupsPermission());
+    if (groupSettings) {
+      groupsUnpreserved = groupSettings.preserveTabGroups === false || !withGroupPermission;
     }
-    // P2g-2r: an open tab whose URL matches a labeled saved tab shows those labels
-    // as read-only chips (labeling an open tab visibly sticks).
-    // F13: canonical per-window tab shapes for the Organize panel's sort/gather planning.
-    const simpleWindows = normal.map((w) => ({ id: w.id, tabs: (w.tabs ?? []).map(organizeTabOf) }));
+    // F13's complete organization projection is only needed after the user
+    // opens Organize. Keep it out of Open's primary preparation path and
+    // memoize it for repeated work within this render.
+    let simpleWindows = null;
+    const getSimpleWindows = () => {
+      simpleWindows ??= normal.map((w) => ({ id: w.id, tabs: (w.tabs ?? []).map(organizeTabOf) }));
+      return simpleWindows;
+    };
 
     const currentWindowId = currentWindow?.id ?? null;
     const namedGroups = nameAndOrderOpenWindows(
-      fromOpenWindows(normal, (url) => savedLabelsByUrl.get(normalizeUrl(url)), currentWindowId),
+      fromOpenWindows(normal, (url) => savedLabelsByUrl.get(normalizeUrl(url)),
+        currentWindowId, currentTab?.id ?? null,
+        (url) => sessionMembershipsByUrl.get(normalizeUrl(url)), null, liveGroupDetails),
       bindings, sessionsById, currentWindowId);
     const allGroups = orderOpenWindowGroups(namedGroups, visibleWindowOrder, pendingWindowPlacement);
     visibleWindowOrder = allGroups.map((group) => group.data.id);
     if (pendingWindowPlacement && visibleWindowOrder.includes(pendingWindowPlacement.windowId)) {
       pendingWindowPlacement = null;
     }
-    const query = filterText.trim().toLocaleLowerCase();
+    const query = filter.value().trim().toLocaleLowerCase();
     const groups = filterOpenGroups(allGroups, query);
+    const awarenessSnapshot = await awarenessSnapshotRequest;
+    const awarenessByTabId = awarenessSnapshot
+      ? projectOpenAutomationAwareness(windows, awarenessSnapshot)
+      : new Map();
     const requestedRowCap = typeof ctx.rowCap === "function" ? ctx.rowCap() : ctx.rowCap;
-    const node = createTabList(buildOpenListConfig({
+    // Reuse is deliberately restricted to unchanged surface inputs. The list
+    // separately verifies exact per-tab data and complete flat row coverage.
+    const placementInputs = JSON.stringify({
+      query, requestedRowCap, bindings, sessions, currentWindowId,
+      currentTabId: currentTab?.id ?? null, browserWindowCount,
+      withGroupPermission, groupSettings, groupsUnpreserved,
+      savedLabelGeneration, savedLabelsFresh, savedLabels: [...savedLabelsByUrl], awareness: [...awarenessByTabId].sort(([a], [b]) => a - b)
+    });
+    if (!query && !openDrag.current() && mountedPlacement?.inputs === placementInputs &&
+        mountedPlacement.node.isConnected && ctx.canReconcilePlacement?.() === true) {
+      const y = window.scrollY;
+      if (reconcileOpenPlacement(mountedPlacement.node, groups)) {
+        mountedPlacement.invalidateOrganization();
+        if (window.scrollY !== y) window.scrollTo(0, y);
+        endPrimary(`${allTabs.length} tabs, placement`);
+        startSavedLabelEnrichment(prefetched?.length >= 5 ? prefetched.slice(3, 5) : null);
+        return { heading, node: mountedPlacement.node, placementUpdated: true };
+      }
+    }
+    const buildList = () => createTabList({ ...buildOpenListConfig({
       presentation: ctx.presentation ?? "default",
       data: {
-        groups, bindings, sessionsById, simpleWindows, moveDestinations: allGroups, groupsUnpreserved,
-        currentWindowId, browserWindowCount
+        groups, bindings, sessionsById, simpleWindows: getSimpleWindows,
+        moveDestinations: allGroups, groupsUnpreserved,
+        currentWindowId, browserWindowCount, awarenessByTabId
       },
-      rowCap: query ? Number.MAX_SAFE_INTEGER : (requestedRowCap ?? OPEN_WINDOW_CAP),
+      rowCap: requestedRowCap ?? OPEN_WINDOW_CAP,
+      initialRowBudget: ctx.presentation === "compact" ? Infinity : OPEN_SURFACE_INITIAL_BUDGET,
       msg: ctx.msg, renderOpen: ctx.rerender, renderArchive: ctx.renderArchive,
-      renderLabels: ctx.renderLabels, goToLabel: ctx.goToLabel, mark: ctx.mark,
+      renderLabels: ctx.renderLabels, goToLabel: ctx.goToLabel, goToSession: ctx.goToSession, mark: ctx.mark,
       cardLabelPanel: ctx.cardLabelPanel, buildOpenSnooze,
+      buildProtectionPanel: (tabId, panel) => buildProtectionPanel(tabId, {
+        close: (options) => panel.close(options), onChanged: ctx.rerender,
+        openSettings: () => {
+          if (ctx.openSettings) ctx.openSettings("protection");
+          else void openDashboard("settings:protection");
+        }
+      }),
       idleNudge: ctx.presentation === "compact" ? null : idleNudge,
       sessionComboboxButton: ctx.sessionComboboxButton, copyRefs: ctx.copyRefs,
-      buildOrganizePanel, driftBanner, groupNudge,
+      buildOrganizePanel, driftBanner, groupAccessAction,
       openRowDrag, newWindowZone, endWindowZone, moveOpenTabs,
-      dragTabIds: () => dragState?.tabIds ?? [],
+      dragTabIds: () => openDrag.current()?.tabIds ?? [],
       flashNote: ctx.flashNote, showNotice: ctx.showNotice,
+      automationAwareness: ctx.automationAwareness,
       empty: query ? localeMessage("list_open_filter_empty") : localeMessage("list_open_empty")
-    }));
-    // Harnesses without a section lead retain the control, but production
-    // Dashboard and side panel mount it in their persistent action line.
-    if (!ctx.sectionActionHost) node.prepend(filterControl);
+    }), openPlacement: typeof ctx.canReconcilePlacement === "function" });
+    const node = ctx.automationAwareness?.withRowRender
+      ? ctx.automationAwareness.withRowRender(buildList)
+      : buildList();
+    mountedPlacement = { node, inputs: placementInputs, invalidateOrganization: () => { simpleWindows = null; } };
+    // Harnesses without a section lead retain the control. Production hosts
+    // choose either the section action line or a measured local-control row.
+    if (!mountedFilterHost) node.prepend(filter.element);
     endPrimary(`${allTabs.length} tabs`);
     startSavedLabelEnrichment(prefetched?.length >= 5 ? prefetched.slice(3, 5) : null);
     return { heading, node };
@@ -582,6 +697,7 @@ export function createOpenSurface(ctx) {
 
   return {
     render,
+    handleFilterShortcut: filter.handleShortcut,
     // A hidden Dashboard keeps replacing this with the latest background read.
     // Expansion therefore consumes already-started work instead of creating a
     // new cold Chrome/storage waterfall at click time.

@@ -16,33 +16,40 @@ export function runSmokeSearchContracts(check) {
     );
   }
   check(
-    !commands._execute_action &&
+    commands["open-popup"]?.suggested_key?.default === "Alt+Shift+E" &&
+      commands["open-popup"]?.suggested_key?.mac === "MacCtrl+Shift+E" &&
       commands["open-search-popup"]?.suggested_key?.default === "Alt+Shift+K" &&
-      commands["open-search-popup"]?.suggested_key?.mac === "MacCtrl+Shift+K",
-    "P11-05: named Search-popup command replaces _execute_action and keeps its suggested keys"
+      commands["open-search-popup"]?.suggested_key?.mac === "MacCtrl+Shift+K" &&
+      commands["open-side-panel"]?.suggested_key?.default === "Alt+Shift+S" &&
+      commands["open-side-panel"]?.suggested_key?.mac === "MacCtrl+Shift+S",
+    "Search and the plain popup have distinct suggested shortcuts"
   );
   check(
-    !!commands["dump-window"]?.suggested_key,
-    "dump-window command keeps its suggested key"
+    commands["dump-window"]?.suggested_key?.default === "Alt+Shift+I" &&
+      commands["dump-window"]?.suggested_key?.mac === "MacCtrl+Shift+I",
+    "Save Window to Inbox uses macOS Control+Shift+I and the platform-safe Alt equivalent elsewhere"
   );
 
   const read = (relative) => fs.readFileSync(new URL(relative, import.meta.url), "utf8");
   const background = read("../js/background.js");
+  const keyboardCommands = read("../js/background/keyboard-command-owner.js");
   const popup = read("../js/ui/popup.js");
   const searchbox = read("../js/ui/searchbox.js");
   const dashboard = read("../js/ui/dashboard.js");
   const dashboardCss = read("../css/dashboard.css");
   const shortcuts = read("../js/ui/shortcuts.js");
   const primitives = read("../css/primitives.css");
-  const shellHarness = read("../tools/shell-harness.html");
+  const shellHarness = read("../../tools/shell-harness.html");
 
   check(
-    background.includes('command === "open-search-popup"') &&
-      background.includes("armSearchPopupMode()") &&
-      background.includes("chrome.action.openPopup") &&
-      background.includes("clearSearchPopupMode()") &&
-      background.includes('openDashboard("search")'),
-    "P11-05: the named command arms one-shot mode, opens the popup, and has a cleaned dashboard fallback"
+    background.includes("installKeyboardCommandOwner({") &&
+      keyboardCommands.includes('command === "open-search-popup"') &&
+      keyboardCommands.includes('command === "open-popup"') &&
+      keyboardCommands.includes("armSearchPopupMode()") &&
+      keyboardCommands.includes("chrome.action.openPopup") &&
+      keyboardCommands.includes("clearSearchPopupMode()") &&
+      keyboardCommands.includes('openDashboard("search")'),
+    "the Search command arms one-shot focus while the plain-popup command opens without it"
   );
   check(
     popup.includes("autofocusWhen: consumeSearchPopupMode") &&
@@ -51,13 +58,14 @@ export function runSmokeSearchContracts(check) {
   );
   check(
     searchbox.includes('typeof opts.autofocusWhen === "function"') &&
+    searchbox.includes("focusAutofocusInput") &&
       searchbox.includes("input.focus({ preventScroll: true })") &&
       searchbox.includes("recentOpenTabResults(windows") &&
       searchbox.includes('class: "search-recent"') &&
-      searchbox.includes('),\n      recentSlot\n    );') &&
+      searchbox.includes("replaceResults(...ghostSections)") &&
       searchbox.includes("ghostRun === ghostGeneration") &&
       primitives.includes(".search-recent {") && primitives.includes(".search-recent-label"),
-    "P11-05r: every focused Search shares chips first, then guarded recent tabs; keyboard mode only autofocuses"
+    "P11-05r: focused Search keeps Jump-to choices first and recent tabs last"
   );
   check(
     searchbox.includes('const prefixes = ["in", "label", "session", "domain"]') &&
@@ -110,10 +118,11 @@ export function runSmokeSearchContracts(check) {
       dashboard.includes("footer: true") &&
       dashboard.includes('searchFooter.classList.add("has-history-invite")') &&
       dashboard.includes("searchFooter.append(historyBtn)") &&
-      dashboardCss.includes(".hero-search-overlay > .search-footer {") &&
+      dashboard.includes('class: "hero-search-content"') &&
+      dashboardCss.includes(".hero-search-content > .search-footer {") &&
       dashboardCss.includes("0 2px 6px color-mix") &&
       shellHarness.includes('class="search-footer-count"') &&
-      shellHarness.includes("6 recent tabs") &&
+      shellHarness.includes("10 recent tabs") &&
       shellHarness.includes('p.get("history") === "off"'),
     "P11-24 polish: Dashboard Search keeps a truthful persistent footer and a tighter contact shadow"
   );
@@ -127,7 +136,7 @@ export function runSmokeSearchContracts(check) {
   );
   check(
     primitives.includes(".scope-chip-host .search-scope-chip {") &&
-      primitives.includes("max-width: min(56%, 240px)") &&
+      primitives.includes("max-width: min(180px, 42vw)") &&
       primitives.includes(".scope-chip-host .search-scope-label {") &&
       primitives.includes(".search-results .linklike {") &&
       primitives.includes(".search-results .search-empty-actions {") &&
@@ -147,14 +156,34 @@ export function runSmokeSearchContracts(check) {
       primitives.includes(".ghost-label-slot { display: contents; }") &&
       primitives.includes("background: transparent;") &&
       primitives.includes("border-radius: var(--shape-control);") &&
-      dashboard.includes('"Use browser History"'),
+      dashboard.includes('localeMessage("history_access_invite")'),
     "P11-24 polish: Search is a flat command list with aligned text outcomes and lightweight filter syntax"
   );
   check(
     dashboard.includes("const searchDeepLink = routeSearchIntent.searchDeepLink") &&
       dashboard.includes("searchInput.focus({ preventScroll: true })") &&
       shortcuts.includes('"open-search-popup": msg("command_search_description")') &&
-      shortcuts.match(/const ORDER = \[[^\]]*"open-search-popup"/),
-    "P11-05: older Chromium falls back to focused dashboard Search and live shortcut copy uses the named command"
+      shortcuts.includes('"open-popup": msg("command_popup_description")') &&
+      shortcuts.match(/const ORDER = \[[^\]]*"open-search-popup"[^\]]*"open-popup"/),
+    "older Chromium falls back to focused Dashboard Search and live shortcut copy distinguishes Search from the popup"
+  );
+
+  const sidepanel = read("../js/ui/sidepanel.js");
+  const sidepanelCss = read("../css/sidepanel.css");
+  const popupHtml = read("../popup.html");
+  const newtabCss = read("../css/newtab.css");
+  check(
+    primitives.includes('[data-surface="popup"] .search-box::before') &&
+      primitives.includes('[data-surface="sidepanel"] .search-box::before') &&
+      popupHtml.includes('data-surface="popup"') &&
+      newtabCss.includes(".minimal-deck.is-search-expanded") &&
+      newtabCss.includes("border-color: transparent"),
+    "Search emphasis dims popup and side panel while Minimal removes its redundant outer deck boundary"
+  );
+  check(
+    !sidepanel.includes("createAutomationAwareness") &&
+      sidepanelCss.includes('[data-tablist="labels"][data-compact] .row-chip-slot') &&
+      sidepanelCss.includes("display: none"),
+    "compact Open omits automation awareness and compact Labels omit redundant nested row chips"
   );
 }

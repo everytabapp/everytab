@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Bounded, storage-free JSON fixture format for ephemeral Scheme Lab drafts. */
 import {
   MODES,

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { STORE_KEYS } from "../lib/types.js";
 import { listItems } from "../lib/store.js";
 import { deleteSavedItem } from "../lib/saved-item-actions.js";
@@ -38,7 +41,7 @@ export function createSnapshotsSurface({
       section: "snapshots",
       sessions: snapshots,
       rerender: render,
-      extra: { empty: "First snapshot lands within the configured interval." },
+      extra: { empty: localeMessage("snapshot_empty") },
       renderLabels,
       renderSnoozes,
       goToLabel,

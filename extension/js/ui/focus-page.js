@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * focus-page.js — the same-tab EveryTab Focus guard (focus-mode.md v0.2 §7.4).
  *
@@ -21,13 +24,16 @@ import { initTheme } from "./theme.js";
 import { icon } from "./icons.js";
 import { el } from "./dom.js";
 import { guardView, minutesLabel, pauseCountdownText } from "../lib/focus-copy.js";
-import { applyDocumentLocale, msg as localeMessage } from "../lib/i18n.js";
+import { applyDocumentLocale, applyUiLanguage, msg as localeMessage } from "../lib/i18n.js";
+import { getSettings } from "../lib/store.js";
 import {
   markGuardFocus, captureGuardFocus, restoreGuardFocus, createPauseCountdown
 } from "./focus-page-state.js";
 import { createGuardActionRunner, guardFailureText } from "./focus-page-actions.js";
 import { dashboardHref } from "../lib/newtab-focus.js";
 
+// The chosen interface language must be in place before the guard's first text.
+await applyUiLanguage((await getSettings()).uiLanguage);
 initTheme();
 applyDocumentLocale();
 document.getElementById("mark-wrap")?.append(icon("mark", 40));

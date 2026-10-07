@@ -116,7 +116,7 @@ export function installSmokeChrome(scenario) {
           );
         }
         const win = allWindows().find((entry) => entry.id === windowId);
-        return win ? win.tabs : [];
+        return win ? win.tabs.map((tab) => ({ ...tab, windowId: win.id })) : [];
       },
       get: async (id) => {
         for (const win of allWindows()) {

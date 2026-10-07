@@ -1,3 +1,6 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
 /* ============================================================
    D4 shared semantic primitives.
 
@@ -189,6 +192,118 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   white-space: nowrap;
 }
 .organization-command:hover { color: var(--accent-strong-ink); border-color: var(--accent); }
+/* One in-place Organize disclosure for every Label and Session action picker.
+   The Group catalogue stays inside its searchable entry control; this shell
+   only explains the pending scope and reveals separate member choices. */
+.organization-inline {
+  min-width: 0;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: var(--bw) solid var(--border);
+}
+.organization-inline[hidden], .organization-inline-body[hidden] { display: none; }
+.organization-inline-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.organization-inline-heading > span { min-width: 0; }
+.organization-inline-heading strong {
+  display: block;
+  color: var(--ink);
+  font-size: var(--text-control);
+}
+.organization-inline-copy {
+  display: block;
+  margin-top: 1px;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+.organization-inline-toggle,
+.organization-inline-separate-action button {
+  flex: none;
+  min-height: var(--control-h-compact);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-btn);
+  background: var(--surface-2);
+  color: var(--accent-strong-ink);
+  padding: var(--sp-2) var(--sp-4);
+  font: inherit;
+  font-size: var(--text-meta);
+  font-weight: 650;
+  cursor: pointer;
+}
+.organization-inline-toggle:hover,
+.organization-inline-separate-action button:hover { border-color: var(--accent); }
+.organization-inline-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
+  padding: var(--sp-4);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--surface-2);
+}
+.organization-inline-help {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+}
+.organization-inline-separate { display: grid; gap: var(--sp-4); }
+.organization-inline-entry { min-width: 0; }
+.organization-inline-entry + .organization-inline-entry {
+  padding-top: var(--sp-4);
+  border-top: var(--bw) solid var(--border);
+}
+.organization-inline-entry-label {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.organization-inline-entry-label strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organization-inline-entry-label span {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+}
+.organization-inline-separate-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: var(--bw) solid var(--border);
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+}
+.palette-selected-target {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.palette-selected-target .chip { max-width: 100%; }
+
+@media (max-width: 420px) {
+  .organization-inline-heading,
+  .organization-inline-separate-action { align-items: flex-start; }
+  .organization-inline-entry-label { display: grid; }
+}
 
 @media (max-width: 520px) {
   .organization-row { flex-wrap: wrap; }
@@ -196,10 +311,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .organization-row-actions { flex-basis: 100%; justify-content: flex-end; }
 }
 
-/* Open pointer-drag feedback. Chrome snapshots this compact surface as the
+/* Shared tab-drag feedback. Chrome snapshots this compact surface as the
    native drag image, so the count travels with the pointer instead of living
    only on the source row. */
-.open-drag-preview {
+.tab-drag-preview {
   position: fixed;
   top: 0;
   left: 0;
@@ -223,23 +338,29 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 
 /* A quiet terminal rail directly after the final rendered row communicates the
-   append position without adding another full-height instructional row. Its
-   accessible name carries the instruction; the visible affordance is the line. */
+   append position without adding another full-height instructional row. Keep
+   its hit area inside the final row boundary and paint the line at that area's
+   lower edge. The following new-container target therefore starts on the far
+   side of the line instead of competing with the append gesture. */
 .drop-zone-window-end {
   display: none;
   align-items: center;
   justify-content: center;
-  position: relative;
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
   --drop-end-inset: 10px;
   min-height: 18px;
   padding: 0 var(--drop-end-inset);
+  transform: translateY(-18px);
   background: transparent;
   border: 0;
 }
 .drop-zone-window-end::before {
   content: "";
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: var(--drop-end-inset);
   right: var(--drop-end-inset);
   height: 2px;
@@ -247,9 +368,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   background: var(--border);
 }
 body.tab-dragging [data-tablist="open"] .drop-zone-window-end,
-.drop-zone-window-end.kbd-slot { display: flex; }
+body.inbox-dragging [data-tablist="inbox"] .drop-zone-window-end,
+body.session-dragging [data-tablist="sessions"] .item.drag-home .drop-zone-window-end { display: flex; }
 .drop-zone-window-end.on::before,
-.drop-zone-window-end.kbd-slot:focus-visible::before {
+.drop-zone-window-end:focus-visible::before {
   height: 3px;
   background: var(--accent);
 }
@@ -271,8 +393,20 @@ select:not([multiple]) {
   background-repeat: no-repeat !important;
 }
 select:not([multiple]):focus-visible {
-  outline: 2px solid var(--focus-accent);
-  outline-offset: 2px;
+  outline: none;
+}
+
+/* One focus boundary for typed filters and form fields. Search fields and
+   compound controls own their outer shell and override this low-specificity
+   rule on the inner input. */
+:where(.label-filter, .settings-filter, .inline-input,
+  .setrow input[type="text"], .setrow input[type="search"],
+  .setrow input[type="number"], .setrow input[type="time"],
+  .setrow input[type="datetime-local"], .setrow textarea,
+  .setrow select:not([multiple])):focus {
+  outline: none;
+  border-color: var(--focus-accent);
+  box-shadow: var(--field-focus-shadow);
 }
 
 /* Chip role */
@@ -298,7 +432,7 @@ select:not([multiple]):focus-visible {
 }
 .open-filter-control:has(.open-filter-input:focus) {
   border-color: var(--focus-accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: var(--field-focus-shadow);
 }
 .open-filter-input {
   box-sizing: border-box;
@@ -325,6 +459,17 @@ select:not([multiple]):focus-visible {
   box-shadow: 0 10px 28px rgba(0,0,0,.22);
 }
 .tagmenu.hidden { display: none; }
+.tagmenu[data-combobox-portal] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 20px);
+  max-height: min(280px, 42vh);
+  overflow-y: auto;
+  padding: var(--sp-2);
+  z-index: 1;
+}
+.tagmenu[data-combobox-portal]::backdrop { background: transparent; }
 
 /* Shared active-Focus panel material. Hosts retain their own spacing/type. */
 @property --focus-layout-h {
@@ -339,7 +484,7 @@ select:not([multiple]):focus-visible {
 .focus-strip-layout-inner { min-height: 0; }
 html.focus-layout-transition {
   overflow-anchor: none;
-  transition: --focus-layout-h calc(var(--motion-continuity) + var(--motion-feedback) / 2) var(--ease-out);
+  /* Geometry commits once; Focus animates its own reveal and the following content. */
 }
 .focus-strip {
   position: relative;
@@ -468,6 +613,28 @@ html.focus-layout-transition {
    dimensions: field height, input type scale, and max width.
    ============================================================ */
 .search-box { position: relative; width: 100%; }
+/* Minimal and the two compact hosts share Dashboard's visual Search emphasis.
+   The input/results stay above the tint, with no new hit target, focus trap,
+   or query state. */
+.minimal-horizon .search-box,
+[data-surface="popup"] .search-box,
+[data-surface="sidepanel"] .search-box { z-index: 1; }
+.minimal-horizon .search-box::before,
+[data-surface="popup"] .search-box::before,
+[data-surface="sidepanel"] .search-box::before {
+  content: ""; position: fixed; inset: 0; z-index: -1;
+  pointer-events: none; opacity: 0;
+  background: color-mix(in srgb, var(--shadow-ink) 26%, transparent);
+  transition: opacity var(--motion-reveal) var(--ease-out);
+}
+.minimal-horizon .search-box:focus-within:has(.search-results:not(:empty))::before,
+[data-surface="popup"] .search-box:focus-within:has(.search-results:not(:empty))::before,
+[data-surface="sidepanel"] .search-box:focus-within:has(.search-results:not(:empty))::before { opacity: 1; }
+[data-mode="dark"] .minimal-horizon .search-box::before,
+[data-mode="dark"] [data-surface="popup"] .search-box::before,
+[data-mode="dark"] [data-surface="sidepanel"] .search-box::before {
+  background: color-mix(in srgb, var(--shadow-ink) 46%, transparent);
+}
 .search-field {
   display: flex;
   align-items: center;
@@ -478,8 +645,7 @@ html.focus-layout-transition {
   border: var(--bw) solid var(--border);
   border-radius: var(--r-search);
   box-shadow: var(--shadow-1);
-  transition: box-shadow var(--motion-feedback) var(--ease-out),
-              border-color var(--motion-feedback) var(--ease-out);
+  transition: box-shadow var(--motion-feedback) var(--ease-out);
 }
 .search-field:focus-within {
   border-color: var(--focus-accent);
@@ -502,9 +668,13 @@ html.focus-layout-transition {
 .scope-chip-host {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   min-width: 0;
-  max-width: min(56%, 240px);
+  max-width: min(72%, 480px);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.scope-chip-host::-webkit-scrollbar { display: none; }
 /* A scope can legitimately be a very long label or Session name. Keep its
    removal control in sight and let only the descriptive part give way. The
    compound selector deliberately outranks the compact hosts' generic .chip
@@ -513,7 +683,8 @@ html.focus-layout-transition {
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(180px, 42vw);
+  flex: none;
   min-height: 28px;
   margin: 0;
   padding-block: 2px;
@@ -575,26 +746,61 @@ html.focus-layout-transition {
    results open, the two nodes form one accented top-to-bottom boundary. */
 .search-box:has(.search-results:not(:empty)) .search-field {
   border-radius: var(--shape-search) var(--shape-search) 0 0;
-  border-bottom-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 .search-box:has(.search-results:not(:empty)) .search-results {
-  border-top: var(--bw) solid var(--border);
+  top: 100%;
+  border-color: transparent;
+  box-shadow: none;
 }
 
-/* Search remains non-modal, but while its result surface is open the field and
-   overlay read as one accented command boundary instead of two nearby cards. */
-.search-box:has(.search-results:not(:empty)):focus-within .search-field,
-.search-box:has(.search-results:not(:empty)):focus-within .search-results {
+/* Popup, Side panel, and Minimal use one physical contour around the measured
+   field plus overlay. The field and results keep their own opaque material,
+   while this pointer-transparent node owns every outer curve, edge, shadow,
+   and focus ring. There is therefore no painted junction to reconcile. */
+.search-connected-boundary {
+  display: none;
+  position: absolute;
+  z-index: 31;
+  inset-block-start: 0;
+  inset-inline: 0;
+  block-size: calc(var(--search-field-block-size, 0px) +
+    var(--search-results-block-size, 0px));
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-search);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+}
+.search-box:has(.search-results:not(:empty)) > .search-connected-boundary {
+  display: block;
+}
+.search-box:has(.search-results:not(:empty)):focus-within > .search-connected-boundary {
   border-color: var(--focus-accent);
   box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-1);
 }
-.search-box:has(.search-results:not(:empty)):focus-within .search-field {
-  border-bottom-color: transparent;
-  clip-path: inset(-5px -5px 0 -5px);
+
+/* The compact Search hosts share Dashboard's inset junction line. A physical
+   top border spans the rounded shell and produces a small cut at either edge. */
+.search-box:has(.search-results:not(:empty)) .search-results::before {
+  content: "";
+  position: sticky;
+  z-index: 1;
+  inset-block-start: 0;
+  display: block;
+  block-size: var(--bw);
+  margin-inline: var(--search-inset, 10px);
+  margin-block-end: calc(-1 * var(--bw));
+  background: var(--border);
+  pointer-events: none;
 }
+
+/* Search remains non-modal. While its result surface is open, the shared
+   boundary above is the sole visible contour. */
+.search-box:has(.search-results:not(:empty)):focus-within .search-field,
 .search-box:has(.search-results:not(:empty)):focus-within .search-results {
-  border-top-color: var(--border);
-  clip-path: inset(0 -5px -5px -5px);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .search-option-list { min-width: 0; }
@@ -602,13 +808,28 @@ html.focus-layout-transition {
 /* The divider is visual only. Its group structure stays valid for a listbox:
    suggestion and result options are never interrupted by a separator role. */
 .search-option-group.has-separator {
+  position: relative;
   margin-block-start: var(--sp-1);
   padding-block-start: var(--sp-1);
-  border-block-start: var(--bw) solid var(--border);
+  border-block-start: 0;
 }
 
 .search-recent {
-  border-top: var(--bw) solid var(--border);
+  position: relative;
+  border-top: 0;
+}
+
+/* Every internal Search divider uses the same inset stroke. A full-width
+   border touches the rounded shell and creates a visible notch at its ends. */
+.search-option-group.has-separator::before,
+.search-recent::before {
+  content: "";
+  position: absolute;
+  inset-inline: var(--search-inset, 10px);
+  inset-block-start: 0;
+  block-size: var(--bw);
+  background: var(--border);
+  pointer-events: none;
 }
 
 .search-recent-label {
@@ -661,6 +882,133 @@ html.focus-layout-transition {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Labels uses the same selection grammar as Search: removable exact facets in
+   the field, with a keyboard/pointer suggestion ledger in the browser top
+   layer. The ledger cannot be clipped by sticky section or list overflow. */
+.label-facet-wrap { position: relative; flex: 1; min-width: 150px; }
+.label-facet-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 3px 5px;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--ink);
+}
+.label-facet-field:focus-within {
+  border-color: var(--focus-accent);
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.label-facet-wrap .label-facet-field .label-filter {
+  flex: 1;
+  min-width: 70px;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.label-facet-wrap .label-facet-field .label-filter:focus { border: 0; box-shadow: none; }
+.label-facet-token {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 150px;
+  min-height: 24px;
+  padding-inline-start: 7px;
+  border-radius: var(--shape-keeper);
+  background: var(--accent-soft);
+  color: var(--accent-soft-ink);
+  font-size: 12px;
+}
+.label-facet-token-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.label-facet-token .x {
+  flex: none;
+  inline-size: 22px;
+  min-block-size: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.label-facet-token .x:hover { background: var(--danger-bg); color: var(--ink); }
+.label-facet-token .x:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 1px; }
+.label-facet-suggestions {
+  position: fixed;
+  z-index: 1000;
+  inset: auto;
+  width: auto;
+  max-height: min(280px, 40vh);
+  overflow-y: auto;
+  margin: 0;
+  padding-block: 4px;
+  border: var(--bw) solid var(--border);
+  border-radius: var(--shape-panel);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+  font: inherit;
+}
+.label-facet-suggestions::backdrop { background: transparent; }
+.label-facet-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.label-facet-option:hover,
+.label-facet-option.active { background: var(--nav-hover); }
+.label-facet-option.is-selected {
+  background: var(--accent-soft);
+  color: var(--accent-soft-ink);
+  font-weight: 650;
+}
+.label-facet-option.is-selected.active { box-shadow: inset 3px 0 0 var(--accent); }
+.label-facet-option-check {
+  display: inline-flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-weight: 750;
+}
+.label-facet-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.label-chip-line-label {
+  flex: none;
+  padding-block: 4px;
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+}
+.label-facet-option:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: -3px; }
 .ghost-chip:hover .ghost-value { color: var(--ink); }
 
 /* Search's link-like recovery action remains a compact inline control even on
@@ -783,6 +1131,7 @@ html.focus-layout-transition {
               transform var(--motion-reveal) var(--ease-out);
 }
 .tooltip.show { opacity: 1; transform: none; }
+.tooltip.instant { transition: none; }
 
 /* Shared keyboard focus state. More specific row/field rules remain host-owned. */
 :where(button, a[href], summary, [tabindex]):focus-visible {

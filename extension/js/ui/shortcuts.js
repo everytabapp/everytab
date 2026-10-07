@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F4 — the one keyboard-shortcut table. The `?` overlay and the Settings list
  * both render from `SHORTCUTS` (in-page keys), so the two can never drift.
@@ -17,6 +20,7 @@ export const SHORTCUTS = [
     group: msg("shortcuts_group_search"),
     items: [
       { keys: ["/"], desc: msg("shortcuts_search_focus") },
+      { keys: ["f"], desc: msg("shortcuts_open_filter_focus") },
       { keys: ["↑", "↓", "←", "→"], desc: msg("shortcuts_arrows_enter_list") },
       { keys: ["↑", "↓"], desc: msg("shortcuts_move_results") },
       { keys: ["Enter"], desc: msg("shortcuts_open_result") },
@@ -38,13 +42,17 @@ export const SHORTCUTS = [
       { keys: ["↑", "↓"], desc: msg("shortcuts_move_rows") },
       { keys: ["Enter"], desc: msg("shortcuts_open_row") },
       { keys: ["x"], desc: msg("shortcuts_select_row") },
+      { keys: ["b"], desc: msg("shortcuts_star_row") },
       { keys: ["r"], desc: msg("shortcuts_restore_row") },
       { keys: ["l"], desc: msg("shortcuts_label_row") },
       { keys: ["s"], desc: msg("shortcuts_snooze_row") },
       { keys: ["d"], desc: msg("shortcuts_delete_row") },
+      { keys: ["w"], desc: msg("shortcuts_close_open_row") },
       { keys: ["a"], desc: msg("shortcuts_archive_row") },
       { keys: ["i"], desc: msg("shortcuts_save_row") },
-      { keys: ["z"], desc: msg("shortcuts_suspend_row") }
+      { keys: ["t"], desc: msg("shortcuts_session_row") },
+      { keys: ["z"], desc: msg("shortcuts_suspend_row") },
+      { keys: ["p"], desc: msg("action_protect") }
     ]
   },
   {
@@ -55,6 +63,8 @@ export const SHORTCUTS = [
       { keys: ["c"], desc: msg("shortcuts_copy_card") },
       { keys: ["l"], desc: msg("shortcuts_label_card") },
       { keys: ["i"], desc: msg("shortcuts_save_card") },
+      { keys: ["t"], desc: msg("shortcuts_session_card") },
+      { keys: ["p"], desc: msg("action_protect") },
       { keys: ["d"], desc: msg("shortcuts_delete_card") }
     ]
   }
@@ -69,6 +79,7 @@ export const SHORTCUTS = [
  */
 export const COMMAND_LABELS = {
   "open-search-popup": msg("command_search_description"),
+  "open-popup": msg("command_popup_description"),
   "open-dashboard": msg("command_dashboard_description"),
   "open-side-panel": msg("command_side_panel_description"),
   "dump-window": msg("command_save_window_description"),
@@ -134,7 +145,7 @@ export async function renderBrowserCommands() {
     commands = (await chrome.commands.getAll()) || [];
   } catch { /* not an extension page / API absent — degrade to the button only */ }
   // Keep a stable, meaningful order regardless of what getAll returns.
-  const ORDER = ["open-search-popup", "open-dashboard", "open-side-panel", "dump-window", "dump-tab", "snooze-tab", "suspend-tab"];
+  const ORDER = ["open-search-popup", "open-popup", "open-dashboard", "open-side-panel", "dump-window", "dump-tab", "snooze-tab", "suspend-tab"];
   const byName = new Map(commands.map((c) => [c.name, c]));
   const names = [...ORDER.filter((n) => byName.has(n)), ...commands.map((c) => c.name).filter((n) => !ORDER.includes(n))];
 

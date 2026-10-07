@@ -1,3 +1,6 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
   /* ---- shell (D4-3a: one navigation model, three responsive presentations) ----
      `data-nav` is resolved once, in js/lib/nav-mode.js, from the remembered
      `uiSidebarCollapsed` preference plus the two measured viewport boundaries
@@ -84,6 +87,11 @@
              transition: background var(--motion-feedback) var(--ease-out),
                          color var(--motion-feedback) var(--ease-out),
                          transform var(--motion-feedback) var(--ease-out); }
+  [data-nav="expanded"] .sidebar .navitem {
+    min-height: 32px;
+    padding-block: var(--sp-2);
+    line-height: 1.25;
+  }
   /* Hover stays quieter than the current section in both emphasis modes. */
   .navitem:hover { background: var(--nav-hover); color: var(--ink); }
   .navitem.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
@@ -102,6 +110,15 @@
   .navitem .n { margin-left: auto; font-size: 12px; color: var(--ink-3);
                 font-variant-numeric: tabular-nums; }
   .navitem.active .n { color: var(--accent-soft-ink); }
+  /* Keyboard focus stays inside the nav item, so it remains visible in the
+     clipped sub-navigation and reads separately from the selected fill. */
+  .sidebar .navitem:focus-visible {
+    outline: 2px solid var(--focus-accent);
+    outline-offset: -2px;
+  }
+  [data-emphasis="bold"] .sidebar .navitem.active:focus-visible {
+    outline-color: var(--accent-ink);
+  }
   /* The glyph is small; its hit target is not (24px minimum). */
   .navitem .twist { transition: transform var(--motion-reveal) var(--ease-out); font-size: 11px;
                     color: var(--ink-3); display: inline-grid; place-items: center;
@@ -110,10 +127,8 @@
   .navitem .twist:hover { background: var(--nav-hover); color: var(--ink); }
   .sec-inner { padding: 0 0 8px; }
   .navgroup.open > .navitem .twist { transform: rotate(90deg); }
-  /* D4-4: the fold is instant. Animating `grid-template-rows` animates LAYOUT,
-     which the approved vocabulary rejects for routine rendering, and it ran at
-     220-300ms, over the 200ms ceiling. Opening a nav group is a disclosure, not
-     a story. */
+  /* Normal renders use the final grid state. Explicit toggles hand a measured
+     block size to disclosure-motion.js for the short expand/shrink cue. */
   .subnav { overflow: hidden; display: grid; grid-template-rows: 0fr; }
   .navgroup.open > .subnav { grid-template-rows: 1fr; }
   .subnav > div { min-width: 0; min-height: 0; }
@@ -141,6 +156,7 @@
   .subrow .subact:hover { background: var(--nav-hover); color: var(--accent-strong-ink); }
   .navlabel { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
               color: var(--accent-strong-ink); padding: 16px 10px 4px; }
+  [data-nav="expanded"] .side-scroll > .nav + .navlabel { padding-top: 24px; }
   /* Always-available footer. It is a flex sibling of the scrolling nav rather
      than a sticky overlay, so it needs no opaque patch and stays correct on the
      translucent gradient background. */
@@ -272,6 +288,20 @@
                             0 10px 26px color-mix(in srgb, var(--shadow-ink) 10%, transparent);
                 transition: box-shadow var(--motion-feedback) var(--ease-out),
                             border-color var(--motion-feedback) var(--ease-out); }
+  /* Search stays in its original DOM and sticky geometry. Its backdrop is
+     visual only: outside clicks and keyboard navigation keep their owners. */
+  .hero-panel { z-index: 1; }
+  .hero-top::before {
+    content: ""; position: fixed; inset: 0; z-index: 0;
+    pointer-events: none; opacity: 0;
+    background: color-mix(in srgb, var(--shadow-ink) 26%, transparent);
+    transition: opacity var(--motion-reveal) var(--ease-out);
+  }
+  .hero-top:has(.hero-panel:focus-within .search-results:not(:empty)) { z-index: 26; }
+  .hero-top:has(.hero-panel:focus-within .search-results:not(:empty))::before { opacity: 1; }
+  [data-mode="dark"] .hero-top::before {
+    background: color-mix(in srgb, var(--shadow-ink) 46%, transparent);
+  }
   /* Dark schemes put `--surface` close to the page, so the floating panel takes
      the next material step up and a slightly firmer edge. Both are already
      contrast-audited surfaces, so the text on them is unchanged. */
@@ -325,7 +355,7 @@
     z-index: 30;
     top: calc(100% - var(--bw));
     inset-inline: calc(-1 * var(--bw));
-    overflow: clip;
+    overflow: visible;
     border: var(--bw) solid var(--border);
     border-radius: 0 0 var(--shape-search) var(--shape-search);
     background: var(--surface);
@@ -334,6 +364,10 @@
       0 18px 38px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
   }
   .hero-search-overlay:has(.search-results:not(:empty)) { display: block; }
+  .hero-search-overlay.is-search-opening .hero-search-content {
+    block-size: 100%; overflow: clip;
+    border-radius: 0 0 var(--shape-search) var(--shape-search);
+  }
   [data-mode="dark"] .hero-search-overlay {
     background: var(--surface-2);
     border-color: color-mix(in srgb, var(--ink) 20%, var(--border));
@@ -349,6 +383,9 @@
     background: transparent;
     box-shadow: none;
   }
+  /* Dashboard's non-scrolling overlay owns this divider one level higher so
+     it remains fixed while a long result list scrolls. */
+  .hero-search-overlay .search-results::before { content: none; }
   [data-mode="dark"] .hero-panel .search-results {
     border-top-color: color-mix(in srgb, var(--ink) 20%, var(--border));
   }
@@ -357,31 +394,59 @@
   .hero-panel .ghost-chips { min-height: var(--cmd-row-h); }
   .hero-panel .ghost-hint { line-height: 1; }
   .hero-panel:has(.search-results:not(:empty)) {
+    border-color: transparent;
+    /* The expanded shell owns the only lower corners. Keeping the closed
+       field's lower radii here leaves two pale inward notches above the first
+       divider, even though the outer outline is continuous. */
     border-radius: var(--shape-search) var(--shape-search) 0 0;
-    border-bottom-color: transparent;
+    box-shadow: none;
   }
   .hero-panel:has(.search-results:not(:empty)) .hero-search-overlay {
-    border-top-color: var(--border);
+    border-color: transparent;
+    box-shadow: none;
+    clip-path: none;
+  }
+  /* One pseudo-element draws the complete expanded Search shell. It reaches
+     from the overlay back over the fixed field, so there is no field/overlay
+     join to antialias and no rectangular clip around the rounded shadow. */
+  .hero-panel:has(.search-results:not(:empty)) .hero-search-overlay::before {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    inset-inline: 0;
+    inset-block-start: calc(-1 * var(--cmd-row-h));
+    inset-block-end: 0;
+    border: var(--bw) solid var(--border);
+    border-radius: var(--shape-search);
+    box-shadow:
+      0 2px 6px color-mix(in srgb, var(--shadow-ink) 12%, transparent),
+      0 18px 38px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+    pointer-events: none;
+  }
+  /* The first divider belongs to the overlay and follows the same inset stroke
+     as every later Search separator. It never reaches the outer shell. */
+  .hero-panel:has(.search-results:not(:empty)) .hero-search-overlay::after {
+    content: "";
+    position: absolute;
+    z-index: 3;
+    inset-inline: var(--cmd-inset);
+    inset-block-start: 0;
+    block-size: var(--bw);
+    background: var(--border);
+    pointer-events: none;
+  }
+  .hero-panel:has(.search-results:not(:empty)) .search-field {
+    position: relative;
   }
   /* Being open is its own affordance, and a ring around a panel that now
      contains the results would be a very large loop. */
   .hero-panel:has(.search-results:not(:empty)):focus-within {
-    border-color: var(--focus-accent);
-    border-bottom-color: transparent;
-    box-shadow: -4px 0 0 -1px var(--focus-ring),
-                4px 0 0 -1px var(--focus-ring),
-                0 -4px 0 -1px var(--focus-ring),
-                0 2px 5px color-mix(in srgb, var(--shadow-ink) 10%, transparent),
-                0 12px 30px color-mix(in srgb, var(--shadow-ink) 12%, transparent);
+    border-color: transparent;
+    box-shadow: none;
   }
   [data-mode="dark"] .hero-panel:has(.search-results:not(:empty)):focus-within {
-    border-color: var(--focus-accent);
-    border-bottom-color: transparent;
-    box-shadow: -4px 0 0 -1px var(--focus-ring),
-                4px 0 0 -1px var(--focus-ring),
-                0 -4px 0 -1px var(--focus-ring),
-                0 2px 5px color-mix(in srgb, var(--shadow-ink) 36%, transparent),
-                0 14px 34px color-mix(in srgb, var(--shadow-ink) 44%, transparent);
+    border-color: transparent;
+    box-shadow: none;
   }
   /* Once its results connect to the panel, the usual panel-wide focus ring
      would outline a much larger object. Keep keyboard focus unmistakable on
@@ -391,12 +456,21 @@
     box-shadow: none;
   }
   .hero-panel:has(.search-results:not(:empty)):focus-within .hero-search-overlay {
+    border-color: transparent;
+    box-shadow: none;
+    clip-path: none;
+  }
+  .hero-panel:has(.search-results:not(:empty)):focus-within .hero-search-overlay::before {
     border-color: var(--focus-accent);
-    border-top-color: var(--border);
-    box-shadow: -4px 0 0 -1px var(--focus-ring),
-      4px 0 0 -1px var(--focus-ring),
-      0 4px 0 -1px var(--focus-ring),
+    box-shadow: 0 0 0 3px var(--focus-ring),
+      0 2px 6px color-mix(in srgb, var(--shadow-ink) 12%, transparent),
       0 18px 38px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+  }
+  [data-mode="dark"]
+    .hero-panel:has(.search-results:not(:empty)):focus-within .hero-search-overlay::before {
+    box-shadow: 0 0 0 3px var(--focus-ring),
+      0 2px 6px color-mix(in srgb, var(--shadow-ink) 34%, transparent),
+      0 18px 38px color-mix(in srgb, var(--shadow-ink) 44%, transparent);
   }
   /* The Starred rail uses the same neutral placeholder as the former chips. */
   .cmd-fav-blank { background: var(--surface); border: var(--bw) solid var(--border); }
@@ -413,9 +487,10 @@
   /* The layout track itself reveals this borderless material while it opens
      and conceals it while it closes. Its two restrained inset shadows make
      the new band read as a shallow recess, without reviving a rail or glow. */
-  .hero .focus-strip-layout::before {
+  .hero .focus-strip-layout-inner::before {
     content: "";
     position: absolute;
+    z-index: -1;
     inset: var(--sp-8) 0 0;
     pointer-events: none;
     background: var(--focus-recess-bg);
@@ -506,9 +581,10 @@
 
   /* N15: explanation shares the identity line. The middle dot is a quiet
      reading cue, not a breadcrumb; overflow ellipsizes before actions move. */
-  /* F10 — quiet idle-window nudge on Open-tabs headers (a gentle amber, not an alarm) */
-  .idle-nudge { color: var(--ink); background: var(--warn-bg); border-radius: var(--r-mini);
-                padding: 2px 7px; margin-left: 2px; }
+  /* F10 — quiet context in the window header, not a warning or a second action. */
+  .idle-nudge { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3);
+                background: transparent; padding: 1px 2px; margin-left: 2px; white-space: nowrap; }
+  .idle-nudge svg { flex: 0 0 auto; opacity: .8; }
   .sec-tagline { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
   .sec-tagline::before { content: "·"; margin-right: var(--sp-3); }
@@ -566,9 +642,12 @@
   /* P2g-4a: between-windows "new window" zone — exists only while a tab drag
      is live (body.tab-dragging), highlights on hover. No transitions, so it
      needs no reduced-motion exemption. */
-  .drop-zone-new { display: none; margin: 6px 0; padding: 7px 10px;
+  .drop-zone-new { display: none; position: absolute; z-index: 4; box-sizing: border-box;
+    top: 0; left: var(--sp-4); right: var(--sp-4); height: 30px; margin: 0;
+    padding: 4px 10px; transform: translateY(calc(-50% - 1px));
     border: 1.5px dashed var(--border); border-radius: var(--shape-card);
-    color: var(--ink-3); font-size: 12px; text-align: center; }
+    color: var(--ink-3); background: var(--surface); box-shadow: var(--shadow-1);
+    font-size: 12px; text-align: center; }
   /* zones reveal only in the section whose drag is live (P2g-4b: an Inbox
      drag must not surface the Open-tabs zones, or vice versa).
      P2g-4c: session zones only inside the dragged row's OWN card (.drag-home) —
@@ -576,12 +655,13 @@
   body.tab-dragging [data-tablist="open"] .drop-zone-new,
   body.inbox-dragging [data-tablist="inbox"] .drop-zone-new,
   body.session-dragging [data-tablist="sessions"] .item.drag-home .drop-zone-new { display: block; }
-  /* P2g-4d: keyboard move — the highlighted target slot; a highlighted zone
-     becomes visible regardless of any drag body class. No transitions. */
-  .move-handle { cursor: grab; }
-  .kbd-slot { outline: 2px solid var(--focus-accent); outline-offset: 1px;
-    border-radius: var(--shape-focus); }
-  .drop-zone-new.kbd-slot { display: block; }
+  /* A Session window puts both destinations at one inner boundary, so its
+     dashed new-window target begins on the far side. Open and Inbox keep that
+     target centred in their wider between-card gap; the inward terminal rail
+     no longer overlaps either arrangement. */
+  body.session-dragging [data-tablist="sessions"] .item.drag-home .drop-zone-new {
+    transform: translateY(0);
+  }
   .drop-zone-new.on { border-color: var(--accent); color: var(--accent-soft-ink);
     background: var(--accent-soft); }
   .trow[draggable="true"] { cursor: grab; }
@@ -605,7 +685,7 @@
   .snooze-tablist a { font-size: 12px; color: var(--ink-2); overflow: hidden;
                       text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
 
-  /* quick theme controls + scheme popover */
+  /* quick theme controls + bottom scheme sheet */
   .quick-theme { display: inline-flex; align-items: center; gap: 4px; }
   .mode-switch { display: inline-flex; gap: 1px; padding: 2px; background: var(--surface-2);
                  border: var(--bw) solid var(--border); border-radius: var(--r-btn); }
@@ -615,48 +695,139 @@
   .mode-choice.on { color: var(--accent-strong-ink); background: var(--surface);
                     box-shadow: var(--shadow-1); }
   .quick-theme > .gear { margin-left: 0; width: 30px; height: 30px; min-width: 30px; }
-  .theme-quadrants { grid-column: 1 / -1; display: grid;
-                     grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .theme-quadrant { min-width: 0; padding: 6px 6px 8px; }
-  .theme-quadrant:nth-child(even) { border-left: var(--bw) solid var(--border); }
-  .theme-quadrant:nth-child(n + 3) { border-top: var(--bw) solid var(--border); padding-top: 10px; }
-  .theme-group-label { margin: 0; padding: 0 2px 6px; color: var(--accent-strong-ink);
-                       font-size: 11px; font-weight: 700; line-height: 1.25; }
-  .theme-quadrant-options { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .theme-custom-group { grid-column: 1 / -1; margin-top: 4px; padding: 10px 6px 3px;
-                        border-top: var(--bw) solid var(--border); }
-  .theme-custom-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-                          gap: 3px 20px; min-width: 0; }
-  .theme-manage { grid-column: 1 / -1; width: 100%; margin-top: 5px; padding: 8px 10px; text-align: left;
-                  color: var(--accent-strong-ink); background: transparent;
-                  border: none; border-top: var(--bw) solid var(--border); cursor: pointer; }
-  .theme-manage:hover { background: var(--accent-soft); }
   button.mini2.on { color: var(--accent-soft-ink); background: var(--accent-soft); font-weight: 600; }
-  .theme-pop { position: fixed; z-index: 40;
-               background: var(--surface); border: var(--bw) solid var(--border);
-               border-radius: var(--r-card); box-shadow: 0 14px 38px rgba(0,0,0,.28);
-               padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0;
-               overflow-y: auto; }
-  .theme-pop.hidden { display: none; }
-  .theme-opt-row { display: flex; min-width: 0; overflow: hidden; border-radius: var(--shape-nav); }
+  /* The catalogue is a persistent non-modal sheet. It covers only the content
+     column, never reflows the page, and leaves the complete navigation plus the
+     original palette trigger visible. Its stable height prevents favorite and
+     selection changes from moving the sheet edge under the pointer. */
+  .theme-pop { position: fixed; z-index: 45;
+               left: var(--nav-w, 204px); right: 0; bottom: 0;
+               width: auto; height: min(520px, calc(100vh - 72px));
+               min-width: 0; min-height: 280px; display: flex; flex-direction: column;
+               overflow: hidden; background: var(--side-bg); color: var(--ink);
+               border: var(--bw) solid var(--border); border-bottom: 0;
+               border-radius: var(--shape-panel) var(--shape-panel) 0 0;
+               box-shadow: 0 -18px 48px
+                 color-mix(in srgb, var(--shadow-ink) 22%, transparent);
+               transform: translate3d(0, 0, 0); opacity: 1; visibility: visible; }
+  .theme-pop::before { content: ""; position: absolute; z-index: 2;
+                       top: calc(-1 * var(--bw)); left: 0; right: 0; height: 2px;
+                       background: var(--accent); transform: scaleX(1);
+                       transform-origin: center; opacity: .9; }
+  .theme-pop.opening { animation: theme-sheet-in var(--motion-continuity) var(--ease-out) both; }
+  .theme-pop.opening::before { animation: theme-sheet-rail-in var(--motion-continuity) var(--ease-out) both; }
+  .theme-pop.closing { pointer-events: none;
+                       animation: theme-sheet-out var(--motion-continuity) var(--ease-out) both; }
+  .theme-pop.closing::before { animation: theme-sheet-rail-out var(--motion-reveal) var(--ease-out) both; }
+  .theme-pop.hidden { pointer-events: none; visibility: hidden; opacity: 0;
+                      transform: translate3d(0, calc(100% + 18px), 0); }
+  .theme-pop.hidden::before { transform: scaleX(.12); opacity: 0; }
+  @keyframes theme-sheet-in {
+    from { transform: translate3d(0, calc(100% + 18px), 0); opacity: 0; }
+    to { transform: translate3d(0, 0, 0); opacity: 1; }
+  }
+  @keyframes theme-sheet-out {
+    from { transform: translate3d(0, 0, 0); opacity: 1; }
+    to { transform: translate3d(0, calc(100% + 18px), 0); opacity: 0; }
+  }
+  @keyframes theme-sheet-rail-in {
+    from { transform: scaleX(.12); opacity: 0; }
+    to { transform: scaleX(1); opacity: .9; }
+  }
+  @keyframes theme-sheet-rail-out {
+    from { transform: scaleX(1); opacity: .9; }
+    to { transform: scaleX(.12); opacity: 0; }
+  }
+  .theme-sheet-head { flex: none; min-height: 66px; display: flex; align-items: center;
+                      gap: 16px; padding: 10px 18px;
+                      border-bottom: var(--bw) solid var(--border); }
+  .theme-sheet-head h2 { flex: none; margin: 0; font-size: 15px; line-height: 1.25; }
+  .theme-current { min-width: 0; display: grid;
+                   grid-template-columns: 34px minmax(0, 1fr);
+                   align-items: center; gap: 9px; }
+  .theme-current-swatch { width: 34px; height: 34px; border-radius: var(--shape-control);
+                          border: var(--bw) solid color-mix(in srgb, var(--ink) 18%, transparent); }
+  .theme-current-copy { min-width: 0; display: grid; gap: 1px; }
+  .theme-current-copy strong { min-width: 0; overflow-wrap: anywhere; font-size: 12.5px; }
+  .theme-current-copy span { color: var(--ink-3); font-size: 10px; line-height: 1.3; }
+  .theme-sheet-settings { min-width: 0; margin-left: auto; display: flex;
+                          align-items: center; justify-content: flex-end; gap: 18px; }
+  .theme-sheet-setting { min-width: 0; display: flex; align-items: center; gap: 6px;
+                         color: var(--ink-3); font-size: 10px; font-weight: 650;
+                         white-space: nowrap; }
+  .theme-sheet-select { min-width: 92px; min-height: 32px; padding: 5px 27px 5px 8px;
+                        border: var(--bw) solid var(--border);
+                        border-radius: var(--shape-control); background-color: var(--surface);
+                        color: var(--ink-2); font: inherit; font-size: 11px; cursor: pointer; }
+  .theme-sheet-select:focus-visible { outline: 2px solid var(--focus-accent);
+                                      outline-offset: 1px; }
+  .theme-sheet-actions { flex: none; display: flex;
+                         align-items: center; gap: 6px; }
+  .theme-close { width: 34px; height: 34px; display: grid; place-items: center;
+                 padding: 0; border: 0; border-radius: var(--shape-control);
+                 background: transparent; color: var(--ink-2); cursor: pointer; }
+  .theme-close:hover { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .theme-takeover-scroll { min-height: 0; flex: 1; overflow: auto;
+                           overscroll-behavior: contain; scrollbar-gutter: stable;
+                           display: grid; grid-template-columns: minmax(180px, .82fr) minmax(0, 4fr);
+                           align-items: start; gap: 18px; padding: 13px 18px 18px; }
+  .theme-first-column, .theme-catalogue { min-width: 0; }
+  .theme-first-column { display: grid; align-content: start; gap: 14px; }
+  .theme-custom-section { padding-top: 12px; border-top: var(--bw) solid var(--border); }
+  .theme-section-title { margin: 0; padding: 0 4px 7px;
+                         color: var(--accent-strong-ink); font-size: 10px;
+                         font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+  .theme-favorites-list, .theme-group-options { display: flex; flex-direction: column;
+                                                gap: 1px; min-width: 0; }
+  .theme-empty-favorites { margin: 0; padding: 3px 4px 7px; color: var(--ink-3);
+                           font-size: 11px; line-height: 1.4; }
+  .theme-groups-grid { display: grid; grid-template-columns: repeat(4, minmax(145px, 1fr));
+                       align-items: start; gap: 14px; min-width: 0; }
+  .theme-group { min-width: 0; }
+  .theme-group-label { margin: 0; padding: 0 4px 5px; color: var(--ink-3);
+                       font-size: 10px; font-weight: 700; line-height: 1.25; }
+  .theme-opt-row { display: flex; min-width: 0; align-items: stretch;
+                   border-radius: var(--shape-nav); }
   .theme-opt { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; border: none; background: none;
-               padding: 6px 8px; border-radius: var(--shape-nav); font-size: 12.5px; color: var(--ink-2);
-               cursor: pointer; text-align: left; overflow: hidden; }
+               min-height: 30px; padding: 4px 6px; border-radius: var(--shape-nav);
+               font-size: 12px; color: var(--ink-2); cursor: pointer; text-align: left; }
   .theme-opt:hover { background: var(--accent-soft); color: var(--accent-soft-ink); }
   .theme-opt.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
   .theme-opt .sw { width: 12px; height: 12px; min-width: 12px; border-radius: 50%; }
-  .theme-opt-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .theme-star { width: 28px; flex: none; border: none; background: none; color: var(--ink-3);
-                border-radius: var(--shape-nav); cursor: pointer; font-size: 14px; }
+  .theme-opt-label { min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+  .theme-current-mark { margin-left: auto; color: var(--accent-strong-ink);
+                        font-size: 9px; font-weight: 700; white-space: nowrap; }
+  .theme-star { width: 28px; height: 30px; min-height: 30px; flex: none;
+                display: grid; place-items: center; padding: 0; border: none;
+                background: none; color: var(--ink-3); border-radius: var(--shape-nav);
+                cursor: pointer; line-height: 0; text-align: center; }
+  .theme-star .ic { display: block; margin: 0; }
+  .theme-star.on .ic { fill: currentColor; }
   .theme-star:hover, .theme-star.on { color: var(--accent-soft-ink); background: var(--accent-soft); }
+  .theme-manage { min-height: 34px; padding: 7px 10px; text-align: left;
+                  color: var(--accent-strong-ink); background: transparent;
+                  border: none; border-radius: var(--shape-control); cursor: pointer; }
+  .theme-manage:hover { background: var(--accent-soft); }
+  [data-nav="header"] .theme-pop { left: 0; }
+  @media (max-width: 1080px) {
+    .theme-sheet-setting > span { display: none; }
+    .theme-takeover-scroll { grid-template-columns: minmax(160px, .72fr) minmax(0, 2fr); }
+    .theme-groups-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+  }
+  @media (max-width: 700px) {
+    .theme-pop { height: min(560px, calc(100vh - 64px)); }
+    .theme-sheet-head { gap: 10px; padding-inline: 12px; }
+    .theme-current-copy span, .theme-manage, .theme-sheet-settings { display: none; }
+    .theme-takeover-scroll { grid-template-columns: 1fr; gap: 14px; padding-inline: 12px; }
+    .theme-groups-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 12px; }
+  }
 
   /* undo toast + session drift */
   .toast { position: fixed; left: 20px; bottom: 20px; z-index: 80;
            display: flex; gap: 10px; align-items: center;
            background: var(--surface); color: var(--ink);
            border: var(--bw) solid var(--border); border-radius: var(--r-card);
-           box-shadow: 0 14px 38px rgba(0,0,0,.3); padding: 11px 16px; font-size: 13.5px;
-           animation: toast-in var(--motion-continuity) var(--ease-out); }
+           box-shadow: 0 14px 38px rgba(0,0,0,.3); padding: 11px 16px; font-size: 13.5px; }
   /* sync-failure alert variant is supplied by the shared feedback primitive. */
   @keyframes toast-in { from { transform: translateY(12px); opacity: 0; }
                         to { transform: none; opacity: 1; } }
@@ -1053,7 +1224,7 @@ body.gradient .close-day-summary::before,
   button:hover { background: var(--accent-soft); color: var(--accent-soft-ink);
                  border-color: var(--accent-soft); }
   @media (hover: hover) and (pointer: fine) {
-    button:not(:disabled):not(.move-handle):active:not(:focus-visible) {
+    button:not(:disabled):active:not(:focus-visible) {
       transform: translateY(1px);
     }
   }
@@ -1093,6 +1264,30 @@ body.gradient .close-day-summary::before,
   .note.bad::before, .item-meta.bad::before { background: var(--danger); }
   .note.good::before, .item-meta.good::before { background: var(--ok); }
   .vault-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .vault-restore {
+    margin-top: var(--sp-6); padding-top: var(--sp-5);
+    border-top: var(--bw) solid var(--border);
+  }
+  .vault-restore h3 {
+    margin: 0; font-size: 14px; color: var(--ink);
+  }
+  .vault-restore .vault-row select { min-width: 180px; }
+  .vault-restore-summary { color: var(--ink-2); }
+  .vault-restore-review { margin-top: 8px; }
+  .vault-restore-delta {
+    margin-top: 8px; padding: 8px 10px; max-width: 760px;
+    border: var(--bw) solid var(--border); border-radius: var(--r-card);
+    background: color-mix(in srgb, var(--surface) 88%, var(--surface-2));
+  }
+  .vault-restore-delta-list {
+    margin: 0; padding-left: 20px; max-height: 260px; overflow: auto;
+    color: var(--ink-2); font-size: 12px;
+  }
+  .vault-restore-delta-list li + li { margin-top: 5px; }
+  .vault-restore-delta-more {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    color: var(--ink-3); font-size: 12px;
+  }
   .note { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
   /* D4-2b: the shared keeper dock replaces the former in-flow bulk bar. */
   .inline-input, textarea, input[type="text"], input[type="number"], input[type="datetime-local"], select {
@@ -1124,7 +1319,8 @@ body.gradient .close-day-summary::before,
   .label-index-bar { min-width: 0; display: flex; gap: 8px; align-items: center;
     flex-wrap: nowrap; width: min(100%, 520px); margin: 0; }
   .label-filter { flex: 1; min-width: 150px; padding: 6px 9px; border: var(--bw) solid var(--border);
-                  border-radius: var(--r-btn); font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
+                  border-radius: var(--r-btn); outline: none; font: inherit; font-size: 13px;
+                  background: var(--surface); color: var(--ink); }
   .label-sort { display: inline-flex; border: var(--bw) solid var(--border); border-radius: var(--r-btn); overflow: hidden; }
   .seg { border: none; background: none; font: inherit; font-size: 12px; padding: 6px 10px; color: var(--ink-2); cursor: pointer; }
   .seg + .seg { border-left: var(--bw) solid var(--border); }
@@ -1224,6 +1420,21 @@ body.gradient .close-day-summary::before,
             border: var(--bw) solid color-mix(in srgb, var(--warn) 35%, transparent);
             border-radius: var(--r-card); padding: 10px 14px; margin: 14px auto; max-width: 880px; }
   .banner.hidden { display: none; }
+  .hero > .banner { width: min(880px, 100%); margin-bottom: 0; text-align: left; }
+  /* Joining a different populated Vault is the one folder choice no single
+     device can undo, so the question is an in-place group with both counts,
+     styled like the History access disclosure, and it takes focus itself. */
+  .vault-join { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); padding: var(--sp-4);
+    border: var(--bw) solid var(--border); border-radius: var(--shape-control);
+    background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; line-height: 1.45;
+    scroll-margin-top: calc(var(--hero-h, 120px) + var(--sp-8)); }
+  .vault-join h3 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 650; }
+  .vault-join p { margin: 0; max-width: 72ch; }
+  .vault-join .vault-row { margin-top: var(--sp-1); }
+  .vault-join:focus-visible { outline: 2px solid var(--focus-accent); outline-offset: 2px; }
+  .vault-sync-details { scroll-margin-top: calc(var(--hero-h, 120px) + var(--sp-8)); }
+  .vault-sync-details:focus-visible { outline: 2px solid var(--focus-accent);
+    outline-offset: 4px; border-radius: var(--r-btn); }
 
   /* ---- stats page ---- */
   .statgrid { max-width: 880px; margin: 16px auto 0; display: grid;
@@ -1250,7 +1461,7 @@ body.gradient .close-day-summary::before,
   .settings-toolbar { position: sticky; z-index: 9;
     top: var(--settings-sticky-top);
     display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-3);
-    margin: 0; padding: 0 0 var(--sp-4);
+    margin: 0; padding: var(--sp-2) 0 var(--sp-4);
     background: var(--bg-solid); background-attachment: fixed; }
   body.gradient .settings-toolbar,
   [data-gradient="true"] body .settings-toolbar {
@@ -1259,7 +1470,20 @@ body.gradient .close-day-summary::before,
   .settings-filter { width: 100%; padding: 8px 12px; font: inherit; font-size: 13px;
                      background: var(--surface); color: var(--ink);
                      border: var(--bw) solid var(--border); border-radius: var(--r-btn); outline: none; }
-  .settings-filter:focus { border-color: var(--focus-accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+  .label-filter:focus,
+  .settings-filter:focus,
+  .inline-input:focus,
+  .setrow input[type="text"]:focus,
+  .setrow input[type="search"]:focus,
+  .setrow input[type="number"]:focus,
+  .setrow input[type="time"]:focus,
+  .setrow input[type="datetime-local"]:focus,
+  .setrow textarea:focus,
+  .setrow select:not([multiple]):focus {
+    outline: none;
+    border-color: var(--focus-accent);
+    box-shadow: var(--field-focus-shadow);
+  }
   .settings-nav { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-3); min-width: 0; }
   .settings-nav-chip { padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer;
                        color: var(--ink-2); background: var(--surface-2);
@@ -1298,10 +1522,48 @@ body.gradient .close-day-summary::before,
   /* Data follows the same information hierarchy as Settings. The ordinary
      backup and restore paths stay open; third-party migration is available but
      no longer competes with the safe default. */
+  .data-workspace { max-width: 860px; margin-inline: auto; container-type: inline-size;
+                    --data-sticky-top: calc(var(--hero-h, 120px) + var(--sp-10)); }
+  /* Data speaks Settings' navigation language: one measured sticky row of
+     ordinary jump buttons above a continuous document. The tiny inline inset
+     keeps the wrapped chips' focus outlines inside the painted shelf. */
+  .data-nav { position: sticky; z-index: 9; top: var(--data-sticky-top);
+              align-items: flex-start; margin: 0; padding: var(--sp-2) 2px var(--sp-4);
+              background: var(--bg-solid); background-attachment: fixed;
+              border-bottom: var(--bw) solid var(--border); }
+  body.gradient .data-nav,
+  [data-gradient="true"] body .data-nav {
+    background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed;
+  }
+  .data-area { scroll-margin-top: calc(var(--hero-h, 120px) + var(--sp-10)
+                    + var(--data-nav-h, 0px) + var(--sp-6)); }
+  .data-area + .data-area { margin-top: var(--sp-8); padding-top: var(--sp-12);
+                            border-top: 3px solid var(--border); }
+  .data-area + .data-area > .settings-group:first-of-type { margin-top: 0; }
+  .data-area-title { margin: var(--sp-12) 0 var(--sp-4); font-size: 13px;
+                     color: var(--accent-strong-ink); text-transform: uppercase;
+                     letter-spacing: .08em; }
+  .data-area + .data-area > .data-area-title { margin-top: 0; }
   .data-group { max-width: 860px; margin-inline: auto; }
   .data-group .setrow > button { flex: none; min-height: var(--control-h-default); }
   .data-restore-row { border-bottom: 0; padding-bottom: var(--sp-3); }
   .data-interoperability > textarea { width: 100%; min-height: 120px; margin-top: var(--sp-4); }
+  .data-suspend-recovery { margin-top: var(--sp-3); }
+  .data-recovery-list { max-height: 320px; overflow: auto; border: 1px solid var(--border);
+    border-radius: var(--shape-panel); background: var(--surface); }
+  .data-recovery-row { display: grid; grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center; gap: var(--sp-3); min-height: 52px; padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--border); cursor: pointer; }
+  .data-recovery-row:last-child { border-bottom: 0; }
+  .data-recovery-row:hover { background: var(--surface-2); }
+  .data-recovery-row .tw, .data-recovery-row .t, .data-recovery-row .d {
+    min-width: 0; display: block; }
+  .data-recovery-row .t, .data-recovery-row .d { overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .data-recovery-actions { display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-3); }
+  .data-recovery-actions:empty { display: none; }
+  .data-recovery-actions select { min-width: min(100%, 360px); }
   .data-import-source { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
   .data-import-source > button { flex: none; min-height: var(--control-h-default); }
   .data-import-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1318,6 +1580,28 @@ body.gradient .close-day-summary::before,
   .setrow.setrow-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
   .setrow.setrow-stacked textarea {
     width: 100%; min-height: 92px; margin-top: 0; resize: vertical;
+  }
+  .suspend-page-exceptions { display: flex; flex-direction: column; width: 100%;
+                             border: var(--bw) solid var(--border);
+                             border-radius: var(--shape-panel); overflow: hidden;
+                             background: var(--surface); }
+  .suspend-page-exception-row { display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+    gap: var(--sp-3); min-height: 42px; padding: var(--sp-2) var(--sp-3);
+    border-top: var(--bw) solid var(--border); }
+  .suspend-page-exception-row:first-child { border-top: 0; }
+  .suspend-page-exception-url { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                                white-space: nowrap; font: 12px/1.4 var(--font-mono); }
+  .suspend-page-exception-status { color: var(--accent-strong-ink); font-size: 12px;
+                                   white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .suspend-page-exception-remove { width: auto; min-height: var(--control-h-compact);
+                                   padding-inline: var(--sp-3); }
+  .suspend-page-exception-empty { padding: var(--sp-3); color: var(--ink-3);
+                                  font-size: 12.5px; }
+  @media (max-width: 620px) {
+    .suspend-page-exception-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .suspend-page-exception-status { grid-column: 1; }
+    .suspend-page-exception-remove { grid-column: 2; grid-row: 1 / span 2; }
   }
 
   /* F8 — Focus settings: inline blocked-site editor + save-close warning */
@@ -1396,6 +1680,8 @@ body.gradient .close-day-summary::before,
      240px, plus the row gap. Below that the two stop coexisting comfortably. */
   @container (max-width: 560px) {
     .setrow { flex-direction: column; align-items: stretch; gap: 8px; }
+    .data-recovery-actions { align-items: stretch; flex-direction: column; }
+    .data-recovery-actions > * { width: 100%; max-width: none; }
     .setrow .slider { flex: 1 1 auto; }
     .setrow > select, .setrow > input[type="text"], .setrow > input[type="number"] {
       width: 100%; max-width: none; }
@@ -1436,17 +1722,27 @@ body.gradient .close-day-summary::before,
   /* Search always ends with a slim lower boundary. The optional History grant
      occupies the same row until permission is available, so enabling it never
      removes the visual separation between Search and the underlying ledger. */
-  .hero-search-overlay > .search-footer {
+  .hero-search-content > .search-footer {
+    position: relative;
     display: flex;
     align-items: center;
     min-height: 30px;
     padding: var(--sp-3) var(--cmd-inset, 14px);
-    border-top: var(--bw) solid var(--border);
+    border-top: 0;
     color: var(--ink-3);
     font-size: var(--text-meta);
     font-variant-numeric: tabular-nums;
   }
-  .hero-search-overlay > .search-footer.is-empty:not(.has-history-invite) { display: none; }
+  .hero-search-content > .search-footer::before {
+    content: "";
+    position: absolute;
+    inset-inline: var(--cmd-inset, 14px);
+    inset-block-start: 0;
+    block-size: var(--bw);
+    background: var(--border);
+    pointer-events: none;
+  }
+  .hero-search-content > .search-footer.is-empty:not(.has-history-invite) { display: none; }
   .search-footer-hints { margin-inline-start: auto; }
   .search-footer.has-history-invite .search-footer-count,
   .search-footer.has-history-invite .search-footer-hints { display: none; }
@@ -1521,6 +1817,46 @@ body.gradient .close-day-summary::before,
     box-shadow: var(--shadow-1); }
   .activity-count { color: var(--ink-3); font-size: 11.5px;
     font-variant-numeric: tabular-nums; }
+  /* An entry with recorded tabs is one ledger cell: the row and its disclosure
+     share one fill and one bottom edge, so the tab list can never read as a
+     stray band attached to the next entry. The disclosure is the entry's third
+     line, aligned with the title text, with the house twist glyph instead of
+     the browser's default marker. */
+  .activity-entry { position: relative; background: var(--workbench-row);
+    border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
+    transition: background-color var(--motion-feedback) var(--ease-out); }
+  .activity-entry:hover, .activity-entry:focus-within { background: var(--workbench-hover); }
+  .tablist:not([data-compact]) .activity-entry > .trow { border-bottom: 0; background: transparent; }
+  .tablist:not([data-compact]) .activity-entry > .trow:hover,
+  .tablist:not([data-compact]) .activity-entry > .trow:focus-within { background: transparent; }
+  .activity-tab-details { --activity-text-x: calc(10px + var(--tablist-select-column, 17px) + var(--sp-3) + 24px + var(--sp-3));
+    margin: 0; padding: 0 18px var(--sp-3) var(--activity-text-x);
+    color: var(--ink-2); font-size: var(--text-meta); }
+  .activity-tab-details > summary { display: flex; align-items: center; gap: var(--sp-2);
+    width: fit-content; max-width: 100%; margin-left: calc(-1 * (var(--sp-2) + 12px));
+    padding: 1px var(--sp-2) var(--sp-1) 0; border-radius: var(--shape-control);
+    list-style: none; cursor: pointer; color: var(--ink-2); line-height: 1.3;
+    transition: color var(--motion-feedback) var(--ease-out); }
+  .activity-tab-details > summary::-webkit-details-marker { display: none; }
+  .activity-tab-details > summary::before { content: "▶"; flex: none; width: 12px;
+    color: var(--ink-3); font-size: 9px; line-height: 1; text-align: center;
+    transition: transform var(--motion-reveal) var(--ease-out), color var(--motion-feedback) var(--ease-out); }
+  .activity-tab-details[open] > summary::before { transform: rotate(90deg); }
+  .activity-tab-details > summary:hover { color: var(--accent-strong-ink); }
+  .activity-tab-details > summary:hover::before { color: var(--accent-strong-ink); }
+  .activity-tab-details > summary:focus-visible { outline: 2px solid var(--focus-accent);
+    outline-offset: 2px; }
+  .activity-tab-list { display: grid; gap: var(--sp-2); margin: var(--sp-1) 0 0;
+    padding: 0; list-style: none; }
+  .activity-tab-list > li { display: grid; gap: 1px; min-width: 0; }
+  .activity-tab-title, .activity-tab-url { display: block; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; line-height: 1.35; }
+  .activity-tab-title { color: var(--ink); font-size: 12.5px; }
+  .activity-tab-url { color: var(--ink-3); font-size: 11.5px; }
+  .activity-tab-note { margin: 0; padding: 0 18px var(--sp-3) var(--activity-text-x, 52px);
+    color: var(--ink-3); font-size: var(--text-meta); overflow-wrap: anywhere; }
+  .activity-entry > .activity-tab-note { --activity-text-x: calc(10px + var(--tablist-select-column, 17px) + var(--sp-3) + 24px + var(--sp-3)); }
+  .activity-tab-details .activity-tab-note { padding: var(--sp-2) 0 0; }
 
   /* F46: Activity is a real collection now. Its second column carries the
      origin mark where every other section carries a favicon, so an automatic
@@ -1634,17 +1970,20 @@ body.gradient .close-day-summary::before,
      than an edge tab like Starred. Left part acts, right part jumps to its
      settings. An active run takes the audited solid accent pair, and is then
      the only End control on the page. */
+  /* The state labels are stacked in one grid cell, so the control takes the
+     widest label once and never shifts between states. French labels need
+     more than the English 142px. */
   .hero-focus { flex: none; display: inline-flex; align-items: center;
-    inline-size: 142px;
-    min-height: 42px; border: var(--bw) solid var(--border);
+    inline-size: auto; min-inline-size: 142px; max-inline-size: 240px;
+    block-size: 42px; min-height: 42px; border: var(--bw) solid var(--border);
     border-radius: var(--shape-panel); background: var(--surface);
     overflow: clip; }
   [data-mode="dark"] .hero-focus { background: var(--surface-2); }
   .hero-focus-action, .hero-focus-settings {
-    min-height: 40px; display: inline-flex; align-items: center; gap: var(--sp-3);
+    block-size: 40px; min-height: 0; display: inline-flex; align-items: center; gap: var(--sp-3);
     margin: 0; padding: 0 var(--sp-4); border: 0; border-radius: 0;
     background: transparent; color: var(--ink-2);
-    font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer;
+    font-size: 12px; font-weight: 650; line-height: 1; white-space: nowrap; cursor: pointer;
     transition: background-color var(--motion-feedback) var(--ease-out),
                 color var(--motion-feedback) var(--ease-out); }
   .hero-focus-action { position: relative; isolation: isolate; overflow: hidden;
@@ -1653,7 +1992,7 @@ body.gradient .close-day-summary::before,
     background: var(--accent); transform: scaleX(0); transform-origin: left center;
     transition: transform var(--motion-continuity) var(--ease-out); }
   .hero-focus-state { position: relative; z-index: 1; grid-area: 1 / 1;
-    display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-3);
+    min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-3);
     opacity: 0; pointer-events: none;
     transition: opacity var(--motion-feedback) var(--ease-out); }
   .hero-focus-state .ic { opacity: 0; transform: rotate(-58deg) scale(.46);
@@ -1683,15 +2022,13 @@ body.gradient .close-day-summary::before,
   .hero-focus.is-hydrating .hero-focus-state .ic { transition: none; }
   /* The label is hidden until the pane can hold it beside the 760px field. */
   .hero-focus-label { display: none; }
-  /* Needs you keeps its one home: the free space to Search's right. It is
+  /* Activity keeps its one home: the free space to Search's right. It is
      absent when that space cannot hold the line instead of falling below
      Search. The cluster above owns its position. */
   .page-attention { display: none; width: auto; min-width: 0; min-height: 42px;
     margin: 0; align-items: center; justify-content: flex-end;
     gap: var(--sp-4); color: var(--ink-2); font-size: 12px; text-align: center; }
   .page-attention[hidden] { display: none; }
-  .page-attention-label { flex: none; display: inline-flex; align-items: center;
-    gap: var(--sp-3); font-weight: 650; white-space: nowrap; }
   .page-attention-items { min-width: 0; flex: 0 1 auto; display: flex; align-items: center;
     justify-content: flex-end; gap: var(--sp-4); flex-wrap: wrap; overflow: hidden; }
   .page-attention-entry { min-width: 0; max-width: 190px; display: inline-flex;
@@ -1721,6 +2058,19 @@ body.gradient .close-day-summary::before,
   .page-attention-activity:hover, .page-attention-activity:focus-visible {
     color: var(--accent-strong-ink); background: transparent;
     text-decoration: underline; text-underline-offset: 3px; }
+
+  .tablist[data-tablist="activity"] .trow.activity-arrival {
+    animation: activity-arrival calc(var(--motion-continuity) * 3) var(--ease-out);
+  }
+  @keyframes activity-arrival {
+    0%, 100% { background: transparent; box-shadow: inset 0 0 0 transparent; }
+    18%, 62% { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tablist[data-tablist="activity"] .trow.activity-arrival {
+      animation: none; background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent);
+    }
+  }
 
   .daily-stage { position: relative; min-width: 0; }
   .daily-stage .sections { view-transition-name: starred-workspace; }
@@ -1756,13 +2106,19 @@ body.gradient .close-day-summary::before,
       + var(--section-lead-h, 44px) + var(--section-local-h, 0px) + var(--sp-6));
   }
 
-  /* The push model turns on only when the remaining primary column stays
-     useful. Narrower layouts keep the same flat rail as an overlay fallback. */
-  @media (min-width: 1280px) {
+  /* From tablet-width workspaces upward, opening Starred yields actual space
+     instead of covering collection actions. The closed edge also reserves its
+     58px lane where a compact Dashboard would otherwise collide with it. */
+  @media (min-width: 800px) {
     .content:has(.starred-edge.is-open) .daily-stage {
       padding-right: calc(300px - var(--pad-x));
     }
     .content:has(.starred-edge.is-open) .label-index { padding-right: 0; }
+  }
+  @media (min-width: 800px) {
+    .content:not(:has(.starred-edge.is-open)) .daily-stage {
+      padding-right: calc(58px + var(--sp-4));
+    }
   }
 
   /* Needs you appears only when the free top-row measure is genuinely useful.
@@ -1796,11 +2152,107 @@ body.gradient .close-day-summary::before,
     animation-duration: var(--motion-continuity);
     animation-timing-function: var(--ease-out);
   }
+  /* The rail changes width 58px to 280px. Chrome sizes each snapshot image
+     to the group's width with automatic height, so the narrow toggle image was
+     scaled up to the panel width while the group grew (a giant star and
+     count). Keep both images at natural size, anchored to the right edge the
+     rail hangs from, and let the growing group box reveal or clip them. */
+  ::view-transition-old(starred-rail),
+  ::view-transition-new(starred-rail) {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: none;
+    object-position: top right;
+  }
+  /* The star and the count are the two things both states share. They travel
+     as their own groups from the toggle to the panel header and back, so the
+     eye follows them instead of a crossfade. The panel body unfolds from the
+     edge the rail hangs from: a short slide in and a quick fade of what it
+     replaces. */
+  .starred-edge-toggle > .ic { view-transition-name: starred-rail-star; }
+  .starred-edge-count { view-transition-name: starred-rail-count; }
+  ::view-transition-group(starred-rail-star),
+  ::view-transition-group(starred-rail-count) {
+    animation-duration: var(--motion-continuity);
+    animation-timing-function: var(--ease-out);
+  }
+  ::view-transition-old(starred-rail) {
+    animation: starred-rail-out var(--motion-reveal) var(--ease-out) both;
+  }
+  ::view-transition-new(starred-rail) {
+    animation: starred-rail-in var(--motion-continuity) var(--ease-out) both;
+  }
+  @keyframes starred-rail-out { to { opacity: 0; } }
+  @keyframes starred-rail-in { from { opacity: 0; transform: translateX(6px); } }
+  /* The label exists only in the open state. It appears once the star has
+     nearly reached its slot, so the star never crosses visible text, and it
+     leaves first on close for the same reason. */
+  .starred-edge-label { view-transition-name: starred-rail-label; }
+  ::view-transition-new(starred-rail-label) {
+    animation: starred-rail-out var(--motion-feedback) var(--ease-out) var(--motion-feedback) both reverse;
+  }
+  ::view-transition-old(starred-rail-label) {
+    animation: starred-rail-out var(--motion-feedback) var(--ease-out) both;
+  }
   @media (prefers-reduced-motion: reduce) {
     .hero-focus-action::before,
     .hero-focus-state,
     .hero-focus-state .ic { transition: none; }
     ::view-transition-group(starred-workspace),
     ::view-transition-group(starred-rail),
+    ::view-transition-group(starred-rail-star),
+    ::view-transition-group(starred-rail-count),
+    ::view-transition-old(starred-rail-label),
+    ::view-transition-new(starred-rail-label),
+    ::view-transition-old(starred-rail),
+    ::view-transition-new(starred-rail),
     ::view-transition-group(attention-line) { animation: none; }
+  }
+
+  /* The pending reel is decoration, with no numeric DOM/accessibility value.
+     Its exact visible offset carries into the real count's short settling cue. */
+  .startup-count { display: inline-grid; position: relative; overflow: clip;
+    vertical-align: baseline; min-inline-size: 1ch; font-variant-numeric: tabular-nums; }
+  .startup-count-value { display: block; }
+  .sidebar .navitem.active .startup-count { color: inherit; }
+  .open-heading-count { white-space: nowrap; }
+  .open-heading-count .startup-count { line-height: 1.2; }
+  .startup-count[data-startup-pending] { color: var(--ink-3); block-size: 1lh; }
+  .startup-count[data-startup-pending]::after {
+    content: '\00a0'; visibility: hidden;
+  }
+  .startup-count[data-startup-pending]::before,
+  .startup-count[data-startup-rolling]::before {
+    content: '0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9\A 0' / '';
+    white-space: pre; position: absolute; left: 0; top: 0; inline-size: 100%;
+    color: inherit;
+  }
+  .startup-count[data-startup-pending]::before {
+    animation: startup-count-spin calc(var(--motion-continuity) * 5) linear infinite;
+  }
+  [data-startup-reels-paused="true"] .startup-count[data-startup-pending]::before {
+    animation-play-state: paused;
+  }
+  .startup-count[data-startup-rolling]::before {
+    animation: startup-count-out var(--motion-continuity) var(--ease-out)
+      var(--startup-count-elapsed, 0ms) both;
+  }
+  @keyframes startup-count-spin {
+    from { transform: translateY(0); }
+    to { transform: translateY(-90.90909%); }
+  }
+  @keyframes startup-count-out {
+    from { opacity: 1; transform: translateY(var(--startup-reel-offset, 0px)); }
+    to { opacity: 0; transform: translateY(calc(var(--startup-reel-offset, 0px) - 1lh)); }
+  }
+  .startup-count[data-startup-stopped]::before {
+    content: ''; animation: none; transform: none; top: calc(50% - 1px);
+    block-size: 2px; background: currentColor; border-radius: 1px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .startup-count[data-startup-pending]::before {
+      content: ''; animation: none; transform: none; top: calc(50% - 1px);
+      block-size: 2px; background: currentColor; border-radius: 1px;
+    }
+    .startup-count[data-startup-rolling]::before { content: none; animation: none; }
   }

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { formatNumber, msg as localeMessage } from "../lib/i18n.js";
 
 const text = (value) => String(value ?? "");
@@ -8,6 +11,56 @@ const savedLocation = (value) => {
   return text(value);
 };
 const count = (entry) => Math.max(0, Number(entry?.actionParams?.count) || 0);
+
+/** Recorded occurrences only: no current saved-data lookup or URL deduplication. */
+export function activityAffectedTabs(entry) {
+  let groups;
+  let partial = false;
+  const expected = entry?.actionParams?.count;
+  if (entry?.actionKind === "auto-saved-tabs") {
+    groups = Array.isArray(entry.reopen) ? entry.reopen : [];
+  } else if (entry?.actionKind === "auto-archived-items") {
+    const puts = Array.isArray(entry.puts) ? entry.puts : [];
+    groups = puts.map((put) => put?.item?.tabs);
+    partial = Number.isSafeInteger(expected) && expected !== puts.length;
+  } else return null;
+  const tabs = [];
+  for (const group of groups) {
+    if (!Array.isArray(group) || group.length === 0) { partial = true; continue; }
+    for (const ref of group) {
+      const title = typeof ref?.title === "string" ? ref.title : "";
+      const url = typeof ref?.url === "string" ? ref.url : "";
+      tabs.push({ title, url });
+      if (!url) partial = true;
+    }
+  }
+  if (entry.actionKind === "auto-saved-tabs" && Number.isSafeInteger(expected) && expected !== tabs.length) {
+    partial = true;
+  }
+  return { tabs, partial };
+}
+
+export const activityTabDetailsCopy = {
+  summary: (value) => value === 1
+    ? localeMessage("activity_affected_tabs_one")
+    : localeMessage("activity_affected_tabs_other", [formatNumber(value)]),
+  unavailable: () => localeMessage("activity_tab_details_unavailable"),
+  missing: () => localeMessage("activity_no_tab_details"),
+  partial: () => localeMessage("activity_partial_tab_details")
+};
+const additionalCount = (entry) => Math.max(0, count(entry) - 1);
+const automaticAffectedName = (entry) => {
+  const explicit = text(entry?.actionParams?.name);
+  if (explicit) return explicit;
+  // Older automatic records did not store a presentation name, but their Undo
+  // payload already owns the exact affected references. Read that immutable
+  // local metadata rather than rewriting Activity or guessing from the browser.
+  for (const tab of activityAffectedTabs(entry)?.tabs ?? []) {
+    const name = tab.title || tab.url;
+    if (name) return name;
+  }
+  return "";
+};
 const countMessage = (base, entry, extra = []) => {
   const value = count(entry);
   return localeMessage(`${base}_${value === 1 ? "one" : "other"}`,
@@ -21,6 +74,7 @@ const countMessage = (base, entry, extra = []) => {
  */
 export function activityEntryLabel(entry) {
   const p = entry?.actionParams ?? {};
+  const automaticName = automaticAffectedName(entry);
   switch (entry?.actionKind) {
     case "saved-tabs-inbox": return countMessage("activity_saved_tabs_inbox", entry);
     case "restored-tabs": return countMessage("activity_restored_tabs", entry);
@@ -31,8 +85,18 @@ export function activityEntryLabel(entry) {
     case "moved-tabs-session": return countMessage("activity_moved_tabs_session", entry, [p.name]);
     case "reordered-item": return localeMessage("activity_reordered_item", [text(p.name)]);
     case "moved-item": return localeMessage("activity_moved_item", [text(p.name), text(p.destination)]);
-    case "auto-saved-tabs": return countMessage("activity_auto_saved_tabs", entry);
-    case "auto-archived-items": return countMessage("activity_auto_archived_items", entry);
+    case "auto-saved-tabs": return automaticName
+      ? count(entry) > 1
+        ? localeMessage("activity_auto_saved_named_batch",
+          [automaticName, formatNumber(additionalCount(entry))])
+        : localeMessage("activity_auto_saved_named", [automaticName])
+      : countMessage("activity_auto_saved_tabs", entry);
+    case "auto-archived-items": return automaticName
+      ? count(entry) > 1
+        ? localeMessage("activity_auto_archived_named_batch",
+          [automaticName, formatNumber(additionalCount(entry))])
+        : localeMessage("activity_auto_archived_named", [automaticName])
+      : countMessage("activity_auto_archived_items", entry);
     case "close-day": return countMessage("activity_close_day", entry);
     case "imported-tabs": return countMessage("activity_imported_tabs", entry, [p.source]);
     case "saved-labeled-copies": return countMessage("activity_saved_labeled_copies", entry);
@@ -72,4 +136,25 @@ export function activityEntryLabel(entry) {
     case "gathered-domain": return localeMessage("activity_gathered_domain", [text(p.domain)]);
     default: return text(entry?.label);
   }
+}
+
+/** Short copy for the one-line Needs you queue; Activity keeps the full sentence. */
+export function activityAttentionLabel(entry) {
+  const automaticName = automaticAffectedName(entry);
+  if (entry?.actionKind === "auto-saved-tabs") {
+    if (automaticName) {
+      return count(entry) > 1
+        ? localeMessage("attention_auto_saved_named_batch",
+          [automaticName, formatNumber(additionalCount(entry))])
+        : localeMessage("attention_auto_saved_named", [automaticName]);
+    }
+    return countMessage("attention_auto_saved_tabs", entry);
+  }
+  if (entry?.actionKind === "auto-archived-items" && automaticName) {
+    return count(entry) > 1
+      ? localeMessage("attention_auto_archived_named_batch",
+        [automaticName, formatNumber(additionalCount(entry))])
+      : localeMessage("attention_auto_archived_named", [automaticName]);
+  }
+  return activityEntryLabel(entry);
 }

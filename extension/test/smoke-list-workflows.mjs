@@ -9,7 +9,7 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
       fromArchiveItems, selectionSummary, visibleGroupActions, rowActionsFor,
       selectableFor, isImmutableGroup
     } = await import("../js/ui/tablist.js");
-    const { restoreTabsFromItems, deleteTabsFromItems } = await import("../js/lib/actions.js");
+    const { openTabsFromItems, deleteTabsFromItems } = await import("../js/lib/actions.js");
     const { labelTabsFromItems } = await import("../js/lib/labels.js");
     const { listActions } = await import("../js/lib/journal.js");
   
@@ -51,18 +51,19 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     check(selectableFor("tab", true) === "none" && selectableFor("tab", false) === "tab",
       "P2e-1: immutable forces selectable off");
   
-    // the split-aware exits now run over the ARCHIVE store (what the unified list needs)
+    // Opening Archive references is copy-like; destructive exits still split the Archive item.
     browserEffects.clearTabs();
     const live0 = (await listItems(STORE_KEYS.archive)).find((i) => i.kind === "window");
-    await restoreTabsFromItems([{ item: live0, indexes: [0] }], STORE_KEYS.archive);
-    check(browserEffects.tabs.includes("https://a1.com"), "P2e-1: restore-from-archive opens the tab");
+    await openTabsFromItems([{ item: live0, indexes: [0] }]);
+    check(browserEffects.tabs.includes("https://a1.com"), "P2e-1: open-from-archive opens the tab");
     const afterRestore = (await listItems(STORE_KEYS.archive)).find((i) => i.id === live0.id);
-    check(afterRestore && afterRestore.tabs.length === 2, "P2e-1: restore splits the archive item (2 left)");
-  
+    check(afterRestore && JSON.stringify(afterRestore) === JSON.stringify(live0),
+      "P2e-1: open-from-archive preserves the complete saved occurrence");
+
     await deleteTabsFromItems([{ item: afterRestore, indexes: [0] }], STORE_KEYS.archive);
     const afterDelete = (await listItems(STORE_KEYS.archive)).find((i) => i.id === live0.id);
-    check(afterDelete && afterDelete.tabs.length === 1 && afterDelete.kind === "tab",
-      "P2e-1: delete-from-archive splits + downgrades kind");
+    check(afterDelete && afterDelete.tabs.length === 2 && afterDelete.kind === "window",
+      "P2e-1: delete-from-archive remains the consuming split action");
   
     const soloLive = (await listItems(STORE_KEYS.archive)).find((i) => i.tabs[0]?.url === "https://solo.com");
     await labelTabsFromItems([{ item: soloLive, indexes: [0] }], ["keep"], STORE_KEYS.archive);
@@ -110,12 +111,14 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     // fromSnoozes → bundle vs single-tab; recurrence chip
     const winSnooze = { id: "z1", title: "Window (2 tabs)", url: "", dueAt: Date.now() + 1e6,
       tabs: [{ url: "https://a.com", title: "A" }, { url: "https://b.com", title: "B" }], recurrence: "weekly" };
-    const oneSnooze = { id: "z2", title: "One", url: "https://one.com", dueAt: Date.now() + 2e6 };
+    const oneSnooze = { id: "z2", title: "One", url: "https://one.com",
+      favIconUrl: "https://one.com/favicon.ico", dueAt: Date.now() + 2e6 };
     const zgroups = fromSnoozes([winSnooze, oneSnooze]);
     check(zgroups[0].refs.length === 2, "P2e-2: window snooze → bundle GroupCard rows (details hack gone)");
     check(JSON.stringify(zgroups[0].chips) === JSON.stringify(["Weekly"]), "P2e-2: recurrence → chip");
-    check(zgroups[1].refs.length === 1 && zgroups[1].refs[0].url === "https://one.com",
-      "P2e-2: legacy single snooze → one-row group");
+    check(zgroups[1].refs.length === 1 && zgroups[1].refs[0].url === "https://one.com" &&
+      zgroups[1].refs[0].favIconUrl === oneSnooze.favIconUrl,
+      "P2e-2: single snooze → one-row group with its captured favicon");
     check((zgroups[1].chips ?? []).length === 0, "P2e-2: non-recurring snooze has no chip");
   }
   
@@ -138,6 +141,8 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
   /* --- P2e-4: open-tabs adapter (live handles, canonical display, selectability) --- */
   {
     const { fromOpenWindows } = await import("../js/ui/tablist.js");
+    const { buildSessionFromWindows } = await import("../js/lib/sessions.js");
+    const { canonicalJson } = await import("../js/lib/storage/canonical.js");
     const suspendUrl = chrome.runtime.getURL("suspend.html") +
       "?originalUrl=" + encodeURIComponent("https://real.com") + "&title=" + encodeURIComponent("Real page");
     const win = { id: 7, focused: true, tabs: [
@@ -155,6 +160,27 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
       "P2e-4: suspended tab displays its underlying page and is flagged suspended");
     check(g.live[0].chromeIndex === 0 && g.live[2].chromeIndex === 2,
       "P2e-4: chrome index carried per tab (drag/move target)");
+
+    // A live Chrome tab may legitimately have no favicon. Open's selected-row
+    // projection is stored directly when the user creates a Session, so absent
+    // optional metadata must be omitted rather than represented as `undefined`.
+    check(!Object.hasOwn(g.refs[0], "favIconUrl"),
+      "P2e-4: an Open ref omits absent optional favicon metadata");
+    let sessionWithMissingFaviconIsSerializable = true;
+    try {
+      canonicalJson(buildSessionFromWindows({ id: "session-no-icon", createdAt: 1, modifiedAt: 1 },
+        [[g.refs[0]]], "No icon"));
+    } catch {
+      sessionWithMissingFaviconIsSerializable = false;
+    }
+    check(sessionWithMissingFaviconIsSerializable,
+      "P2e-4: a selected Open tab without a favicon can be stored as a Session");
+    const [withFavicon] = fromOpenWindows([{ id: 8, tabs: [{
+      id: 104, index: 0, url: "https://icon.example", title: "Icon",
+      favIconUrl: "https://icon.example/favicon.ico"
+    }] }]);
+    check(withFavicon.refs[0].favIconUrl === "https://icon.example/favicon.ico",
+      "P2e-4: an available favicon survives the Open ref projection");
   
     /* --- N9 (P2f): suspended tabs are selectable in Open tabs --- */
     check(g.live[2].selectable === true,
@@ -162,12 +188,27 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
   
     /* --- P2g-2r: open rows surface labels of a labeled SAVED copy (read-only) --- */
     const saved = { "https://a.com": ["work", "reading"] };
-    const [g2] = fromOpenWindows([win], (url) => saved[url]);
+    const [g2] = fromOpenWindows([win], (url) => saved[url], 7, 101);
     check(JSON.stringify(g2.refs[0].labels) === JSON.stringify(["work", "reading"]),
       "P2g-2r: an open tab with a labeled saved copy carries those labels on its ref");
     check(!("labels" in g2.refs[1]), "P2g-2r: unlabeled open tabs gain no labels field");
     check(g2.refs[2].url === "https://real.com" && !g2.refs[2].labels,
       "P2g-2r: the lookup runs on the CANONICAL url (suspended tab unchanged here)");
+    check(g2.live[0].currentSurface === true && g2.live[1].currentSurface === false,
+      "Open carries the exact EveryTab host-tab identity independently of window focus");
+    const { buildSessionMembershipsByUrl } = await import("../js/lib/session-identity-index.js");
+    const memberships = buildSessionMembershipsByUrl([
+      { id: "s1", name: "Research", windowUrls: [["https://a.com", "https://real.com"]] },
+      { id: "s2", name: "Daily", windowUrls: [["https://a.com"]] }
+    ]);
+    const { normalizeUrl } = await import("../js/lib/url-key.js");
+    const [g3] = fromOpenWindows([win], null, 7, 101,
+      (url) => memberships.get(normalizeUrl(url)));
+    check(g3.refs[0].sessionMemberships.map((entry) => `${entry.id}:${entry.name}`).join("|") ===
+        "s2:Daily|s1:Research" &&
+      g3.refs[2].sessionMemberships.map((entry) => entry.name).join("|") === "Research" &&
+      !g3.refs[1].sessionMemberships,
+    "Named-Session identity enriches matching Open rows with navigable ids without loading Snapshot payloads");
   }
   
   /* --- N10 (P2f) + W1: InboxSource display mapping — the stored enums map to the
@@ -190,11 +231,20 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     const [ag] = fromArchiveItems([filed]);
     check(ag.meta.startsWith("saved · archived "),
       "W1: archive meta renders the mapped source ('archived' here is the real Archive — correct)");
+    const [memberInbox] = fromInboxItems([swept], (url) =>
+      url === "https://x.com" ? [{ id: "s1", name: "Research" }] : []);
+    const [memberArchive] = fromArchiveItems([filed], () => [{ id: "s2", name: "Filed pages" }]);
+    check(memberInbox.refs[0].sessionMemberships?.[0]?.id === "s1" &&
+      !memberInbox.refs[1].sessionMemberships && memberArchive.refs[0].sessionMemberships?.[0]?.name === "Filed pages",
+    "Inbox and Archive adapters carry named-Session membership at tab grain");
   }
   
   /* --- P2g-3 (U6): session tab-grain ops — remove / merge / label / restore --- */
   {
-    const { removeSessionTabs, moveSessionTabs, restoreSessionTabs, createSessionFromWindows } =
+    const {
+      removeSessionTabs, deleteSessionTabs, moveSessionTabs, restoreSessionTabs,
+      createSessionFromWindows
+    } =
       await import("../js/lib/sessions.js");
     const { labelSessionTabs } = await import("../js/lib/labels.js");
     const { undoAction, clearJournal } = await import("../js/lib/journal.js");
@@ -214,6 +264,35 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     const sB = await mkSession("Src B", [["https://only.com"]]);
     const rem = await removeSessionTabs(sB, [{ windowIndex: 0, indexes: [0] }]);
     check(rem === null && !(await bySid(sB.id)), "P2g-3: a fully-emptied session tombstones");
+
+    // one confirmed bulk delete spans Sessions atomically and has one exact Undo
+    await clearJournal();
+    const sBulkA = await mkSession("Bulk A", [["https://ba1.com", "https://ba2.com"]]);
+    const sBulkB = await mkSession("Bulk B", [["https://bb1.com"]]);
+    check(sBulkA.modifiedAt === (await bySid(sBulkA.id)).modifiedAt &&
+      sBulkB.modifiedAt === (await bySid(sBulkB.id)).modifiedAt,
+    "P2g-3: newly created Sessions return the exact committed version for immediate follow-up");
+    const bulkDelete = await deleteSessionTabs([
+      { session: sBulkA, picks: [{ windowIndex: 0, indexes: [0] }] },
+      { session: sBulkB, picks: [{ windowIndex: 0, indexes: [0] }] }
+    ]);
+    check(bulkDelete.ok && bulkDelete.removed === 2 && bulkDelete.entry &&
+      (await bySid(sBulkA.id)).windows[0][0].url === "https://ba2.com" && !(await bySid(sBulkB.id)),
+    "P2g-3: selected Session tabs delete across cards in one operation");
+    await undoAction(bulkDelete.entry.id);
+    check((await bySid(sBulkA.id)).windows[0].length === 2 &&
+      (await bySid(sBulkB.id)).windows[0][0].url === "https://bb1.com",
+    "P2g-3: one Undo restores every Session touched by a selected delete");
+
+    // a selection captured before another edit cannot overwrite that edit
+    const sStale = await mkSession("Stale delete", [["https://stale.test"]]);
+    await labelSessionTabs(sStale, "newer", [{ wi: 0, i: 0 }]);
+    const staleDelete = await deleteSessionTabs([
+      { session: sStale, picks: [{ windowIndex: 0, indexes: [0] }] }
+    ]);
+    check(!staleDelete.ok && staleDelete.stale &&
+      (await bySid(sStale.id)).windows[0][0].labels?.includes("newer"),
+    "P2g-3: selected delete rejects a stale Session without erasing a newer edit");
   
     // merge → NEW target: moved tabs arrive as their own window, source splits
     await clearJournal();
@@ -337,9 +416,13 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     check((await bySnid(canc.id))?.tabs.length === 1, "P2g-3/U7: undo revives the cancelled snooze");
   
     // legacy single-tab snooze: snoozeRefs presents its one ref; cancel ends it
-    const single = await createSnooze({ url: "https://solo.com", title: "Solo", dueAt: due });
-    check(snoozeRefs(single).length === 1 && snoozeRefs(single)[0].url === "https://solo.com",
-      "P2g-3/U7: snoozeRefs presents a legacy single snooze as one ref");
+    const singleFavicon = "https://solo.com/favicon.ico";
+    const single = await createSnooze({
+      url: "https://solo.com", title: "Solo", favIconUrl: singleFavicon, dueAt: due
+    });
+    check(snoozeRefs(single).length === 1 && snoozeRefs(single)[0].url === "https://solo.com" &&
+      snoozeRefs(single)[0].favIconUrl === singleFavicon,
+      "P2g-3/U7: a single snooze retains and presents its captured favicon");
     await cancelSnoozeTabs([{ snooze: single, indexes: [0] }]);
     check(!(await bySnid(single.id)), "P2g-3/U7: cancelling a single snooze's tab ends it");
   }
@@ -445,15 +528,16 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
       "P2g-5: retired quiet preference reopens every Session window and keeps the Session");
     mem.settings = { snoozeWakeQuiet: false };
   
-    // session deleted before the due time: fires as a clean no-op
+    // A deleted source cannot fulfill the schedule; keep it available for repair.
     const sGone = await mkSession("Gone", [["https://gone.com"]]);
     const sn5 = await snoozeSession(sGone, due);
     await tombstoneItem(STORE_KEYS.sessions, sGone.id);
     browserEffects.clearWindows();
     browserEffects.clearTabs();
-    await fireSnooze(sn5.id);
-    check(browserEffects.windows.length === 0 && browserEffects.tabs.length === 0 && !(await bySnid(sn5.id)),
-      "P2g-5: a session snooze whose session was deleted fires as a no-op and ends");
+    const unavailableSource = await fireSnooze(sn5.id);
+    check(browserEffects.windows.length === 0 && browserEffects.tabs.length === 0 &&
+      !!(await bySnid(sn5.id)) && unavailableSource.status === "unavailable",
+      "a Session Snooze with a deleted source is retained and reports unavailable");
   }
   
   /* --- P2g-4a: journal `moves` op — best-effort undo for live Open-tabs drags --- */
@@ -481,7 +565,7 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
   
   /* --- P2g-4b: moveInboxTab — inbox drag with stale guard + exact undo --- */
   {
-    const { moveInboxTab } = await import("../js/lib/actions.js");
+    const { moveInboxTab, moveInboxTabs } = await import("../js/lib/actions.js");
     const { undoAction, clearJournal, listActions } = await import("../js/lib/journal.js");
     await clearJournal();
     delete mem[STORE_KEYS.inbox];
@@ -491,13 +575,13 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
         tabs: urls.map((u, i) => ({ url: u, title: u, ...(labels[i] ? { labels: labels[i] } : {}) })),
         source: "dump", labels: [] };
       await upsertItem(STORE_KEYS.inbox, it);
-      return byId(it.id); // re-read: upsert stamps modifiedAt (the guard's input)
+      return byId(it.id); // re-read: the guard consumes the complete stored snapshot
     };
   
     // cross-bundle move: ref (with its labels) inserted at position, kinds adjust
     const A = await mk(["https://a1.com", "https://a2.com"], [["keep"]]);
     const B = await mk(["https://b1.com"]);
-    const r1 = await moveInboxTab(A.id, 0, B.id, 0, { source: A.modifiedAt, target: B.modifiedAt });
+    const r1 = await moveInboxTab(A, 0, B, 0);
     let aNow = await byId(A.id), bNow = await byId(B.id);
     check(r1.ok && bNow.tabs.map((t) => t.url).join() === "https://a1.com,https://b1.com" &&
       bNow.kind === "window" && bNow.tabs[0].labels?.includes("keep"),
@@ -512,7 +596,7 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     // emptied source tombstones; undo revives it and restores the target
     const C = await mk(["https://c1.com"]);
     const bFresh = await byId(B.id);
-    const r2 = await moveInboxTab(C.id, 0, B.id, -1, { source: C.modifiedAt, target: bFresh.modifiedAt });
+    const r2 = await moveInboxTab(C, 0, bFresh, -1);
     check(r2.ok && !(await byId(C.id)) && (await byId(B.id)).tabs.length === 2,
       "P2g-4b: a move that empties the source tombstones it (append via header)");
     await undoAction();
@@ -521,7 +605,7 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
   
     // between-bundles zone: a NEW ordinary bundle; undo removes it
     const aFresh = await byId(A.id);
-    const r3 = await moveInboxTab(A.id, 0, null, -1, { source: aFresh.modifiedAt });
+    const r3 = await moveInboxTab(aFresh, 0, null, -1);
     const fresh = (await listItems(STORE_KEYS.inbox)).find((i) =>
       i.tabs.length === 1 && i.tabs[0].url === "https://a1.com" && i.id !== A.id);
     check(r3.ok && fresh?.source === "manual" && fresh.kind === "tab",
@@ -530,37 +614,52 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     check(!(await byId(fresh.id)) && (await byId(A.id)).tabs.length === 2,
       "P2g-4b: undo removes the created bundle and restores the source");
   
-    // stale guard: a bumped modifiedAt (sweep/sync/another window) aborts cleanly
+    // stale guard: a changed target snapshot (sweep/sync/another window) aborts cleanly
     const a2 = await byId(A.id);
     const b2 = await byId(B.id);
     // bump the target's modifiedAt EXPLICITLY (upsertItem stamps Date.now(),
     // which can be the same millisecond in a fast test run)
     mem[STORE_KEYS.inbox][b2.id] = { ...mem[STORE_KEYS.inbox][b2.id], modifiedAt: b2.modifiedAt + 5 };
     const before = await listActions();
-    const r4 = await moveInboxTab(A.id, 0, B.id, 0, { source: a2.modifiedAt, target: b2.modifiedAt });
+    const r4 = await moveInboxTab(a2, 0, b2, 0);
     check(r4.ok === false && r4.stale === true &&
       (await byId(A.id)).tabs.length === 2 && (await listActions()).length === before.length,
       "P2g-4b: the stale-drop guard aborts — nothing written, nothing journaled");
-    const r5 = await moveInboxTab("no-such-id", 0, null, -1, { source: 0 });
+    const r5 = await moveInboxTab({ ...a2, id: "no-such-id" }, 0, null, -1);
     check(r5.ok === false && r5.stale === true,
       "P2g-4b: a vanished source aborts the same way");
   
     // same-item reorder + the dropped-where-it-was no-op
     const D = await mk(["https://d1.com", "https://d2.com", "https://d3.com"]);
-    const r6 = await moveInboxTab(D.id, 0, D.id, 2, { source: D.modifiedAt, target: D.modifiedAt });
+    const r6 = await moveInboxTab(D, 0, D, 2);
     check(r6.ok && (await byId(D.id)).tabs.map((t) => t.url).join() ===
       "https://d2.com,https://d1.com,https://d3.com",
       "P2g-4b: same-bundle drop reorders (insert-before semantics)");
     const d2 = await byId(D.id);
     const cnt = (await listActions()).length;
-    const r7 = await moveInboxTab(D.id, 1, D.id, 1, { source: d2.modifiedAt, target: d2.modifiedAt });
+    const r7 = await moveInboxTab(d2, 1, d2, 1);
     check(r7.ok && r7.noop === true && (await listActions()).length === cnt,
       "P2g-4b: dropping a row where it already sits is a journal-free no-op");
+
+    const E = await mk(["https://e1.com", "https://e2.com", "https://e3.com"]);
+    const F = await mk(["https://f1.com", "https://f2.com"]);
+    const r8 = await moveInboxTabs([
+      { item: E, indexes: [0, 2] },
+      { item: F, indexes: [1] }
+    ], F, 0);
+    check(r8.ok && (await byId(E.id)).tabs.map((t) => t.url).join() === "https://e2.com" &&
+      (await byId(F.id)).tabs.map((t) => t.url).join() ===
+        "https://e1.com,https://e3.com,https://f2.com,https://f1.com",
+      "selected Inbox drag moves the complete set in visual order");
+    await undoAction();
+    check((await byId(E.id)).tabs.length === 3 && (await byId(F.id)).tabs.length === 2,
+      "one undo restores every bundle touched by a selected Inbox drag");
   }
   
   /* --- P2g-4c: moveSessionTab — in-session drag with stale guard + one-undo --- */
   {
-    const { moveSessionTab, createSessionFromWindows } = await import("../js/lib/sessions.js");
+    const { moveSessionTab, moveSessionTabsWithin, createSessionFromWindows } =
+      await import("../js/lib/sessions.js");
     const { undoAction, clearJournal, listActions } = await import("../js/lib/journal.js");
     await clearJournal();
     const bySid = async (id) => (await listItems(STORE_KEYS.sessions)).find((s) => s.id === id);
@@ -571,7 +670,7 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
     let s = await bySid(S0.id);
   
     // cross-window: insert before the hovered row
-    const r1 = await moveSessionTab(s.id, 0, 0, { wi: 1, index: 0 }, s.modifiedAt);
+    const r1 = await moveSessionTab(s, 0, 0, { wi: 1, index: 0 });
     s = await bySid(s.id);
     check(r1.ok && urlsOf(s) === "https://u2.com,https://u3.com|https://u1.com,https://v1.com",
       "P2g-4c: cross-window drop inserts before the hovered row");
@@ -581,24 +680,24 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
       "P2g-4c: one undo restores the exact pre-drag session");
   
     // same-window reorder + drop-in-place no-op
-    const r2 = await moveSessionTab(s.id, 0, 0, { wi: 0, index: 2 }, s.modifiedAt);
+    const r2 = await moveSessionTab(s, 0, 0, { wi: 0, index: 2 });
     s = await bySid(s.id);
     check(r2.ok && s.windows[0].map((t) => t.url).join() === "https://u2.com,https://u1.com,https://u3.com",
       "P2g-4c: same-window drop reorders (insert-before semantics)");
     const cnt = (await listActions()).length;
-    const r3 = await moveSessionTab(s.id, 0, 1, { wi: 0, index: 1 }, s.modifiedAt);
+    const r3 = await moveSessionTab(s, 0, 1, { wi: 0, index: 1 });
     check(r3.ok && r3.noop === true && (await listActions()).length === cnt,
       "P2g-4c: dropping a row where it already sits is a journal-free no-op");
   
     // window-header append; the emptied source block collapses
-    const r4 = await moveSessionTab(s.id, 1, 0, { wi: 0, index: -1 }, s.modifiedAt);
+    const r4 = await moveSessionTab(s, 1, 0, { wi: 0, index: -1 });
     s = await bySid(s.id);
     check(r4.ok && s.windows.length === 1 && s.windows[0].length === 4 &&
       s.windows[0][3].url === "https://v1.com",
       "P2g-4c: header drop appends; the emptied source window collapses");
   
     // between-blocks zone: a new window block at that position
-    const r5 = await moveSessionTab(s.id, 0, 0, { newAt: 1 }, s.modifiedAt);
+    const r5 = await moveSessionTab(s, 0, 0, { newAt: 1 });
     s = await bySid(s.id);
     check(r5.ok && s.windows.length === 2 && s.windows[1].length === 1 &&
       s.windows[1][0].url === "https://u2.com",
@@ -609,7 +708,8 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
   
     // stale guard + snapshot refusal
     const before = (await listActions()).length;
-    const r6 = await moveSessionTab(s.id, 0, 0, { wi: 0, index: 2 }, s.modifiedAt + 5);
+    const r6 = await moveSessionTab({ ...s, modifiedAt: s.modifiedAt + 5 }, 0, 0,
+      { wi: 0, index: 2 });
     check(r6.ok === false && r6.stale === true && (await listActions()).length === before &&
       urlsOf(await bySid(s.id)) === urlsOf(s),
       "P2g-4c: the stale-drop guard aborts — nothing written, nothing journaled");
@@ -617,8 +717,40 @@ export async function runSmokeListWorkflows({ check, local, browserEffects }) {
       windows: [[{ url: "https://sd.com", title: "SD" }]], labels: [] };
     await upsertItem(STORE_KEYS.sessions, snapD);
     const snapNow = await bySid(snapD.id);
-    check((await moveSessionTab(snapD.id, 0, 0, { newAt: 1 }, snapNow.modifiedAt)).ok === false,
+    check((await moveSessionTab(snapNow, 0, 0, { newAt: 1 })).ok === false,
       "P2g-4c/N8: a snapshot refuses drag moves");
+
+    const M0 = await createSessionFromWindows(
+      [["https://m1.com", "https://m2.com", "https://m3.com"].map((url) => ({ url, title: url })),
+        ["https://n1.com", "https://n2.com"].map((url) => ({ url, title: url }))], "Multi drag");
+    let multi = await bySid(M0.id);
+    const r7 = await moveSessionTabsWithin(multi, [
+      { windowIndex: 0, indexes: [0, 2] }, { windowIndex: 1, indexes: [0] }
+    ], { wi: 1, index: -1 });
+    multi = await bySid(multi.id);
+    check(r7.ok && urlsOf(multi) ===
+      "https://m2.com|https://n2.com,https://m1.com,https://m3.com,https://n1.com",
+      "selected Session drag appends the complete set at a real window end");
+    await undoAction();
+    multi = await bySid(multi.id);
+    check(urlsOf(multi) ===
+      "https://m1.com,https://m2.com,https://m3.com|https://n1.com,https://n2.com",
+      "one undo restores every window touched by a selected Session drag");
+
+    const groupedDraft = { ...(await newMeta()), name: "Grouped drag", labels: [],
+      windows: [
+        [{ url: "https://grouped.com", title: "Grouped", groupIndex: 0 }],
+        [{ url: "https://plain.com", title: "Plain" }]
+      ],
+      groups: [[{ title: "Research", color: "blue", collapsed: false }], []] };
+    await upsertItem(STORE_KEYS.sessions, groupedDraft);
+    let grouped = await bySid(groupedDraft.id);
+    const groupedMove = await moveSessionTabsWithin(grouped,
+      [{ windowIndex: 0, indexes: [0] }], { wi: 1, index: -1 });
+    grouped = await bySid(grouped.id);
+    check(groupedMove.ok && grouped.windows.length === 1 &&
+      grouped.windows[0][1].groupIndex === 0 && grouped.groups[0][0].title === "Research",
+      "cross-window Session drag remaps tab-group identity with its source template");
   }
   
 }

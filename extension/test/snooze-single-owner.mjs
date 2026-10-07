@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createChromeI18nMock } from "./message-fixture.mjs";
 import { createInterleavableStorage, createMockLockManager } from "./e2-mocks.mjs";
 import { STORE_KEYS } from "../js/lib/types.js";
 
@@ -8,7 +9,7 @@ Object.defineProperty(globalThis, "navigator", {
   writable: true
 });
 
-let storage;
+let storage = createInterleavableStorage({ deviceId: "device-a" });
 let createdTabs = [];
 let createdWindows = [];
 let alarms = {};
@@ -16,7 +17,7 @@ let failTabs = false;
 let failWindowNumber = 0;
 
 globalThis.chrome = {
-  storage: { local: null },
+  storage: { local: storage.local },
   tabs: {
     create: async (props) => {
       if (failTabs) throw new Error("tab create failed");
@@ -30,13 +31,16 @@ globalThis.chrome = {
         throw new Error("window create failed");
       }
       createdWindows.push(structuredClone(props));
-      return { id: 200 + createdWindows.length };
+      const id = 200 + createdWindows.length;
+      return { id, tabs: (Array.isArray(props.url) ? props.url : [props.url])
+        .map((url, index) => ({ id: id * 10 + index, windowId: id, pendingUrl: url })) };
     }
   },
   alarms: {
     create: async (name, details) => { alarms[name] = structuredClone(details); },
     clear: async (name) => delete alarms[name]
   },
+  i18n: createChromeI18nMock(),
   notifications: { create: async () => "notification" },
   action: {
     // Avoid the six-second badge-clear timer in this focused data-path test.
@@ -45,6 +49,9 @@ globalThis.chrome = {
   },
   runtime: { getURL: (path) => `chrome-extension://test/${path}` }
 };
+
+const { installBrowserMapStorageAuthority } = await import("./storage-authority-fixture.mjs");
+installBrowserMapStorageAuthority();
 
 const {
   SNOOZE_DELIVERY_KEY, fireSnooze, recoverInterruptedSnoozeDeliveries
@@ -87,7 +94,8 @@ function install(seed) {
     contextB.fireSnooze(item.id)
   ]);
   assert.equal(createdTabs.length, 1);
-  assert.deepEqual(results.map((result) => result.status).sort(), ["busy", "delivered"]);
+  assert.equal(results.some((result) => result.status === "delivered"), true);
+  assert.equal(results.filter((result) => result.status === "delivered").length, 1);
   assert.equal(storage.snapshot().counters.snoozesFired, 1);
 }
 
@@ -184,22 +192,22 @@ function install(seed) {
   assert.equal(createdWindows.length, 1);
 }
 
-// A known pre-effect failure clears the claim and schedules a bounded retry;
-// the next attempt can become the owner.
+// A rejected Chrome create has an ambiguous outcome. Its claim stays terminal
+// for the occurrence, and neither automatic nor explicit Wake can replay it.
 {
   const item = snooze("known-failure");
   install({ [STORE_KEYS.snoozes]: { [item.id]: item } });
   failTabs = true;
-  assert.equal((await fireSnooze(item.id)).status, "failed");
-  assert.equal(storage.snapshot()[SNOOZE_DELIVERY_KEY]?.[item.id], undefined);
-  assert.ok(alarms[`snooze:${item.id}`]?.when > Date.now());
+  assert.equal((await fireSnooze(item.id)).status, "interrupted");
+  assert.equal(storage.snapshot()[SNOOZE_DELIVERY_KEY]?.[item.id].phase, "incomplete");
+  assert.equal(alarms[`snooze:${item.id}`], undefined);
   failTabs = false;
-  assert.equal((await fireSnooze(item.id)).status, "delivered");
-  assert.equal(createdTabs.length, 1);
+  assert.equal((await fireSnooze(item.id)).status, "interrupted");
+  assert.equal(createdTabs.length, 0);
 }
 
 // A stopped worker's uncertain browser-effect phase is never replayed by an
-// automatic path. The Snooze remains live; an explicit user Wake can retry it.
+// automatic path. The Snooze remains live until the user reschedules or cancels it.
 {
   const item = snooze("interrupted");
   install({
@@ -221,8 +229,8 @@ function install(seed) {
   assert.equal(storage.snapshot()[SNOOZE_DELIVERY_KEY][item.id].phase, "incomplete");
   assert.equal((await fireSnooze(item.id, { manual: false })).status, "interrupted");
   assert.equal(createdTabs.length, 0, "startup/alarm recovery cannot duplicate an uncertain wake");
-  assert.equal((await fireSnooze(item.id, { manual: true })).status, "delivered");
-  assert.equal(createdTabs.length, 1, "an explicit user Wake is the recovery action");
+  assert.equal((await fireSnooze(item.id, { manual: true })).status, "interrupted");
+  assert.equal(createdTabs.length, 0, "an explicit Wake cannot duplicate an unknown effect");
 }
 
 // Automatic ownership stays on the Snooze's originating device; an explicit

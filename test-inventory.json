@@ -1,0 +1,4614 @@
+{
+  "schemaVersion": 1,
+  "nodeVersion": 22,
+  "description": "Explicit execution or exclusion decision for every maintained file in extension/test and tools. Browser/manual acceptance is distinct from portable evidence. Update this file when adding/removing tests.",
+  "entries": [
+    {
+      "path": "extension/test/action-recovery-readiness.mjs",
+      "kind": "suite",
+      "reason": "Executes the actual worker recovery gate with deferred owners and real message routes to verify startup ordering, failure containment and safe diagnostics.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/activity-arrival.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/alarm-minimum-delay.mjs",
+      "kind": "suite",
+      "reason": "Source guard: every chrome.alarms.create under the packed-build 30 s minimum must be a documented fallback or a listed known exception; also checks the retained metadata repair timer.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/alarm-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/anchored-refresh-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/anchored-refresh-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/anchored-refresh-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/anchored-refresh-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/anchored-refresh-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/archive-render-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Archive map plus list build at T2/T3 with lazy card fields.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/authority-session-read-sharing.mjs",
+      "kind": "suite",
+      "reason": "Production authority regression for invocation-local Session read sharing, isolated aliases, full/projection modes, concurrent freshness, Recovery precedence and rejection retries.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/auto-snapshot-scheduler.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/automation-awareness-batching.mjs",
+      "kind": "suite",
+      "reason": "Actual Open surface and automation controller regression for batched connected opacity reads before cached indicator writes/reparenting, continuity and cleanup.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/automation-awareness-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/automation-awareness-dom.mjs",
+        "extension/test/dashboard-polish-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/automation-awareness-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/automation-awareness-dom.mjs",
+        "extension/test/dashboard-polish-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/automation-awareness-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/automation-awareness-policy.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/automation-protection.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/background-failure-diagnostic.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/batch5-contracts.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/browser-message-fixture.js",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs",
+        "extension/test/onboarding-help-dom.mjs",
+        "extension/test/organization-controls-dom.mjs",
+        "extension/test/search-refresh-continuity-dom.mjs",
+        "extension/test/selection-geometry-dom.mjs",
+        "tools/check-open-group-rails.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/chrome-test-process.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/anchored-refresh-dom.mjs",
+        "extension/test/automation-awareness-dom.mjs",
+        "extension/test/chrome-test-process.test.mjs",
+        "extension/test/close-day-dom.mjs",
+        "extension/test/corner-style-dom.mjs",
+        "extension/test/custom-schemes-dom.mjs",
+        "extension/test/dashboard-polish-dom.mjs",
+        "extension/test/indexeddb-adapter-dom.mjs",
+        "extension/test/onboarding-help-dom.mjs",
+        "extension/test/open-preparation-dom.mjs",
+        "extension/test/organization-controls-dom.mjs",
+        "extension/test/restore-panel-dom.mjs",
+        "extension/test/scheme-editor-dom.mjs",
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs",
+        "extension/test/search-refresh-continuity-dom.mjs",
+        "extension/test/selection-geometry-dom.mjs",
+        "extension/test/sidepanel-pressure-dom.mjs",
+        "extension/test/theme-interaction-dom.mjs",
+        "extension/test/theme-on-open-extension.mjs",
+        "extension/test/theme-picker-dom.mjs",
+        "tools/capture-minimal-motion-replay.mjs",
+        "tools/capture-store-screenshots.mjs",
+        "tools/check-codebase-explorer.mjs",
+        "tools/check-data-import.mjs",
+        "tools/check-delight-interactions.mjs",
+        "tools/check-focus-motion.mjs",
+        "tools/check-installed-action-races.mjs",
+        "tools/check-installed-recovery-ui.mjs",
+        "tools/check-installed-restart.mjs",
+        "tools/check-installed-vault-handle.mjs",
+        "tools/check-installed-vault.mjs",
+        "tools/check-minimal-delight.mjs",
+        "tools/check-minimal-motion-visibility.mjs",
+        "tools/check-open-group-rails.mjs",
+        "tools/check-popup-action-frame.mjs",
+        "tools/check-search-emphasis.mjs",
+        "tools/check-search-suggestion-cohesion.mjs",
+        "tools/check-sidepanel-keyboard.mjs",
+        "tools/check-startup-arrivals.mjs",
+        "tools/check-startup-controls.mjs",
+        "tools/check-startup-paint.mjs",
+        "tools/check-window-arrivals.mjs",
+        "tools/security-favicon-browser.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/chrome-test-process.test.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/ci-evidence/d4-design-system-spec.md",
+      "kind": "helper",
+      "reason": "Frozen fallback evidence read as text by Smoke contracts; do not execute even when suffix is .mjs.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/ci-evidence/design.json",
+      "kind": "helper",
+      "reason": "Frozen fallback evidence read as text by Smoke contracts; do not execute even when suffix is .mjs.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/ci-evidence/everytab-final-source-teal.svg",
+      "kind": "helper",
+      "reason": "Frozen fallback evidence read as text by Smoke contracts; do not execute even when suffix is .mjs.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/ci-evidence/make-final-source-icons.mjs",
+      "kind": "helper",
+      "reason": "Frozen fallback evidence read as text by Smoke contracts; do not execute even when suffix is .mjs.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/close-day-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/close-day-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/close-day-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/close-day-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/close-day-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Uses file:// harness with --allow-file-access-from-files. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/close-day-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/close-day-undo-storage.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/close-day.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/compact-filter-focus.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/context-menu-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/corner-style-contract.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/corner-style-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/corner-style-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/corner-style-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/corner-style-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/corner-style-dom.mjs",
+      "kind": "suite",
+      "reason": "Real Chrome nine-case interface-style/viewport matrix; paired with repaired Terminal layout source guard.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/custom-schemes-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/custom-schemes-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/custom-schemes-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/custom-schemes-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/custom-schemes-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/custom-schemes.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/cws-package-artifact.mjs",
+      "kind": "suite",
+      "reason": "Calls buildCwsPackage and writes an archive; explicit packaging authorization required, excluded from portable and browser defaults. Also requires a pre-existing current-version dist archive/receipt; optional --dist-dir resolves from cwd. Deliberate local release-candidate verification only; requires a separately authorized current dist artifact, so the generic packaging CI job cannot supply its prerequisite.",
+      "lane": "package",
+      "cwd": ".",
+      "ciPlatforms": []
+    },
+    {
+      "path": "extension/test/cws-package-chrome.mjs",
+      "kind": "suite",
+      "reason": "Calls buildCwsPackage and writes an archive; explicit packaging authorization required, excluded from portable and browser defaults.",
+      "lane": "package",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/cws-package.mjs",
+      "kind": "suite",
+      "reason": "Calls buildCwsPackage and writes an archive; explicit packaging authorization required, excluded from portable and browser defaults.",
+      "lane": "package",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-focus-bridge.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-hidden-refresh.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-open-scroll.mjs",
+      "kind": "suite",
+      "reason": "Actual Dashboard Open caller validates scroll reads before connected heading writes, post-await user scrolling, held/hidden/loading paths and unchanged clamp-aware replacement correction.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-polish-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-polish-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-polish-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/dashboard-polish.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-section-controllers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dashboard-tab-move-refresh.mjs",
+      "kind": "suite",
+      "reason": "Evaluated Dashboard Chrome-event caller with production refresh scheduling and interaction gate; synthetic frames verify prompt placement and retained hidden/held work.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/data-consolidation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/data-import-lifecycle.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/data-recovery-picker.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/deferred-list-control-copy.mjs",
+      "kind": "suite",
+      "reason": "Actual Delete confirmation and Session-picker controls defer unopened copy while preserving labels, focus, timers and callbacks.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/delight-interactions-browser.js",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "tools/check-delight-interactions.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/display-tab-reads.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/dom-fixture.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/activity-arrival.mjs",
+        "extension/test/dashboard-focus-bridge.mjs",
+        "extension/test/dashboard-section-controllers.mjs",
+        "extension/test/data-consolidation.mjs",
+        "extension/test/data-import-lifecycle.mjs",
+        "extension/test/data-recovery-picker.mjs",
+        "extension/test/display-tab-reads.mjs",
+        "extension/test/duplicate-rules-ui.mjs",
+        "extension/test/inbox-filter.mjs",
+        "extension/test/label-input-create.mjs",
+        "extension/test/list-selection-polish.mjs",
+        "extension/test/minimal-navigation.mjs",
+        "extension/test/minimal-personalization.mjs",
+        "extension/test/new-tab-choices.mjs",
+        "extension/test/onboarding-choices.mjs",
+        "extension/test/onboarding-icons.mjs",
+        "extension/test/onboarding-runtime.mjs",
+        "extension/test/open-bulk-actions.mjs",
+        "extension/test/open-group-rail.mjs",
+        "extension/test/open-idle-nudge.mjs",
+        "extension/test/open-selected-drag.mjs",
+        "extension/test/organization-ui-policy.mjs",
+        "extension/test/selection-feedback.mjs",
+        "extension/test/session-picker-commit.mjs",
+        "extension/test/smoke.mjs",
+        "extension/test/snoozed-ui-safety.mjs",
+        "extension/test/suspend-recent-recovery-ui.mjs",
+        "extension/test/ui-interaction-safety.mjs",
+        "extension/test/vault-folder-choice-ui.mjs",
+        "extension/test/vault-reconnect-ui.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/duplicate-domain-rules.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/duplicate-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/duplicate-rules-ui.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/e2-mocks.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/automation-protection.mjs",
+        "extension/test/close-day-undo-storage.mjs",
+        "extension/test/close-day.mjs",
+        "extension/test/custom-schemes.mjs",
+        "extension/test/data-import-lifecycle.mjs",
+        "extension/test/duplicate-domain-rules.mjs",
+        "extension/test/focus-close-live-identity.mjs",
+        "extension/test/import-commit.mjs",
+        "extension/test/inbox-restore-safety.mjs",
+        "extension/test/journal-library-authority.mjs",
+        "extension/test/journal-transaction.mjs",
+        "extension/test/label-edit-safety.mjs",
+        "extension/test/library-revision-repair.mjs",
+        "extension/test/list-selection-polish.mjs",
+        "extension/test/live-close-identity-safety.mjs",
+        "extension/test/live-close-window-identity.mjs",
+        "extension/test/live-close.mjs",
+        "extension/test/open-selected-drag.mjs",
+        "extension/test/open-tab-move.mjs",
+        "extension/test/organization.mjs",
+        "extension/test/portable-state.mjs",
+        "extension/test/protection-duration-batch.mjs",
+        "extension/test/saved-drag-safety.mjs",
+        "extension/test/saved-exit-safety.mjs",
+        "extension/test/saved-transfer-safety.mjs",
+        "extension/test/scheme-rotation-null-state.mjs",
+        "extension/test/session-picker-commit.mjs",
+        "extension/test/session-write-responsiveness.mjs",
+        "extension/test/smoke.mjs",
+        "extension/test/snapshot-delete-undo.mjs",
+        "extension/test/snapshot-recovery-outcomes.mjs",
+        "extension/test/snapshot-retention-setting.mjs",
+        "extension/test/snooze-live-persist-first.mjs",
+        "extension/test/snooze-metadata-conservation.mjs",
+        "extension/test/snooze-placement.mjs",
+        "extension/test/snooze-session-source-unavailable.mjs",
+        "extension/test/snooze-single-owner.mjs",
+        "extension/test/snooze-stale-edit-wake-safety.mjs",
+        "extension/test/snooze-stale-production-storage.mjs",
+        "extension/test/snoozed-ui-safety.mjs",
+        "extension/test/storage-authority.mjs",
+        "extension/test/storage-revision-publication.mjs",
+        "extension/test/suspend-close-cleanup-retry.mjs",
+        "extension/test/suspend-close-occurrence.mjs",
+        "extension/test/suspend-effect-live-identity.mjs",
+        "extension/test/suspend-error-page-recovery.mjs",
+        "extension/test/suspend-favicon-recovery.mjs",
+        "extension/test/suspend-loss-conservation.mjs",
+        "extension/test/suspend-metadata-backfill.mjs",
+        "extension/test/suspend-recent-recovery.mjs",
+        "extension/test/suspend-recovery-background-root.mjs",
+        "extension/test/suspend-recovery-close-race.mjs",
+        "extension/test/suspend-recovery-grace-race.mjs",
+        "extension/test/suspend-recovery-late-close-race.mjs",
+        "extension/test/suspend-recovery-occurrence-duplicate.mjs",
+        "extension/test/suspend-recovery-performance.mjs",
+        "extension/test/suspend-recovery-register-race.mjs",
+        "extension/test/suspend-recovery-startup-activity.mjs",
+        "extension/test/suspend-recovery-tail.mjs",
+        "extension/test/suspend-recovery-transient-failure.mjs",
+        "extension/test/suspend-reload-order.mjs",
+        "extension/test/suspend-reload-position.mjs",
+        "extension/test/suspend-upgrade-adoption.mjs",
+        "extension/test/vault-folder-choice-ui.mjs",
+        "extension/test/vault-library-commit.mjs",
+        "extension/test/vault-reconnect-ui.mjs",
+        "extension/test/vault-sync-watchdog.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/favicon-source.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/focus-close-live-identity.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/history-search.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/i18n-browser-mock.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/close-day-dom.mjs",
+        "extension/test/custom-schemes-dom.mjs",
+        "extension/test/open-preparation-dom.mjs",
+        "extension/test/restore-panel-dom.mjs",
+        "extension/test/scheme-editor-dom.mjs",
+        "extension/test/theme-interaction-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/i18n-foundation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/idb-transaction-lifecycle.mjs",
+      "kind": "suite",
+      "reason": "Behavioral regression against production owners with controlled transaction/permission boundaries; native filesystem claims remain separate.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/import-commit.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/inbox-capture-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/inbox-filter.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/inbox-property-static.html",
+      "kind": "fixture",
+      "reason": "Script-free static host with current Dashboard stylesheet order for controlled outgoing registered-property comparisons.",
+      "owners": [
+        "tools/measure-inbox-property.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/inbox-restore-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/incognito-capture.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/indexeddb-adapter-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/indexeddb-adapter-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/indexeddb-adapter-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/indexeddb-adapter-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/indexeddb-adapter-dom.mjs",
+      "kind": "suite",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/journal-library-authority.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/journal-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/journal-transaction.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/keyboard-command-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/label-edit-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/label-input-create.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/label-intersection.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/library-asset-hydration.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/library-asset-retention.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/library-restore-freshness.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/library-revision-repair.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/library-store.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/list-selection-polish.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/live-close-identity-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/live-close-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/live-close-window-identity.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/live-close.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/loading-starvation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Deliberate >280ms blocking verifies loading-feedback threshold, not a speed budget.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/locale-fr-completeness.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/maintenance-schedule.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/memory-indexeddb-adapter.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/activity-arrival.mjs",
+        "extension/test/close-day-undo-storage.mjs",
+        "extension/test/custom-schemes.mjs",
+        "extension/test/data-import-lifecycle.mjs",
+        "extension/test/inbox-restore-safety.mjs",
+        "extension/test/journal-library-authority.mjs",
+        "extension/test/label-edit-safety.mjs",
+        "extension/test/library-asset-hydration.mjs",
+        "extension/test/library-asset-retention.mjs",
+        "extension/test/library-restore-freshness.mjs",
+        "extension/test/library-revision-repair.mjs",
+        "extension/test/library-store.mjs",
+        "extension/test/outbox-history.mjs",
+        "extension/test/recovery-record-format.mjs",
+        "extension/test/saved-drag-safety.mjs",
+        "extension/test/saved-exit-safety.mjs",
+        "extension/test/saved-transfer-safety.mjs",
+        "extension/test/snapshot-delete-undo.mjs",
+        "extension/test/snapshot-retention-setting.mjs",
+        "extension/test/snooze-metadata-conservation.mjs",
+        "extension/test/snooze-stale-production-storage.mjs",
+        "extension/test/storage-authority-fresh-install-race.mjs",
+        "extension/test/storage-authority.mjs",
+        "extension/test/storage-record-format.mjs",
+        "extension/test/suspend-recovery-background-root.mjs",
+        "extension/test/vault-favicon-scaling.mjs",
+        "extension/test/vault-library-commit.mjs",
+        "extension/test/vault-protocol.mjs",
+        "extension/test/vault-recovery-receipt-bounds.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/message-fixture.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/activity-arrival.mjs",
+        "extension/test/automation-protection.mjs",
+        "extension/test/batch5-contracts.mjs",
+        "extension/test/context-menu-owner.mjs",
+        "extension/test/dashboard-section-controllers.mjs",
+        "extension/test/data-consolidation.mjs",
+        "extension/test/data-import-lifecycle.mjs",
+        "extension/test/history-search.mjs",
+        "extension/test/import-commit.mjs",
+        "extension/test/inbox-filter.mjs",
+        "extension/test/keyboard-command-owner.mjs",
+        "extension/test/label-input-create.mjs",
+        "extension/test/list-selection-polish.mjs",
+        "extension/test/notification-owner.mjs",
+        "extension/test/omnibox-owner.mjs",
+        "extension/test/onboarding-choices.mjs",
+        "extension/test/onboarding-icons.mjs",
+        "extension/test/onboarding-runtime.mjs",
+        "extension/test/open-bulk-actions.mjs",
+        "extension/test/open-group-rail.mjs",
+        "extension/test/open-idle-nudge.mjs",
+        "extension/test/open-preparation.mjs",
+        "extension/test/open-selected-drag.mjs",
+        "extension/test/organization-search.mjs",
+        "extension/test/protection-duration-batch.mjs",
+        "extension/test/scheme-tokens.mjs",
+        "extension/test/search-cooperative-build.mjs",
+        "extension/test/search-domain-filter.mjs",
+        "extension/test/search-label-facets.mjs",
+        "extension/test/selection-feedback.mjs",
+        "extension/test/session-picker-commit.mjs",
+        "extension/test/smoke.mjs",
+        "extension/test/snoozed-ui-safety.mjs",
+        "extension/test/suspend-recent-recovery-ui.mjs",
+        "extension/test/theme-rotation-diagnostics.mjs",
+        "extension/test/ui-interaction-safety.mjs",
+        "extension/test/vault-folder-choice-ui.mjs",
+        "extension/test/vault-reconnect-ui.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/message-handler-registry.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/minimal-navigation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/minimal-personalization.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/native-mixed-search-benchmark-page.mjs",
+      "kind": "fixture",
+      "reason": "Mixed Search assertions and native measurements execute inside the browser fixture.",
+      "owners": [
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-mixed-search-benchmark.html",
+      "kind": "fixture",
+      "reason": "Mounted mixed Search measurement page driven by measure-native-storage --search-mixed.",
+      "owners": [
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-mixed-search-fixture.mjs",
+      "kind": "helper",
+      "reason": "Pure mixed workload inputs and exact result, facet and cache oracles shared by native measurements and portable tests.",
+      "owners": [
+        "extension/test/native-mixed-search-benchmark-page.mjs",
+        "tools/testing/native-mixed-search-fixture.test.mjs",
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-search-benchmark-page.mjs",
+      "kind": "fixture",
+      "reason": "Mounted production Search, real authority routing and native IDB with synthetic Chrome transport; exact result, DOM freshness and cache-phase assertions.",
+      "owners": [
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-search-benchmark.html",
+      "kind": "fixture",
+      "reason": "Fresh-document mounted Search host with production CSS for explicit native measurements.",
+      "owners": [
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-search-oracles.mjs",
+      "kind": "helper",
+      "reason": "Independent expected rows and exact result/DOM signature checks for native Search measurements.",
+      "owners": [
+        "extension/test/native-search-benchmark-page.mjs",
+        "tools/testing/native-search-oracles.test.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-storage-benchmark-page.mjs",
+      "kind": "fixture",
+      "reason": "Production Library measurement workload and exact payload oracles; native IndexedDB requires the owned browser runner.",
+      "owners": [
+        "tools/measure-native-storage.mjs",
+        "tools/testing/native-storage-benchmark.test.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/native-storage-benchmark.html",
+      "kind": "fixture",
+      "reason": "Loopback page starts the synthetic native Library workload and exposes its terminal receipt.",
+      "owners": [
+        "tools/measure-native-storage.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/navigation-actions.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/navigation-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/new-tab-choices.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/new-tab-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/new-tab-rotation-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/new-tab-singleton-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/newtab-open-prefetch.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/newtab-singleton.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/notification-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/omnibox-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-choices.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-help-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/onboarding-help-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-help-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/onboarding-help-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-help-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/onboarding-icons.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-runtime.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-shell-layout.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/onboarding-sidebar-polish.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-bulk-actions.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-group-rail-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "tools/check-open-group-rails.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/open-group-rail-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "tools/check-open-group-rails.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/open-group-rail.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-idle-nudge.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-placement.mjs",
+      "kind": "suite",
+      "reason": "Actual Open surface and list regressions for retained same-window placement, fresh action contexts, selection order and conservative fallback.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-preparation-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/open-preparation-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/open-preparation-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/open-preparation-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/open-preparation-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/open-preparation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-selected-drag.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-tab-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/open-tab-move.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/organization-controls-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/organization-controls-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/organization-controls-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/organization-controls-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/organization-controls-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/organization-search.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/organization-ui-policy.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/organization.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/outbox-history.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/perf.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/popup-keyboard-ownership.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/popup-label-data.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/portable-state.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/pre-localization-polish.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/presentation-memoization.mjs",
+      "kind": "suite",
+      "reason": "Behavioral regression that memoized Intl formatters, the resolved UI locale, cloned icon templates, lazy Archive card fields and positional selection layouts produce exactly the previous output.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/protection-duration-batch.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/readable-view-format.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/recovery-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/recovery-ready-summary.mjs",
+      "kind": "suite",
+      "reason": "Production recovery domain and owner composition for pre-existing ready suspended pages, truthful summary counts, no browser effects and fresh exclusions.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/recovery-record-format.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/remote-manifest-retry.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/restore-panel-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/restore-panel-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/restore-panel-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/restore-panel-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/restore-panel-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/runtime-lifecycle-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/saved-drag-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/saved-duplicate-badges.mjs",
+      "kind": "suite",
+      "reason": "Real list builders and mounted rows verify exact saved URL duplicate scopes, accessible visible badges, filtering source indexes, nonmutation and existing occurrence removal with Undo.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/saved-exit-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/saved-transfer-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-editor-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/scheme-editor-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-editor-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/scheme-editor-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-editor-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/scheme-editor-model.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-lab-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Uses file:// harness with --allow-file-access-from-files. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/scheme-rotation-diagnostics-model.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-rotation-diagnostics.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-rotation-null-state.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-rotation-surfaces.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Run without arguments: parent entry launches and checks its own child surface scenarios.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/scheme-tokens.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-cooperative-build.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-domain-filter.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-label-facets.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-mature-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Explicit GC is needed for retained-heap measurement (header contract).",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ],
+      "nodeArgs": [
+        "--expose-gc"
+      ]
+    },
+    {
+      "path": "extension/test/search-open-source-refresh.mjs",
+      "kind": "suite",
+      "reason": "Verifies that a background tab title/favicon change refreshes only Search's Open source while saved sources stay prepared, that results equal a complete rebuild, and that URL/structural/storage changes still rebuild.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-presentation-refresh-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Fifty background title changes interleaved with keystrokes over 1,000 saved items and 300 open tabs.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/search-projection-cache.mjs",
+      "kind": "suite",
+      "reason": "Verifies isolated favicon-free Search reads, exact data/result parity and complete mutation/restore records with synthetic fixtures.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-projection-parity.mjs",
+      "kind": "suite",
+      "reason": "Compares production Search snapshots, results and facets against complete storage reads; preserves full payloads through subsequent edits.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/search-refresh-continuity-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/search-refresh-continuity-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/search-refresh-continuity-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/search-refresh-continuity-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/search-refresh-continuity-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/search-storage-projection.mjs",
+      "kind": "suite",
+      "reason": "Verifies isolated favicon-free Search reads, exact data/result parity and complete mutation/restore records with synthetic fixtures.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/selection-feedback.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/selection-geometry-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/selection-geometry-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/selection-geometry-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/selection-geometry-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/selection-geometry-dom.mjs",
+      "kind": "suite",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/selection-identity-cases.js",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/selection-feedback.mjs",
+        "extension/test/selection-geometry-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/session-membership-ink-contract.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/session-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/session-picker-commit.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/session-refresh-responsiveness.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/session-write-responsiveness.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/settings-change-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/sidepanel-pressure-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Uses file:// harness with --allow-file-access-from-files. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/smoke-brand-contracts.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-checks.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-chrome.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/automation-protection.mjs",
+        "extension/test/protection-duration-batch.mjs",
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-copy-policy.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-dashboard-contracts.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-focus.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-list-workflows.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-presentation-contracts.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-saved-data-workflows.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-search-contracts.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-search-popup.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-storage-concurrency.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-storage-policy.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke-theme-rotation.mjs",
+      "kind": "helper",
+      "reason": "Imported and explicitly invoked by smoke.mjs (possibly through smoke-storage-concurrency.mjs); not a standalone assertion entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/smoke.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snapshot-delete-undo.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snapshot-recovery-outcomes.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snapshot-recovery.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snapshot-retention-setting.mjs",
+      "kind": "suite",
+      "reason": "Production Store, authority and Recovery over memory adapters: automatic Snapshot retention follows the bounded snapshotKeep setting (1 to 1000; legacy 0 reads as 1000).",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-actions.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-live-persist-first.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-metadata-conservation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-placement.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-session-source-unavailable.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-single-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-stale-edit-wake-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snooze-stale-production-storage.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/snoozed-ui-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/starred-transition.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/startup-count-style-reads.mjs",
+      "kind": "suite",
+      "reason": "Actual startup owner verifies zero reduced-motion style reads, truthful text/accessibility and normal animation continuity.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/startup-inbox-safety.mjs",
+      "kind": "suite",
+      "reason": "Composes real worker/reload and Inbox sweep with synthetic adapters: disabled controls, active/expired recovery grace, timer/cap/bundles, planning/commit/close races and serialized grace writes.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority-fixture.mjs",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/automation-protection.mjs",
+        "extension/test/batch5-contracts.mjs",
+        "extension/test/close-day.mjs",
+        "extension/test/custom-schemes-dom.mjs",
+        "extension/test/display-tab-reads.mjs",
+        "extension/test/duplicate-domain-rules.mjs",
+        "extension/test/focus-close-live-identity.mjs",
+        "extension/test/import-commit.mjs",
+        "extension/test/journal-transaction.mjs",
+        "extension/test/list-selection-polish.mjs",
+        "extension/test/live-close-identity-safety.mjs",
+        "extension/test/live-close-window-identity.mjs",
+        "extension/test/live-close.mjs",
+        "extension/test/onboarding-help-dom.mjs",
+        "extension/test/onboarding-runtime.mjs",
+        "extension/test/open-group-rail.mjs",
+        "extension/test/open-selected-drag.mjs",
+        "extension/test/open-tab-move.mjs",
+        "extension/test/organization-controls-dom.mjs",
+        "extension/test/organization.mjs",
+        "extension/test/perf.mjs",
+        "extension/test/portable-state.mjs",
+        "extension/test/protection-duration-batch.mjs",
+        "extension/test/scheme-editor-dom.mjs",
+        "extension/test/scheme-rotation-null-state.mjs",
+        "extension/test/scheme-rotation-surfaces.mjs",
+        "extension/test/search-mature-performance.mjs",
+        "extension/test/session-picker-commit.mjs",
+        "extension/test/session-write-responsiveness.mjs",
+        "extension/test/smoke.mjs",
+        "extension/test/snapshot-recovery-outcomes.mjs",
+        "extension/test/snapshot-recovery.mjs",
+        "extension/test/snooze-live-persist-first.mjs",
+        "extension/test/snooze-placement.mjs",
+        "extension/test/snooze-session-source-unavailable.mjs",
+        "extension/test/snooze-single-owner.mjs",
+        "extension/test/snooze-stale-edit-wake-safety.mjs",
+        "extension/test/snoozed-ui-safety.mjs",
+        "extension/test/suspend-close-cleanup-retry.mjs",
+        "extension/test/suspend-close-occurrence.mjs",
+        "extension/test/suspend-effect-live-identity.mjs",
+        "extension/test/suspend-error-page-recovery.mjs",
+        "extension/test/suspend-favicon-recovery.mjs",
+        "extension/test/suspend-loss-conservation.mjs",
+        "extension/test/suspend-metadata-backfill.mjs",
+        "extension/test/suspend-recent-recovery.mjs",
+        "extension/test/suspend-recovery-close-race.mjs",
+        "extension/test/suspend-recovery-grace-race.mjs",
+        "extension/test/suspend-recovery-late-close-race.mjs",
+        "extension/test/suspend-recovery-occurrence-duplicate.mjs",
+        "extension/test/suspend-recovery-performance.mjs",
+        "extension/test/suspend-recovery-register-race.mjs",
+        "extension/test/suspend-recovery-startup-activity.mjs",
+        "extension/test/suspend-recovery-tail.mjs",
+        "extension/test/suspend-recovery-transient-failure.mjs",
+        "extension/test/suspend-reload-order.mjs",
+        "extension/test/suspend-reload-position.mjs",
+        "extension/test/suspend-upgrade-adoption.mjs",
+        "extension/test/theme-context-pressure.mjs",
+        "extension/test/theme-interaction-dom.mjs",
+        "extension/test/theme-open-owner.mjs",
+        "extension/test/vault-folder-choice-ui.mjs",
+        "extension/test/vault-reconnect-ui.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority-fresh-install-race.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority-prewarm.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority-record.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority-runtime.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-authority.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-record-format.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/storage-revision-publication.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/store-commit-cache-invalidation.mjs",
+      "kind": "suite",
+      "reason": "Production Store and authority over memory adapters: a commit that rejects after the Library write still invalidates this writer's read cache so the next read is fresh.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-close-cleanup-retry.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-close-occurrence.mjs",
+      "kind": "suite",
+      "reason": "Production suspension owners cover exact occurrence aliases after restart, failed registry/ledger writes, reused IDs and concurrent recovery.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-effect-live-identity.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-error-page-recovery.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-favicon-recovery.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-loss-conservation.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-metadata-backfill.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recent-recovery-ui.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recent-recovery.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-background-root.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-close-race.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-grace-race.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-late-close-race.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-latency.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Timer values/order are deterministic; no elapsed-time budget.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-occurrence-duplicate.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-register-race.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-startup-activity.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Default entry launches all child scenarios; EVERYTAB_STARTUP_ACTIVITY_SCENARIO is an internal child selector.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-tail.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-recovery-transient-failure.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-reload-order.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-reload-position.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspend-upgrade-adoption.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/suspension-message-handlers.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/tab-activity-concurrency.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/tab-activity.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/tab-event-refresh-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Tab-event burst at T2/T3 must perform no saved-library clone or storage read.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/tab-lifecycle-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/tab-refresh-live-tasks.mjs",
+      "kind": "suite",
+      "reason": "Behavioral regression for live-only tab refresh tasks: Needs you reuses saved inputs, navigation counts read no saved family, and one storage flush shares Inbox/Snoozed reads.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/tablist-action-resolution.mjs",
+      "kind": "suite",
+      "reason": "Actual list owner verifies one initial action factory pass, shortcut/render parity, selection context and fresh factories after folding or rebuilding.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/theme-context-pressure.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Optional argument sets context count (default 2); checks bounded event/lock behavior, not wall-clock performance budget.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/theme-interaction-dom-page.mjs",
+      "kind": "fixture",
+      "reason": "Assertions run inside the corresponding HTML fixture in Chrome, not Node.",
+      "owners": [
+        "extension/test/theme-interaction-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/theme-interaction-dom.html",
+      "kind": "fixture",
+      "reason": "HTML fixture loads browser-side assertions and production modules; owned by browser runner.",
+      "owners": [
+        "extension/test/theme-interaction-dom.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/theme-interaction-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/theme-on-open-extension.mjs",
+      "kind": "suite",
+      "reason": "Direct unpacked-extension equivalents of the former packaged CI checks; preserves OS-specific New Tab, context-pressure and worker coverage without building archives.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "env": {
+        "EVERYTAB_OPEN_COUNT": "2"
+      },
+      "variants": [
+        {
+          "id": "installed-new-tab",
+          "platforms": [
+            "linux",
+            "win32"
+          ],
+          "ciPlatforms": [
+            "linux",
+            "win32"
+          ],
+          "env": {
+            "EVERYTAB_STABLE_EXTENSION_TARGET": "1"
+          }
+        },
+        {
+          "id": "installed-context-pressure",
+          "platforms": [
+            "linux"
+          ],
+          "ciPlatforms": [
+            "linux"
+          ],
+          "env": {
+            "EVERYTAB_STABLE_EXTENSION_TARGET": "1",
+            "EVERYTAB_LIVE_TAB_COUNT": "120",
+            "EVERYTAB_LIVE_WINDOW_COUNT": "3",
+            "EVERYTAB_SPREAD_CONTEXT_COUNT": "3",
+            "EVERYTAB_SPREAD_ONLY": "1",
+            "EVERYTAB_MAX_SPREAD_READY_MS": "400",
+            "EVERYTAB_MAX_POPUP_READY_MS": "300"
+          }
+        },
+        {
+          "id": "installed-worker-bootstrap",
+          "platforms": [
+            "darwin"
+          ],
+          "ciPlatforms": [
+            "darwin"
+          ],
+          "env": {
+            "EVERYTAB_CHROME_HEADLESS": "1",
+            "EVERYTAB_WORKER_BOOTSTRAP_ONLY": "1"
+          }
+        }
+      ]
+    },
+    {
+      "path": "extension/test/theme-open-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/theme-picker-dom.mjs",
+      "kind": "manual",
+      "reason": "Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "extension"
+    },
+    {
+      "path": "extension/test/theme-rotation-diagnostics.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/theme-snapshot-contract.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/ui-interaction-safety-cases.js",
+      "kind": "helper",
+      "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
+      "owners": [
+        "extension/test/selection-geometry-dom.mjs",
+        "extension/test/ui-interaction-safety.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/ui-interaction-safety.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/ui-language-setting.mjs",
+      "kind": "suite",
+      "reason": "Behavioral check of the in-app language setting: the resolver installs a packaged catalogue with Chrome-compatible substitution and browser fallback, Intl helpers follow it, Settings normalization preserves stored values, every page entry installs the language before its first render (source guard), and the worker reinstalls on a Settings change.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/upgrade-from-0.8.632.mjs",
+      "kind": "manual",
+      "reason": "Upgrade evidence against the archived 0.8.632 Store package. The package lives under dist/ in the maintainer workspace and is not published; run it there with node tools/test.mjs upgrade-from-0.8.632.mjs."
+    },
+    {
+      "path": "extension/test/vault-asset-bootstrap-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/vault-failure-copy-ui.mjs",
+      "kind": "suite",
+      "reason": "Real Vault surface and receipt writer: allowlisted failure codes render specific copy and actions, quarantine counts render notes, and receipts carry codes without error text.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-favicon-scaling.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/vault-folder-choice-ui.mjs",
+      "kind": "suite",
+      "reason": "Behavioral regression against production owners with controlled transaction/permission boundaries; native filesystem claims remain separate.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-join-confirmation.mjs",
+      "kind": "suite",
+      "reason": "Real Vault surface, picker boundary and retained-handle store: joining a different populated Vault asks for confirmation with record counts; cancel and Escape keep the previous folder. No native picker or permission dialog.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-library-commit.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-memory-fs.mjs",
+      "kind": "helper",
+      "reason": "Synthetic in-memory File System Access folders with cross-root propagation for two-device Vault tests; consumers execute its exported classes.",
+      "owners": [
+        "extension/test/vault-quarantine.mjs",
+        "extension/test/vault-restore-point-race.mjs"
+      ]
+    },
+    {
+      "path": "extension/test/vault-progress-watchdog.mjs",
+      "kind": "suite",
+      "reason": "Production Vault protocol with actual memory Library/Recovery and virtual inactivity watchdog: progressing directory/manifest work, real stalls, invalid reads, incomplete publication and count-only progress.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-protocol.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-quarantine.mjs",
+      "kind": "suite",
+      "reason": "Production Vault protocol with synthetic folders: damaged foreign manifests, conflict copies and iCloud placeholders are skipped and counted while authoritative files fail closed and newer-format data reports update-required. Allowlisted codes only.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-readable-views.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-reconnect-ui.mjs",
+      "kind": "suite",
+      "reason": "Mounted Vault controls use production handle and sync owners with injected permission/IndexedDB failures, checking safe feedback, retained identity and retry behavior.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-recovery-receipt-bounds.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-restart-ui.mjs",
+      "kind": "suite",
+      "reason": "Mounted production Vault Restart controls must reach the recorded reload owner without waiting for stalled folder/status presentation; preserves error recovery and retry ownership.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-restore-point-race.mjs",
+      "kind": "suite",
+      "reason": "Two simulated devices with delayed cloud propagation: same-day Restore-point race keeps the other device's young checkpoint, foreign checkpoints age out only after retention plus grace, damaged or incomplete daily references are reported by code and skipped. Synthetic folders only; no cloud client.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-storage-audit.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-sync-scheduling.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-sync-watchdog.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/vault-transient-file-retry.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/visible-document-tasks.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/window-lifecycle-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/worker-startup-owner.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/workflow-test-inventory.mjs",
+      "kind": "suite",
+      "reason": "Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/README.md",
+      "kind": "documentation",
+      "reason": "Instructions and acceptance context, not an executable suite."
+    },
+    {
+      "path": "tools/build-codebase-guide.mjs",
+      "kind": "suite",
+      "reason": "Read-only exact freshness check of the root guide, explorer and source atlas; fails on stale documentation without regenerating it.",
+      "id": "codebase-guide-freshness",
+      "lane": "portable",
+      "cwd": ".",
+      "args": [
+        "--check"
+      ],
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/capture-minimal-motion-replay.mjs",
+      "kind": "utility",
+      "reason": "Explicit generation/capture/media/localization/performance-seeding utility; writes requested artifacts or may access external provider. Not a regression-suite entry."
+    },
+    {
+      "path": "tools/capture-store-screenshots.mjs",
+      "kind": "utility",
+      "reason": "Explicit screenshot generator also exports Chrome/CDP fixture helpers; guarded main, but import requires discoverable Chrome. Does not run capture merely by importing."
+    },
+    {
+      "path": "tools/check-automation-reveal.mjs",
+      "kind": "suite",
+      "reason": "Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/check-codebase-explorer.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-data-import.mjs",
+      "kind": "suite",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/check-deferred-list-controls.mjs",
+      "kind": "manual",
+      "reason": "Native Chrome mounted confirmation and Session-picker interactions with owned disposable profile, exact text/focus and real timers; explicit qualification only.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-delight-interactions.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-focus-motion.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-installed-action-races.mjs",
+      "kind": "suite",
+      "reason": "Explicit disposable installed Chrome integration: real navigation, native Store Web Lock, destroyed forward-action context, and actual worker replacement before/after Undo browser creation; controlled timing gates. Not yet qualified on remote CI.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [],
+      "timeoutMs": 120000
+    },
+    {
+      "path": "tools/check-installed-inbox-bundles.mjs",
+      "kind": "manual",
+      "reason": "Explicit installed Dashboard and narrow Side Panel host qualification of bundled Inbox disclosure, exact rows and retained selection using synthetic disposable Chrome.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-installed-live-feedback.mjs",
+      "kind": "manual",
+      "reason": "Owned installed Chrome fixture checks exact move membership, reload safety with automation disabled and duplicate markers; optional large-tab normal-motion workload and sanitized CPU attribution. Synthetic pages only."
+    },
+    {
+      "path": "tools/check-installed-recovery-ui.mjs",
+      "kind": "manual",
+      "reason": "Disposable installed Chrome qualification with retained timestamped evidence; inspect current tool setup and limitations before direct execution. Not part of unattended CI.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-installed-restart.mjs",
+      "kind": "manual",
+      "reason": "Disposable installed Chrome restart/reload with exact occurrence/window oracle and first reload protected from eligible idle and max-tab Auto-save through the delayed recovery tail. Explicit qualification, not unattended CI.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-installed-search-refresh.mjs",
+      "kind": "manual",
+      "reason": "Explicit synthetic installed host qualification of native title/favicon continuity, fresh input and URL refresh; not attached browser panels or OS IME.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-installed-vault-handle.mjs",
+      "kind": "suite",
+      "reason": "Disposable installed Chrome with native OPFS directory handles, IndexedDB persistence/abort and production syncNow. No native picker/external-folder permissions/cloud claim; not yet qualified on remote CI.",
+      "lane": "browser",
+      "cwd": ".",
+      "ciPlatforms": [],
+      "timeoutMs": 120000
+    },
+    {
+      "path": "tools/check-installed-vault.mjs",
+      "kind": "manual",
+      "reason": "Two disposable installed Chrome profiles and a shared synthetic OS-folder bridge exercise production Vault protocol and Restore; native directory permissions and real two-device transport remain manual. Produces retained evidence.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-minimal-delight.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-minimal-motion-visibility.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-open-group-rails.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-popup-action-frame.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-search-emphasis.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-search-suggestion-cohesion.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-sidepanel-keyboard.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-startup-arrivals.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-startup-controls.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-startup-paint.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/check-window-arrivals.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/codebase/descriptions.json",
+      "kind": "fixture",
+      "reason": "Maintained authored source for generated root learning files; included in freshness hashes.",
+      "owners": [
+        "tools/build-codebase-guide.mjs"
+      ]
+    },
+    {
+      "path": "tools/codebase/explorer-template.html",
+      "kind": "fixture",
+      "reason": "Maintained authored source for generated root learning files; included in freshness hashes.",
+      "owners": [
+        "tools/build-codebase-guide.mjs"
+      ]
+    },
+    {
+      "path": "tools/codebase/guide-intro.md",
+      "kind": "fixture",
+      "reason": "Maintained authored source for generated root learning files; included in freshness hashes.",
+      "owners": [
+        "tools/build-codebase-guide.mjs"
+      ]
+    },
+    {
+      "path": "tools/codebase/source-graph.mjs",
+      "kind": "helper",
+      "reason": "Nonexecuting literal source relationship scanner; partial static graph with explicit limits.",
+      "owners": [
+        "tools/build-codebase-guide.mjs",
+        "tools/testing/codebase-source-graph.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/custom-scheme-harness.html",
+      "kind": "manual",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry. No automatic suite owner found in maintained test/tool references; explicit developer entry or configuration must remain visibly classified."
+    },
+    {
+      "path": "tools/custom-scheme-harness.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/custom-schemes-dom.mjs"
+      ]
+    },
+    {
+      "path": "tools/custom-theme-boot-harness.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/custom-schemes-dom.mjs"
+      ]
+    },
+    {
+      "path": "tools/diagnostics/scheme-rotation-diagnostics-model.js",
+      "kind": "helper",
+      "reason": "Opt-in diagnostic implementation exercised by named extension tests; not itself a standalone test.",
+      "owners": [
+        "extension/test/i18n-foundation.mjs",
+        "extension/test/scheme-rotation-diagnostics-model.mjs",
+        "extension/test/theme-rotation-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "tools/diagnostics/scheme-rotation-diagnostics.js",
+      "kind": "helper",
+      "reason": "Opt-in diagnostic implementation exercised by named extension tests; not itself a standalone test.",
+      "owners": [
+        "extension/test/i18n-foundation.mjs",
+        "extension/test/scheme-rotation-diagnostics-model.mjs",
+        "extension/test/theme-rotation-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "tools/diagnostics/storage-audit.js",
+      "kind": "helper",
+      "reason": "Opt-in diagnostic implementation exercised by named extension tests; not itself a standalone test.",
+      "owners": [
+        "extension/test/vault-protocol.mjs",
+        "extension/test/vault-storage-audit.mjs"
+      ]
+    },
+    {
+      "path": "tools/diagnostics/theme-rotation-diagnostics-copy.js",
+      "kind": "helper",
+      "reason": "Opt-in diagnostic implementation exercised by named extension tests; not itself a standalone test.",
+      "owners": [
+        "extension/test/i18n-foundation.mjs",
+        "extension/test/theme-rotation-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "tools/diagnostics/theme-rotation-diagnostics.js",
+      "kind": "helper",
+      "reason": "Opt-in diagnostic implementation exercised by named extension tests; not itself a standalone test.",
+      "owners": [
+        "extension/test/i18n-foundation.mjs",
+        "extension/test/theme-rotation-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "tools/gen-icon.mjs",
+      "kind": "utility",
+      "reason": "Explicit generation/capture/media/localization/performance-seeding utility; writes requested artifacts or may access external provider. Not a regression-suite entry."
+    },
+    {
+      "path": "tools/measure-inbox-property.mjs",
+      "kind": "manual",
+      "reason": "Explicit installed Chrome experiment comparing registered-property removal, focus, navigation commands or native/emulated reduced motion on static synthetic Inbox snapshots; owns a disposable profile and validates exact paired state."
+    },
+    {
+      "path": "tools/measure-installed-inbox.mjs",
+      "kind": "manual",
+      "reason": "Explicit full installed Dashboard Inbox measurement; optional CPU, work, message and startup diagnostics. Focus setup precedes measured navigation. Synthetic owned profile, exact UI oracles and cleanup, no hardware timing threshold.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/measure-native-storage.mjs",
+      "kind": "manual",
+      "reason": "Explicit native Library or --search mounted Search measurement in an owned Chrome profile; correctness and cleanup fail the run, timings have no hardware-dependent threshold.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/package-cws.mjs",
+      "kind": "utility",
+      "reason": "Release archive builder with explicit command/plan interface; packaging is opt-in only."
+    },
+    {
+      "path": "tools/package.json",
+      "kind": "helper",
+      "reason": "Declares ES module interpretation for tool JavaScript; no executable assertions.",
+      "owners": [
+        "tools/test.mjs"
+      ]
+    },
+    {
+      "path": "tools/perf-seed.mjs",
+      "kind": "utility",
+      "reason": "Explicit generation/capture/media/localization/performance-seeding utility; writes requested artifacts or may access external provider. Not a regression-suite entry."
+    },
+    {
+      "path": "tools/pseudo-locale.mjs",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/i18n-foundation.mjs"
+      ]
+    },
+    {
+      "path": "tools/recovery-summary-diagnostic.js",
+      "kind": "utility",
+      "reason": "Read-only pasteable Dashboard Console diagnostic; exposes only counts and fixed delivery/context statuses. Tested by tools/testing/recovery-summary-diagnostic.test.mjs."
+    },
+    {
+      "path": "tools/scheme-editor-harness.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/scheme-editor-dom.mjs"
+      ]
+    },
+    {
+      "path": "tools/scheme-lab-locale-bootstrap.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs"
+      ]
+    },
+    {
+      "path": "tools/scheme-lab-specimen.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs"
+      ]
+    },
+    {
+      "path": "tools/scheme-lab.css",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs"
+      ]
+    },
+    {
+      "path": "tools/scheme-lab.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs"
+      ]
+    },
+    {
+      "path": "tools/scheme-lab.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/scheme-lab-dom.mjs",
+        "extension/test/scheme-tokens.mjs"
+      ]
+    },
+    {
+      "path": "tools/security-favicon-browser.mjs",
+      "kind": "manual",
+      "reason": "Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Explicit local/browser acceptance only; not promoted to unattended CI or bulk execution. Inspect fixture environment and output paths before running directly.",
+      "cwd": "."
+    },
+    {
+      "path": "tools/shell-harness.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs",
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "tools/sidepanel-fixtures.js",
+      "kind": "helper",
+      "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs",
+        "extension/test/sidepanel-pressure-dom.mjs",
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "tools/sidepanel-harness.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/dashboard-polish-dom.mjs",
+        "extension/test/sidepanel-pressure-dom.mjs",
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "tools/surface-harness.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/smoke.mjs"
+      ]
+    },
+    {
+      "path": "tools/test.mjs",
+      "kind": "utility",
+      "reason": "Manifest-driven test CLI; importing is safe, executing it as a suite would recurse."
+    },
+    {
+      "path": "tools/testing/codebase-guide.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic source-tree and lexical graph regressions for deterministic, private-scope, relocatable generated learning files.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/codebase-source-graph.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic source-tree and lexical graph regressions for deterministic, private-scope, relocatable generated learning files.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/export-public-repo.test.mjs",
+      "kind": "suite",
+      "reason": "Allow/deny decisions, sensitive-content guard, inventory filtering and a read-only plan of the current tree for the public exporter.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-cpu-profile.mjs",
+      "kind": "helper",
+      "reason": "Validates native CPU samples and summarizes exclusive time using only safe owned source paths and numeric categories.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-cpu-profile.test.mjs",
+        "tools/check-installed-live-feedback.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-cpu-profile.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic CPU profile checks cover attribution, malformed samples and omission of external URLs and function names.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-departure-trace.mjs",
+      "kind": "helper",
+      "reason": "Collects fixed browser costs, observation markers and optional allowlisted style reasons/source locations, lifecycle types and private root attribution between same-thread navigation markers.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-departure-trace.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-departure-trace.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic trace cases cover privacy, marker identity, malformed events, clipping, thread scope, exact owned-source attribution, fixed lifecycle dispatch types and private property-registration/HTML-insertion root ownership.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-measurement-cleanup.mjs",
+      "kind": "helper",
+      "reason": "Attempts every owned Inbox measurement resource cleanup and requires browser termination before profile removal.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-measurement-cleanup.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-measurement-cleanup.test.mjs",
+      "kind": "suite",
+      "reason": "Injects client, process and profile cleanup failures; later cleanup remains reachable and profiles survive unconfirmed process termination.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-message-callers.mjs",
+      "kind": "helper",
+      "reason": "Optional exact message-call counts by allowlisted extension source file/line, with no retained raw stacks or lookup data.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-message-callers.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-message-callers.test.mjs",
+      "kind": "suite",
+      "reason": "Serialized caller probe tests native call semantics, safe source attribution, malformed receipts, privacy and restoration.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-navigation.mjs",
+      "kind": "helper",
+      "reason": "Owns completed focus setup before measured installed Inbox navigation or reload, optional profiling and private document-root capture with remote-object cleanup.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-navigation.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-navigation.test.mjs",
+      "kind": "suite",
+      "reason": "Executable checks cover focus/hook ordering and failures, reload dispatch and navigation identity, private root validation and remote-object cleanup including asynchronous and failure paths.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-property-fixture.mjs",
+      "kind": "helper",
+      "reason": "Validates static Inbox identity, selection, geometry and explicit property/focus treatment or identical command/media pairs, strict reduced motion and destination type; splits recorded style costs at a preparation marker.",
+      "owners": [
+        "tools/measure-inbox-property.mjs",
+        "tools/testing/inbox-property-fixture.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-property-fixture.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic receipts reject changed rows, geometry, styles or undeclared focus changes and validate complete timing partitions across focus preparation, identical command/media pairs, strict reduced motion and canonical destinations.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-selector-stats.mjs",
+      "kind": "helper",
+      "reason": "Collects exact owned CSSOM selector statistics paired to complete same-thread UpdateLayoutTree passes without retaining private trace metadata.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-selector-stats.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-selector-stats.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic selector traces cover exact whitespace identity, privacy, pairing, interval boundaries, malformed inputs and bounded counts.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-startup-network.mjs",
+      "kind": "helper",
+      "reason": "Collects only allowlisted current-loader source timing on an independent CDP clock.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-startup-network.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-startup-network.test.mjs",
+      "kind": "suite",
+      "reason": "Synthetic CDP events cover private-data omission, navigation identity, stale traffic, malformed timing, redirects, incomplete and failed requests.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-work-probes.mjs",
+      "kind": "helper",
+      "reason": "Optional numeric-only Intl, localization and pending-counter style diagnostics for synthetic installed Inbox work.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/inbox-work-probes.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/inbox-work-probes.test.mjs",
+      "kind": "suite",
+      "reason": "Checks serialized native-boundary probes, numeric-only receipts, malformed results, restoration and native call semantics.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/installed-inbox-bundles.mjs",
+      "kind": "helper",
+      "reason": "Pure exact bundled Inbox phase receipts for initial, expanded and selection-preserving disclosure states.",
+      "owners": [
+        "tools/check-installed-inbox-bundles.mjs",
+        "tools/testing/installed-inbox-bundles.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/installed-inbox-bundles.test.mjs",
+      "kind": "suite",
+      "reason": "Negative behavior receipts reject wrong bundle ordering, incomplete expansion and changed selected identities.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/installed-inbox-receipt.mjs",
+      "kind": "helper",
+      "reason": "Pure exact Inbox measurement receipt validator with separate geometry, navigation identity, strict native/effective reduced motion and selection assertions.",
+      "owners": [
+        "tools/measure-installed-inbox.mjs",
+        "tools/testing/installed-inbox-receipt.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/installed-inbox-receipt.test.mjs",
+      "kind": "suite",
+      "reason": "Negative tests reject incomplete/reordered Inbox rows, stale trial identity, hidden frames, missing/non-true motion observations and inconsistent class/checkbox selection.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/installed-recovery-cleanup.test.mjs",
+      "kind": "suite",
+      "reason": "Executes the installed recovery tool finalizer with fault-injected receipt writes and resource cleanup; preserves primary failures and verifies every cleanup attempt.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/inventory.mjs",
+      "kind": "helper",
+      "owners": [
+        "tools/test.mjs",
+        "tools/testing/inventory.test.mjs",
+        "extension/test/workflow-test-inventory.mjs"
+      ],
+      "reason": "Shared manifest validation, platform selection and shell-free invocation planning."
+    },
+    {
+      "path": "tools/testing/inventory.test.mjs",
+      "kind": "suite",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "reason": "Regression checks for explicit coverage, safe selection and runner argument behavior."
+    },
+    {
+      "path": "tools/testing/license-headers.test.mjs",
+      "kind": "suite",
+      "reason": "Source guard: every runtime module, stylesheet and maintained public tool starts with the MPL-2.0 copyright and SPDX header.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/native-measurement-receipt.mjs",
+      "kind": "helper",
+      "reason": "Pure terminal receipt validation shared by owned-browser measurements and stale/malformed receipt regressions.",
+      "owners": [
+        "tools/measure-native-storage.mjs",
+        "tools/testing/native-measurement-receipt.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/native-measurement-receipt.test.mjs",
+      "kind": "suite",
+      "reason": "Rejects stale document results, wrong trial or cleanup, malformed phase order and non-finite timings without starting Chrome.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/native-mixed-search-fixture.test.mjs",
+      "kind": "suite",
+      "reason": "Validates mixed Search dimensions, independent result/facet expectations, production parity and negative cache/result oracles.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/native-search-oracles.test.mjs",
+      "kind": "suite",
+      "reason": "Rejects stale, duplicated, reordered, wrong-source and wrong-URL Search oracle payloads.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/native-storage-benchmark.test.mjs",
+      "kind": "suite",
+      "reason": "Verifies deterministic fixture dimensions, corrupted record rejection and raw timing summary arithmetic.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/recovery-summary-diagnostic.test.mjs",
+      "kind": "suite",
+      "reason": "Executes the actual pasteable diagnostic in isolated VM contexts, covering authoritative reads, per-step failures and private-input sanitization.",
+      "lane": "portable",
+      "cwd": ".",
+      "nodeArgs": [
+        "--experimental-vm-modules"
+      ],
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/restart-occurrences.mjs",
+      "kind": "helper",
+      "reason": "One shared native restart assertion binds stable occurrences to window groups while allowing Chrome ID renumbering.",
+      "owners": [
+        "tools/check-installed-restart.mjs",
+        "tools/testing/restart-occurrences.test.mjs"
+      ]
+    },
+    {
+      "path": "tools/testing/restart-occurrences.test.mjs",
+      "kind": "suite",
+      "reason": "Positive and negative cases execute the same occurrence/window assertions used by installed restart checks.",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "tools/testing/runner.test.mjs",
+      "kind": "suite",
+      "lane": "portable",
+      "cwd": ".",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ],
+      "reason": "Regression checks for explicit coverage, safe selection and runner argument behavior."
+    },
+    {
+      "path": "tools/theme-picker-harness.html",
+      "kind": "fixture",
+      "reason": "Developer browser harness page loaded by browser regressions or Scheme Lab; no Node entry.",
+      "owners": [
+        "extension/test/theme-picker-dom.mjs"
+      ]
+    },
+    {
+      "path": "tools/zip-archive.mjs",
+      "kind": "helper",
+      "reason": "Shared ZIP implementation used by the package builder and package tests; importing has no package effect.",
+      "owners": [
+        "extension/test/cws-package-chrome.mjs",
+        "extension/test/cws-package.mjs",
+        "tools/package-cws.mjs"
+      ]
+    },
+    {
+      "path": "tools/export-public-repo.mjs",
+      "kind": "utility",
+      "reason": "One-way curated public source export with explicit allow/deny lists, inventory filtering, regenerated learning files and a sensitive-content guard; never writes inside the workspace."
+    },
+    {
+      "path": "extension/test/inbox-filter-reuse.mjs",
+      "kind": "suite",
+      "reason": "Verifies that an Inbox filter keystroke reuses the last Inbox, Session identity and awareness read (zero Inbox storage reads, no large clone) while their store generations are unchanged, reads fresh after a storage change, and that the Inbox filter exposes the F shortcut.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    {
+      "path": "extension/test/inbox-filter-performance.mjs",
+      "kind": "suite",
+      "reason": "Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget.",
+      "lane": "performance",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux"
+      ]
+    },
+    {
+      "path": "extension/test/automation-awareness-inbox-batching.mjs",
+      "kind": "suite",
+      "reason": "Verifies that an Inbox re-render inside withRowRender samples every cached awareness trigger's reveal state before any paint write (the unguarded path interleaved computed-style reads with writes, a quadratic style recalc per keystroke), and that the Inbox surface builds inside withRowRender.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    }
+  ]
+}

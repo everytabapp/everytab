@@ -1,9 +1,16 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "./failure-diagnostic.js";
 import { STORE_KEYS } from "./types.js";
 import {
-  newMeta, upsertItem, tombstoneItem, getSettings, mutateStores, getFreshItem
+  newMeta, getSettings, mutateStores, mutateNamedSessionStores, getFreshItem,
+  readStoreMap, readStoreValue
 } from "./store.js";
-import { isSaveableTab, canonicalRef } from "./tabs.js";
+import { isSaveableTab, canonicalRef, recoverableTabRef } from "./tabs.js";
 import { JOURNAL_KEY, makeJournalEntry, appendedJournal } from "./journal.js";
+import { assignNewOrganizationMembers } from "./organization.js";
+import { sameSavedRecord } from "./saved-selection-safety.js";
 import {
   hasTabGroupsPermission, mapGroupIndexes, fetchGroupTemplates, recreateWindowGroups
 } from "./tab-groups.js";
@@ -33,9 +40,13 @@ async function groupGate() {
  * @param {{preserveEnabled: boolean, withPermission: boolean}} gate
  * @returns {Promise<{refs: import("./types.js").TabRef[], groups: import("./types.js").GroupTemplate[]}>}
  */
-async function captureWindowRefs(windowTabs, gate) {
-  const saveable = (windowTabs ?? []).filter(isSaveableTab);
-  const refs = saveable.map(canonicalRef);
+async function captureWindowRefs(windowTabs, gate, refOf = (tab) => (
+  isSaveableTab(tab) ? canonicalRef(tab) : null
+)) {
+  const captured = (windowTabs ?? []).map((tab) => ({ tab, ref: refOf(tab) }))
+    .filter(({ ref }) => ref);
+  const saveable = captured.map(({ tab }) => tab);
+  const refs = captured.map(({ ref }) => ref);
   if (!gate.preserveEnabled) return { refs, groups: [] };
   const { groupIndexByPos, groupIds } = mapGroupIndexes(saveable);
   for (let i = 0; i < refs.length; i++) {
@@ -80,19 +91,28 @@ async function recreateGroupsIfEnabled(windowId, refs, tabIds, groups) {
  * (auto-snapshots are not journaled and don't come through here).
  * @param {import("./types.js").Session} session
  */
-async function commitCreatedSession(session) {
+async function commitCreatedSession(session, organization = null) {
   const entry = makeJournalEntry(`Created session “${session.name}”`, {
     dels: [{ store: STORE_KEYS.sessions, id: session.id }]
   });
   const now = Date.now();
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => ({
+  const storedSession = { ...session, modifiedAt: now };
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => ({
     [STORE_KEYS.sessions]: {
       ...(maps[STORE_KEYS.sessions] ?? {}),
-      [session.id]: { ...session, modifiedAt: now }
+      [session.id]: storedSession
     },
     [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
   }));
-  return session;
+  if (organization) {
+    const grouped = await assignNewOrganizationMembers("session", [session.id], organization);
+    if (grouped?.ok === false) {
+      reportFailure("session-group-assignment", grouped.reason);
+    }
+  }
+  // Return the exact committed version. Callers use this object as the
+  // optimistic-concurrency baseline for follow-up actions.
+  return storedSession;
 }
 
 /**
@@ -105,9 +125,13 @@ async function commitCreatedSession(session) {
  */
 function sessionMapWithTabsRemoved(map, session, picks, now) {
   const drop = new Map(picks.map((p) => [p.windowIndex, new Set(p.indexes)]));
-  const windows = session.windows
-    .map((w, wi) => w.filter((_, i) => !drop.get(wi)?.has(i)))
-    .filter((w) => w.length > 0);
+  const windowPairs = session.windows
+    .map((w, wi) => ({
+      refs: w.filter((_, i) => !drop.get(wi)?.has(i)),
+      groups: Array.isArray(session.groups) ? (session.groups[wi] ?? []) : null
+    }))
+    .filter((pair) => pair.refs.length > 0);
+  const windows = windowPairs.map((pair) => pair.refs);
   const next = { ...map };
   if (windows.length === 0) {
     const cur = next[session.id];
@@ -115,6 +139,7 @@ function sessionMapWithTabsRemoved(map, session, picks, now) {
     return { map: next, remainder: null };
   }
   const updated = { ...session, windows, modifiedAt: now };
+  if (Array.isArray(session.groups)) updated.groups = windowPairs.map((pair) => pair.groups);
   next[session.id] = updated;
   return { map: next, remainder: updated };
 }
@@ -127,8 +152,8 @@ function formatStamp(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Current window layout (saveable tabs only, empty windows dropped). Suspended
- * tabs are captured under their underlying URL (canonicalRef), never dropped.
+/** Current window layout for crash recovery (web and local-file tabs; empty
+ * windows dropped). Suspended tabs are captured under their underlying URL.
  * F18: also returns per-window tab-group templates, aligned to `windows` by index.
  * @returns {Promise<{windows: import("./types.js").TabRef[][], groups: import("./types.js").GroupTemplate[][]}>} */
 async function captureAllWindows() {
@@ -137,7 +162,7 @@ async function captureAllWindows() {
   const windows = [];
   const groups = [];
   for (const w of wins) {
-    const cap = await captureWindowRefs(w.tabs ?? [], gate);
+    const cap = await captureWindowRefs(w.tabs ?? [], gate, recoverableTabRef);
     if (cap.refs.length === 0) continue; // drop empty windows (same as before)
     windows.push(cap.refs);
     groups.push(cap.groups);
@@ -155,8 +180,7 @@ export async function takeSnapshot() {
   if (windows.length === 0) return null;
 
   const sig = JSON.stringify(windows.map((w) => w.map((t) => t.url)));
-  const r = await chrome.storage.local.get(SNAPSHOT_SIG_KEY);
-  if (r[SNAPSHOT_SIG_KEY] === sig) return null;
+  if (await readStoreValue(SNAPSHOT_SIG_KEY) === sig) return null;
 
   /** @type {import("./types.js").Session} */
   const session = {
@@ -178,15 +202,13 @@ export async function takeSnapshot() {
     if (maps[SNAPSHOT_SIG_KEY] === sig) return null; // another context won the race
     const map = { ...(maps[STORE_KEYS.sessions] ?? {}) };
     map[session.id] = { ...session, modifiedAt: now };
-    // An explicit 0 keeps everything. Fresh profiles default to a bounded 200,
-    // while existing profiles that chose 0 remain unlimited.
-    if (snapshotKeep && snapshotKeep > 0) {
-      const autos = Object.values(map)
-        .filter((s) => s.auto && !s.deletedAt)
-        .sort((a, b) => b.modifiedAt - a.modifiedAt); // newest first
-      for (const old of autos.slice(Math.max(1, snapshotKeep))) {
-        map[old.id] = { ...old, deletedAt: now, modifiedAt: now };
-      }
+    // getSettings already bounds snapshotKeep (a stored 0 reads as the
+    // maximum), and the Recovery database prunes to the same effective value.
+    const autos = Object.values(map)
+      .filter((s) => s.auto && !s.deletedAt)
+      .sort((a, b) => b.modifiedAt - a.modifiedAt); // newest first
+    for (const old of autos.slice(Math.max(1, snapshotKeep))) {
+      map[old.id] = { ...old, deletedAt: now, modifiedAt: now };
     }
     created = session;
     return { [STORE_KEYS.sessions]: map, [SNAPSHOT_SIG_KEY]: sig };
@@ -200,7 +222,7 @@ export async function takeSnapshot() {
  * @param {number[]} tabIds @param {string} [name]
  * @returns {Promise<import("./types.js").Session | null>}
  */
-export async function saveTabsAsSession(tabIds, name) {
+export async function saveTabsAsSession(tabIds, name, organization = null) {
   const gate = await groupGate();
   /** @type {chrome.tabs.Tab[]} */
   const tabs = [];
@@ -224,7 +246,27 @@ export async function saveTabsAsSession(tabIds, name) {
     labels: [],
     ...sessionGroupsField([groups])
   };
-  return commitCreatedSession(session);
+  return commitCreatedSession(session, organization);
+}
+
+/**
+ * Capture live tabs and append them as one window in an existing Session.
+ * The worker owns the tab lookup so popup and list callers cannot persist a
+ * stale URL snapshot. Missing, private, and unsupported tabs are skipped by
+ * the same capture boundary as every other Session save.
+ * @param {string} sessionId @param {number[]} tabIds
+ * @returns {Promise<import("./types.js").Session|null>}
+ */
+export async function addTabsToSession(sessionId, tabIds) {
+  const gate = await groupGate();
+  /** @type {chrome.tabs.Tab[]} */
+  const tabs = [];
+  for (const id of [...new Set(tabIds)].filter(Number.isInteger)) {
+    try { tabs.push(await chrome.tabs.get(id)); } catch { /* gone */ }
+  }
+  const { refs, groups } = await captureWindowRefs(tabs, gate);
+  if (refs.length === 0) return null;
+  return addWindowsToSession(sessionId, [refs], [groups]);
 }
 
 /**
@@ -238,7 +280,7 @@ export async function saveTabsAsSession(tabIds, name) {
 export async function addWindowsToSession(sessionId, windows, groupsPerWindow) {
   const now = Date.now();
   let updated = null;
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     const map = maps[STORE_KEYS.sessions] ?? {};
     const s = map[sessionId];
     if (!s || s.deletedAt || s.auto) return null; // N8: snapshots are immutable
@@ -268,11 +310,23 @@ export async function addWindowsToSession(sessionId, windows, groupsPerWindow) {
  * M6: create a named session from prepared windows (TabRef[][]).
  * @param {import("./types.js").TabRef[][]} windows @param {string} [name]
  */
-export async function createSessionFromWindows(windows, name) {
+export async function createSessionFromWindows(windows, name, organization = null) {
   const session = buildSessionFromWindows(await newMeta(), windows, name);
   if (!session) return null;
-  await upsertItem(STORE_KEYS.sessions, session);
-  return session;
+  const storedSession = { ...session, modifiedAt: Date.now() };
+  await mutateNamedSessionStores([STORE_KEYS.sessions], (maps) => ({
+    [STORE_KEYS.sessions]: {
+      ...(maps[STORE_KEYS.sessions] ?? {}),
+      [session.id]: storedSession
+    }
+  }));
+  if (organization) {
+    const grouped = await assignNewOrganizationMembers("session", [session.id], organization);
+    if (grouped?.ok === false) {
+      reportFailure("session-group-assignment", grouped.reason);
+    }
+  }
+  return storedSession;
 }
 
 /**
@@ -283,10 +337,10 @@ export async function createSessionFromWindows(windows, name) {
  * record their own inverse (e.g. moveTabsToSession's merge entry).
  * @param {import("./types.js").TabRef[][]} windows @param {string} [name]
  */
-export async function createSessionFromWindowsJournaled(windows, name) {
+export async function createSessionFromWindowsJournaled(windows, name, organization = null) {
   const session = buildSessionFromWindows(await newMeta(), windows, name);
   if (!session) return null;
-  return commitCreatedSession(session);
+  return commitCreatedSession(session, organization);
 }
 
 /**
@@ -314,7 +368,7 @@ export function buildSessionFromWindows(meta, windows, name) {
  * @param {number} windowId
  * @param {string} [name]
  */
-export async function saveWindowAsSession(windowId, name) {
+export async function saveWindowAsSession(windowId, name, organization = null) {
   const gate = await groupGate();
   const tabs = await chrome.tabs.query({ windowId });
   const { refs, groups } = await captureWindowRefs(tabs, gate);
@@ -328,9 +382,26 @@ export async function saveWindowAsSession(windowId, name) {
     labels: [],
     ...sessionGroupsField([groups])
   };
-  await commitCreatedSession(session);
+  await commitCreatedSession(session, organization);
   await bindWindowToSession(windowId, session.id, 0); // future drift suggestions
   return session;
+}
+
+/**
+ * Capture one live browser window and append it to an existing Session. The
+ * window is then bound to the appended Session window so later drift review
+ * behaves exactly like Save as Session.
+ * @param {string} sessionId @param {number} windowId
+ * @returns {Promise<import("./types.js").Session|null>}
+ */
+export async function addWindowToSession(sessionId, windowId) {
+  const gate = await groupGate();
+  const tabs = await chrome.tabs.query({ windowId });
+  const { refs, groups } = await captureWindowRefs(tabs, gate);
+  if (refs.length === 0) return null;
+  const updated = await addWindowsToSession(sessionId, [refs], [groups]);
+  if (updated) await bindWindowToSession(windowId, sessionId, updated.windows.length - 1);
+  return updated;
 }
 
 /**
@@ -345,7 +416,7 @@ export async function renameSession(id, name) {
   // E2-0c: fresh in-lock guard; record + undo entry in one atomic set.
   const now = Date.now();
   let after = null;
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     const map = maps[STORE_KEYS.sessions] ?? {};
     const before = map[id];
     if (!before || before.deletedAt || before.auto) return null; // N8: snapshots can't be renamed
@@ -364,7 +435,7 @@ export async function renameSession(id, name) {
  * Save all windows as a named session.
  * @param {string} [name]
  */
-export async function saveAllWindowsAsSession(name) {
+export async function saveAllWindowsAsSession(name, organization = null) {
   const { windows, groups } = await captureAllWindows();
   if (windows.length === 0) return null;
   /** @type {import("./types.js").Session} */
@@ -376,7 +447,7 @@ export async function saveAllWindowsAsSession(name) {
     labels: [],
     ...sessionGroupsField(groups)
   };
-  return commitCreatedSession(session);
+  return commitCreatedSession(session, organization);
 }
 
 /**
@@ -400,30 +471,132 @@ export async function addAllWindowsToSession(sessionId) {
  * @param {import("./types.js").TabRef[]} refs
  * @param {{sessionId: string, windowIndex: number}} [bind]
  * @param {import("./types.js").GroupTemplate[]} [groups] this window's group templates
+ * @returns {Promise<number|null>} created window ID; setup errors still reject
  */
 export async function restoreWindowRefs(refs, bind, groups) {
-  const urls = refs.map((r) => r.url).filter((u) => /^https?:/.test(u));
-  if (urls.length === 0) return null;
-  const win = await chrome.windows.create({ url: urls });
-  if (!win?.id) return null;
-  if (bind) await bindWindowToSession(win.id, bind.sessionId, bind.windowIndex);
-  // windows.create may not return populated tabs reliably — query instead.
-  const tabs = await chrome.tabs.query({ windowId: win.id });
-  tabs.sort((a, b) => a.index - b.index);
-  // Capture the created tab ids aligned to refs BEFORE pinning (pinning reorders,
-  // but grouping is by id, so the mapping stays valid).
-  const tabIds = [];
-  for (let i = 0; i < refs.length && i < tabs.length; i++) {
-    tabIds[i] = tabs[i]?.id;
-    if (refs[i]?.pinned && tabs[i]?.id !== undefined) {
-      await chrome.tabs.update(tabs[i].id, { pinned: true });
+  const result = await restoreWindowRefsWithReceipt(refs, bind, groups);
+  if (result.error) throw result.error;
+  return result.windowId;
+}
+
+function restorableUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["https:", "http:", "file:"].includes(url.protocol) ? url.href : null;
+  } catch { return null; }
+}
+
+/** Match occurrences and retain the tab ID belonging to each saved reference. */
+function confirmedWindowRefs(refs, tabs, windowId) {
+  const byUrl = new Map();
+  const seenIds = new Set();
+  for (const tab of [...(tabs ?? [])].sort((a, b) => a.index - b.index)) {
+    if (!Number.isInteger(tab?.id) || tab.id < 0 || seenIds.has(tab.id) ||
+        tab.incognito || tab.windowId !== windowId) continue;
+    seenIds.add(tab.id);
+    const url = restorableUrl(tab.pendingUrl || tab.url);
+    if (!url) continue;
+    if (!byUrl.has(url)) byUrl.set(url, []);
+    byUrl.get(url).push(tab);
+  }
+  return refs.flatMap((ref, index) => {
+    const tab = byUrl.get(restorableUrl(ref.url))?.shift();
+    return tab ? [{ index, tab }] : [];
+  });
+}
+
+/**
+ * @typedef {Object} WindowRestoreReceipt
+ * @property {number|null} windowId ID acknowledged by window creation; does not confirm every tab
+ * @property {number} restored Tab occurrences confirmed by a fresh query or creation metadata
+ * @property {number} failed Invalid references or occurrences absent from a successful query
+ * @property {number} uncertain Occurrences without sufficient browser confirmation
+ * @property {boolean} degraded Whether Session binding or saved pin setup failed after creation
+ * @property {unknown|null} error Caught failure retained for the legacy throwing adapter
+ *
+ * The three occurrence counts partition the input references. A retained query
+ * error can coexist with fully confirmed tabs from creation metadata and does
+ * not itself mean degraded setup. Earlier non-nullish failures take precedence.
+ * Best-effort tab groups do not affect this receipt.
+ */
+
+/**
+ * Restore one window and retain confirmed browser effects through later setup
+ * failures. The legacy wrapper keeps its numeric-ID/throw contract; Recovery
+ * uses this receipt to distinguish opened, missing and unconfirmed pages.
+ * @param {import("./types.js").TabRef[]} refs
+ * @param {{sessionId:string,windowIndex:number}} [bind]
+ * @param {import("./types.js").GroupTemplate[]} [groups]
+ * @returns {Promise<WindowRestoreReceipt>}
+ */
+export async function restoreWindowRefsWithReceipt(refs, bind, groups) {
+  const restorableRefs = refs.filter((ref) => restorableUrl(ref?.url));
+  const urls = restorableRefs.map((r) => r.url);
+  /** @type {WindowRestoreReceipt} */
+  const receipt = {
+    windowId: null,
+    restored: 0,
+    failed: refs.length - urls.length,
+    uncertain: 0,
+    degraded: false,
+    error: null
+  };
+  if (urls.length === 0) return receipt;
+  let createdWindow;
+  try { createdWindow = await chrome.windows.create({ url: urls }); }
+  catch (error) { return { ...receipt, uncertain: urls.length, error }; }
+  if (!Number.isInteger(createdWindow?.id) || createdWindow.id < 0) {
+    return { ...receipt, uncertain: urls.length };
+  }
+  receipt.windowId = createdWindow.id;
+  if (bind) {
+    try { await bindWindowToSession(createdWindow.id, bind.sessionId, bind.windowIndex); }
+    catch (error) { receipt.error = error; receipt.degraded = true; }
+  }
+  // A fresh query wins over creation metadata. If that read fails, exact tabs
+  // in the fulfilled create result still prove their creation; absence of
+  // either source is uncertainty, not proof that nothing opened.
+  let observedTabs = createdWindow.tabs;
+  let hasFreshTabQuery = false;
+  try {
+    observedTabs = await chrome.tabs.query({ windowId: createdWindow.id });
+    hasFreshTabQuery = true;
+  } catch (error) { receipt.error ??= error; }
+  const confirmedOccurrences = confirmedWindowRefs(restorableRefs, observedTabs, createdWindow.id);
+  const unconfirmedCount = urls.length - confirmedOccurrences.length;
+  receipt.restored = confirmedOccurrences.length;
+  if (hasFreshTabQuery) receipt.failed += unconfirmedCount;
+  else receipt.uncertain = unconfirmedCount;
+  const tabIdsByRefIndex = [];
+  for (const { index: refIndex, tab } of confirmedOccurrences) {
+    tabIdsByRefIndex[refIndex] = tab.id;
+    if (restorableRefs[refIndex].pinned) {
+      try { await chrome.tabs.update(tab.id, { pinned: true }); }
+      catch (error) { receipt.error ??= error; receipt.degraded = true; }
     }
   }
-  await recreateGroupsIfEnabled(win.id, refs, tabIds, groups); // F18: garnish, never fails
-  // Returning the created window id is additive: existing callers ignore it, and
-  // the F8-2 Focus coordinator needs it to make a freshly restored session its
-  // target (restoreSessionWindows below).
-  return win.id;
+  await recreateGroupsIfEnabled(createdWindow.id, restorableRefs, tabIdsByRefIndex, groups);
+  return receipt;
+}
+
+/**
+ * Restore one saved window as the exact window-level counterpart of restoring
+ * a complete Session. The binding is essential: it lets Open identify the new
+ * Chrome window as this Session window and keeps later drift review accurate.
+ * Invalid or stale window indexes are safe no-ops.
+ * @param {import("./types.js").Session} session
+ * @param {number} windowIndex
+ * @returns {Promise<number|null>} the created Chrome window id
+ */
+export async function restoreSessionWindow(session, windowIndex) {
+  if (!session || !Number.isInteger(windowIndex) || windowIndex < 0) return null;
+  const refs = session.windows?.[windowIndex];
+  if (!Array.isArray(refs)) return null;
+  return restoreWindowRefs(
+    refs,
+    { sessionId: session.id, windowIndex },
+    session.groups?.[windowIndex]
+  );
 }
 
 /**
@@ -431,8 +604,8 @@ export async function restoreWindowRefs(refs, bind, groups) {
  * @param {import("./types.js").Session} session
  */
 export async function restoreSession(session) {
-  for (const [i, refs] of session.windows.entries()) {
-    await restoreWindowRefs(refs, { sessionId: session.id, windowIndex: i }, session.groups?.[i]);
+  for (const [i] of session.windows.entries()) {
+    await restoreSessionWindow(session, i);
   }
 }
 
@@ -594,11 +767,27 @@ export async function removeSessionTabs(session, picks) {
     .map((w, wi) => w.filter((_, i) => !drop.get(wi)?.has(i)))
     .filter((w) => w.length > 0);
   if (windows.length === 0) {
-    await tombstoneItem(STORE_KEYS.sessions, session.id);
+    await mutateNamedSessionStores([STORE_KEYS.sessions], (maps) => {
+      const map = maps[STORE_KEYS.sessions] ?? {};
+      const current = map[session.id];
+      if (!current || current.deletedAt || current.auto) return null;
+      const now = Date.now();
+      return {
+        [STORE_KEYS.sessions]: {
+          ...map,
+          [session.id]: { ...current, deletedAt: now, modifiedAt: now }
+        }
+      };
+    });
     return null;
   }
   const updated = { ...session, windows };
-  await upsertItem(STORE_KEYS.sessions, updated);
+  await mutateNamedSessionStores([STORE_KEYS.sessions], (maps) => ({
+    [STORE_KEYS.sessions]: {
+      ...(maps[STORE_KEYS.sessions] ?? {}),
+      [session.id]: { ...updated, modifiedAt: Date.now() }
+    }
+  }));
   return updated;
 }
 
@@ -619,13 +808,78 @@ export async function removeSessionTab(session, windowIndex, index) {
     { puts: [{ store: STORE_KEYS.sessions, item: session }] });
   const now = Date.now();
   let remainder = null;
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     const r = sessionMapWithTabsRemoved(
       maps[STORE_KEYS.sessions] ?? {}, session, [{ windowIndex, indexes: [index] }], now);
     remainder = r.remainder;
     return { [STORE_KEYS.sessions]: r.map, [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry) };
   });
   return remainder;
+}
+
+/**
+ * Delete selected tabs across one or more named Sessions in one stale-safe,
+ * journaled commit. Each supplied Session version must still be current; a
+ * concurrent rename, label, sync, or tab edit rejects the whole operation.
+ * @param {SessionSelection[]} sources
+ * @returns {Promise<{ok:boolean, stale?:boolean, removed:number, entry:object|null}>}
+ */
+export async function deleteSessionTabs(sources) {
+  const unique = new Map();
+  for (const source of sources ?? []) {
+    if (!source?.session?.id || source.session.auto) continue;
+    unique.set(source.session.id, source);
+  }
+  if (unique.size === 0) return { ok: false, removed: 0, entry: null };
+
+  const now = Date.now();
+  let removed = 0;
+  let entry = null;
+  let stale = false;
+  const committed = await mutateNamedSessionStores(
+    [STORE_KEYS.sessions, JOURNAL_KEY],
+    (maps) => {
+      let map = { ...(maps[STORE_KEYS.sessions] ?? {}) };
+      const ready = [];
+      for (const source of unique.values()) {
+        const current = map[source.session.id];
+        // `modifiedAt` is normally enough, but two user actions can land in the
+        // same millisecond. Compare the complete selected record as well so a
+        // bulk delete can never overwrite a same-tick rename, label, sync, or
+        // tab edit that the visible selection has not reviewed.
+        const unchanged = current?.modifiedAt === source.session.modifiedAt &&
+          JSON.stringify(current) === JSON.stringify(source.session);
+        if (!current || current.deletedAt || current.auto ||
+            !unchanged) {
+          stale = true;
+          return null;
+        }
+        const picks = (source.picks ?? []).map((pick) => ({
+          windowIndex: pick.windowIndex,
+          indexes: [...new Set(pick.indexes ?? [])]
+            .filter((index) => current.windows[pick.windowIndex]?.[index])
+        })).filter((pick) => pick.indexes.length > 0);
+        if (picks.length) ready.push({ current, picks });
+      }
+      if (ready.length === 0) return null;
+      const puts = [];
+      removed = 0;
+      for (const { current, picks } of ready) {
+        puts.push({ store: STORE_KEYS.sessions, item: current });
+        map = sessionMapWithTabsRemoved(map, current, picks, now).map;
+        removed += picks.reduce((count, pick) => count + pick.indexes.length, 0);
+      }
+      entry = makeJournalEntry(
+        `Deleted ${removed} tab${removed === 1 ? "" : "s"} from saved sessions`,
+        { puts }
+      );
+      return {
+        [STORE_KEYS.sessions]: map,
+        [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
+      };
+    }
+  );
+  return { ok: committed, ...(stale ? { stale: true } : {}), removed, entry };
 }
 
 /**
@@ -659,7 +913,7 @@ export async function restoreSessionTabs(session, picks) {
  * @param {string} [name] name for a new target
  * @returns {Promise<{moved: number, name: string, entry: object|null}|null>}
  */
-export async function moveSessionTabs(sources, targetId, name) {
+export async function moveSessionTabs(sources, targetId, name, organization = null) {
   const movable = sources.filter((s) => !s.session.auto && s.session.id !== targetId);
   const windows = [];
   for (const { session, picks } of movable) {
@@ -688,7 +942,7 @@ export async function moveSessionTabs(sources, targetId, name) {
   const now = Date.now();
   let moved = 0;
   let entry = null;
-  const committed = await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  const committed = await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     let map = { ...(maps[STORE_KEYS.sessions] ?? {}) };
     if (newTarget) {
       map[newTarget.id] = { ...newTarget, modifiedAt: now };
@@ -710,7 +964,13 @@ export async function moveSessionTabs(sources, targetId, name) {
     return { [STORE_KEYS.sessions]: map, [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry) };
   });
   if (!committed) return null;
-  return { moved, name: targetName, entry };
+  if (newTarget && organization) {
+    const grouped = await assignNewOrganizationMembers("session", [newTarget.id], organization);
+    if (grouped?.ok === false) {
+      reportFailure("session-group-assignment", grouped.reason);
+    }
+  }
+  return { moved, name: targetName, id: newTarget?.id ?? targetId, entry };
 }
 
 /**
@@ -725,28 +985,52 @@ export async function moveSessionTabs(sources, targetId, name) {
  *                  passes wi+1)
  * An emptied source window collapses; the session itself can never empty
  * from an internal move. Snapshots refuse (N8). The guard re-reads the
- * session and compares the LIFT-time modifiedAt — on any mismatch nothing is
- * written and the caller shows "List changed — nothing moved".
+ * session and compares it with the complete LIFT-time snapshot. On any mismatch
+ * nothing is written and the caller shows "List changed — nothing moved".
  *
- * @param {string} sessionId @param {number} fromWi @param {number} fromIndex
+ * @param {import("./types.js").Session} expectedSession snapshot captured at lift
+ * @param {number} fromWi @param {number} fromIndex
  * @param {{wi?: number, index?: number, newAt?: number}} target
- * @param {number} expectModified modifiedAt captured at lift time
  * @returns {Promise<{ok: boolean, stale?: boolean, noop?: boolean, entry?: object}>}
  */
-export async function moveSessionTab(sessionId, fromWi, fromIndex, target, expectModified) {
+export async function moveSessionTab(expectedSession, fromWi, fromIndex, target) {
+  return moveSessionTabsWithin(
+    expectedSession, [{ windowIndex: fromWi, indexes: [fromIndex] }], target
+  );
+}
+
+/**
+ * Move selected refs within one named Session as one guarded, undoable commit.
+ * The selection is flattened in saved window order and remains contiguous at
+ * its destination. Window indexes in `target` refer to the pre-move Session.
+ *
+ * @param {import("./types.js").Session} expectedSession snapshot captured at lift
+ * @param {SessionPick[]} picks
+ * @param {{wi?: number, index?: number, newAt?: number}} target
+ * @returns {Promise<{ok: boolean, stale?: boolean, noop?: boolean, moved?: number, entry?: object}>}
+ */
+export async function moveSessionTabsWithin(expectedSession, picks, target) {
+  const normalized = [...(picks ?? [])]
+    .map((pick) => ({ windowIndex: pick.windowIndex,
+      indexes: [...new Set((pick.indexes ?? []).filter(Number.isInteger))].sort((a, b) => a - b) }))
+    .filter((pick) => Number.isInteger(pick.windowIndex) && pick.indexes.length)
+    .sort((a, b) => a.windowIndex - b.windowIndex);
+  if (normalized.length === 0) return { ok: false, stale: true };
+
   // E2-0c: guard + write + undo entry are ONE atomic commit; the [AP] stale
   // guard now runs under the store lock AT the commit point (same contract).
   const now = Date.now();
   let result = { ok: false, stale: true };
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     const map = maps[STORE_KEYS.sessions] ?? {};
+    const sessionId = expectedSession?.id;
     const s = map[sessionId];
-    if (!s || s.deletedAt || s.auto || s.modifiedAt !== expectModified) {
+    if (!s || s.deletedAt || s.auto || !sameSavedRecord(s, expectedSession)) {
       result = { ok: false, stale: true };
       return null;
     }
-    const ref = s.windows[fromWi]?.[fromIndex];
-    if (!ref) {
+    if (normalized.some((pick) => !s.windows[pick.windowIndex] ||
+        pick.indexes.some((index) => !s.windows[pick.windowIndex][index]))) {
       result = { ok: false, stale: true };
       return null;
     }
@@ -754,27 +1038,74 @@ export async function moveSessionTab(sessionId, fromWi, fromIndex, target, expec
     // mutate a copy; keep original window indices until the final cleanup so
     // `target` positions stay meaningful even when the source window empties
     const windows = s.windows.map((w) => [...w]);
-    windows[fromWi].splice(fromIndex, 1);
+    const movedEntries = normalized.flatMap((pick) =>
+      pick.indexes.map((index) => ({
+        ref: s.windows[pick.windowIndex][index], sourceWindowIndex: pick.windowIndex
+      })));
+    const selectedByWindow = new Map(normalized.map((pick) => [pick.windowIndex, new Set(pick.indexes)]));
+    for (const pick of normalized) {
+      windows[pick.windowIndex] = windows[pick.windowIndex]
+        .filter((_, index) => !selectedByWindow.get(pick.windowIndex).has(index));
+    }
+
+    const groupRows = Array.isArray(s.groups)
+      ? s.windows.map((_, wi) => [...(s.groups[wi] ?? [])])
+      : null;
+
+    // A ref's groupIndex is local to its saved window. When a drag crosses
+    // windows, carry each source group template into the destination and
+    // remap the ref instead of silently pointing it at an unrelated group.
+    const refsForDestination = (destinationWi, destinationGroups) => {
+      if (!groupRows) return movedEntries.map(({ ref }) => ref);
+      const remappedGroups = new Map();
+      return movedEntries.map(({ ref, sourceWindowIndex }) => {
+        if (!Number.isInteger(ref.groupIndex) || sourceWindowIndex === destinationWi) return ref;
+        const key = `${sourceWindowIndex}:${ref.groupIndex}`;
+        let groupIndex = remappedGroups.get(key);
+        if (groupIndex === undefined) {
+          groupIndex = destinationGroups.length;
+          destinationGroups.push({ ...(s.groups[sourceWindowIndex]?.[ref.groupIndex] ?? {}) });
+          remappedGroups.set(key, groupIndex);
+        }
+        return { ...ref, groupIndex };
+      });
+    };
 
     if (target.newAt != null) {
-      windows.splice(target.newAt, 0, [ref]);
+      const at = Math.max(0, Math.min(target.newAt, windows.length));
+      const destinationGroups = [];
+      windows.splice(at, 0, refsForDestination(null, destinationGroups));
+      groupRows?.splice(at, 0, destinationGroups);
     } else {
       if (!s.windows[target.wi]) {
         result = { ok: false, stale: true };
         return null;
       }
       let at = target.index === -1 ? windows[target.wi].length : Math.min(target.index, windows[target.wi].length);
-      if (target.wi === fromWi && target.index !== -1 && fromIndex < target.index) at -= 1; // removal shifted the slot
-      if (target.wi === fromWi && at === fromIndex) {
-        result = { ok: true, noop: true }; // dropped where it was
-        return null;
+      if (target.index !== -1) {
+        at -= [...(selectedByWindow.get(target.wi) ?? [])]
+          .filter((index) => index < target.index).length;
+        at = Math.max(0, Math.min(at, windows[target.wi].length));
       }
-      windows[target.wi].splice(at, 0, ref);
+      windows[target.wi].splice(at, 0, ...refsForDestination(target.wi, groupRows?.[target.wi]));
     }
-    const updated = { ...s, windows: windows.filter((w) => w.length > 0), modifiedAt: now };
-    const entry = makeJournalEntry(`Moved “${ref.title || ref.url}” in “${s.name}”`,
+
+    const windowPairs = windows.map((refs, wi) => ({ refs, groups: groupRows?.[wi] ?? null }))
+      .filter((pair) => pair.refs.length > 0);
+    const nextWindows = windowPairs.map((pair) => pair.refs);
+    const unchanged = nextWindows.length === s.windows.length && nextWindows.every((refs, wi) =>
+      refs.length === s.windows[wi].length && refs.every((ref, index) => ref === s.windows[wi][index]));
+    if (unchanged) {
+      result = { ok: true, noop: true, moved: movedEntries.length };
+      return null;
+    }
+
+    const updated = { ...s, windows: nextWindows, modifiedAt: now };
+    if (groupRows) updated.groups = windowPairs.map((pair) => pair.groups);
+    const entry = makeJournalEntry(
+      `Moved ${movedEntries.length} tab${movedEntries.length === 1 ? "" : "s"} in “${s.name}”`,
       { puts: [{ store: STORE_KEYS.sessions, item: s }] });
-    result = { ok: true, entry };
+    result = { ok: true, moved: movedEntries.length, entry };
     return {
       [STORE_KEYS.sessions]: { ...map, [sessionId]: updated },
       [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
@@ -790,8 +1121,7 @@ const BINDINGS_KEY = "sessionWindows";
 
 /** @returns {Promise<Record<number, {sessionId: string, windowIndex: number}>>} */
 export async function getSessionBindings() {
-  const r = await chrome.storage.local.get(BINDINGS_KEY);
-  return r[BINDINGS_KEY] ?? {};
+  return await readStoreMap(BINDINGS_KEY) ?? {};
 }
 
 /**
@@ -854,7 +1184,7 @@ export async function updateSessionWindow(sessionId, windowIndex, refs) {
   // E2-0c: fresh in-lock guard; record + undo entry in one atomic set.
   const now = Date.now();
   let out = null;
-  await mutateStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
+  await mutateNamedSessionStores([STORE_KEYS.sessions, JOURNAL_KEY], (maps) => {
     const map = maps[STORE_KEYS.sessions] ?? {};
     const before = map[sessionId];
     if (!before || before.deletedAt || before.auto) return null; // N8: snapshots are immutable

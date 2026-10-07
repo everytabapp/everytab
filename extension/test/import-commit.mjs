@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createInterleavableStorage, createMockLockManager } from "./e2-mocks.mjs";
+import { createChromeI18nMock } from "./message-fixture.mjs";
 
 Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }, configurable: true, writable: true
@@ -7,15 +8,21 @@ Object.defineProperty(globalThis, "navigator", {
 
 const storage = createInterleavableStorage({ deviceId: "import-test-device" });
 globalThis.chrome = {
+  i18n: createChromeI18nMock(),
   storage: { local: storage.local, onChanged: storage.onChanged },
   tabs: { create: async () => ({ id: 1 }), move: async () => null },
   windows: { create: async () => ({ id: 2 }) }
 };
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
 
 const { STORE_KEYS, ARCHIVE_OVERLAY_KEY } = await import("../js/lib/types.js");
 const { LABEL_META_KEY } = await import("../js/lib/label-meta.js");
 const { JOURNAL_KEY, undoAction } = await import("../js/lib/journal.js");
 const { commitParsedImport } = await import("../js/lib/import-commit.js");
+const { listItems } = await import("../js/lib/store.js");
 
 const parsed = {
   name: "Imported work",
@@ -38,17 +45,19 @@ assert.equal(sessionResult.ok, true);
 assert.equal(sessionResult.createdCount, 1);
 assert.equal(sessionResult.tabCount, 3);
 let snapshot = storage.snapshot();
-assert.equal(Object.values(snapshot[STORE_KEYS.sessions]).filter((record) => !record.deletedAt).length, 1);
+assert.equal((await listItems(STORE_KEYS.sessions)).length, 1);
 assert.equal(snapshot[LABEL_META_KEY].Work > 0, true);
 assert.equal(snapshot[JOURNAL_KEY][0].undoContractVersion, 1,
   "the import inverse is sealed in the same commit as its records");
+assert.equal(snapshot[JOURNAL_KEY][0].label, "Imported 3 tabs from OneTab",
+  "the import Journal entry uses localized count grammar and source presentation");
 assert.deepEqual(storage.setLog.at(-1),
-  [JOURNAL_KEY, LABEL_META_KEY, "sessionIdentityIndex", STORE_KEYS.sessions].sort(),
-  "one storage set carries the complete Session import, label recency, index, and Undo");
+  [JOURNAL_KEY, LABEL_META_KEY, "namedSessionRecords", "sessionIdentityIndex"].sort(),
+  "one storage set carries the compact Session record, label recency, index, and Undo");
 
 await undoAction(sessionResult.entry.id);
 snapshot = storage.snapshot();
-assert.equal(Object.values(snapshot[STORE_KEYS.sessions]).filter((record) => !record.deletedAt).length, 0,
+assert.equal((await listItems(STORE_KEYS.sessions)).length, 0,
   "one Undo removes the complete imported Session");
 
 const archiveResult = await commitParsedImport(parsed, {

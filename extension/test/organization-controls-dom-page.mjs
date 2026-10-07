@@ -40,6 +40,12 @@ globalThis.chrome = {
 Object.defineProperty(navigator, "locks", { configurable: true, value: {
   request: async (_name, options, callback) => callback(options?.ifAvailable ? {} : {})
 } });
+Object.defineProperty(globalThis, "process", {
+  configurable: true,
+  value: { versions: { node: "browser-fixture" } }
+});
+const { installBrowserMapStorageAuthority } = await import("./storage-authority-fixture.mjs");
+installBrowserMapStorageAuthority();
 
 function check(condition, name, detail = "") {
   if (!condition) throw new Error(`${name}${detail ? `: ${detail}` : ""}`);
@@ -59,12 +65,13 @@ const buttonNamed = (root, name) => [...root.querySelectorAll("button")]
 try {
   const stage = (name) => { result.textContent = `RUNNING: ${name}`; };
   stage("imports");
-  const [{ createIndexBar }, { createAnchoredPanel }, organization, controlsModule, { coalesce }] = await Promise.all([
+  const [{ createIndexBar }, { createAnchoredPanel, dismissAnchoredPanel }, organization, controlsModule, { coalesce }, listHelpers] = await Promise.all([
     import("../js/ui/indexbar.js"),
     import("../js/ui/tablist.js"),
     import("../js/lib/organization.js"),
     import("../js/ui/organization-controls.js"),
-    import("../js/ui/dom.js")
+    import("../js/ui/dom.js"),
+    import("../js/ui/list-helpers.js")
   ]);
   await organization.createOrganizationGroup("label", "Work", ["Research"]);
   await organization.createOrganizationGroup("label", "Personal", []);
@@ -73,6 +80,150 @@ try {
   const projection = organization.projectOrganization("label", members, state,
     { memberKey: (member) => member.label });
   const work = projection.groups.find((entry) => entry.name === "Work");
+  const personal = projection.groups.find((entry) => entry.name === "Personal");
+
+  const sessionPickerHost = document.createElement("div");
+  host.append(sessionPickerHost);
+  let pickedSession = null;
+  const creationPicker = listHelpers.sessionComboboxButton("Save as Session", {
+    onPick: (value) => { pickedSession = value; }
+  });
+  sessionPickerHost.append(creationPicker);
+  creationPicker.click();
+  stage("new Session organization step");
+  await wait();
+  let creationPopover = document.querySelector(".action-popover");
+  const sessionNameInput = creationPopover.querySelector(".session-picker-field .taginput");
+  sessionNameInput.value = "Roadmap Session";
+  sessionNameInput.dispatchEvent(new Event("input", { bubbles: true }));
+  sessionNameInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await wait();
+  creationPopover = document.querySelector(".action-popover");
+  check(creationPopover.querySelector('[data-inline-organization-editor="session"]') &&
+      creationPopover.textContent.includes("Roadmap Session") && !pickedSession,
+    "a newly named Session stays selected beside an inline Organize disclosure");
+  buttonNamed(creationPopover, "Organize…").click();
+  await wait();
+  check(!creationPopover.querySelector(".organization-inline-body")?.textContent.includes("null"),
+    "the inline Group field never renders an implementation null");
+  const creationGroupInput = creationPopover.querySelector(".organization-inline-entry .taginput");
+  creationGroupInput.value = "Roadmaps";
+  creationGroupInput.dispatchEvent(new Event("input", { bubbles: true }));
+  creationGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  creationGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await wait();
+  check(pickedSession?.isNew && pickedSession.name === "Roadmap Session" &&
+      pickedSession.organization?.createNames?.join() === "Roadmaps",
+    "the Session picker returns its new name and optional group assignment together");
+
+  const ungroupedPickerHost = document.createElement("div");
+  host.append(ungroupedPickerHost);
+  let ungroupedSession = null;
+  const ungroupedPicker = listHelpers.sessionComboboxButton("Save as Session", {
+    onPick: (value) => { ungroupedSession = value; }
+  });
+  ungroupedPickerHost.append(ungroupedPicker);
+  ungroupedPicker.click();
+  stage("new ungrouped Session");
+  await wait();
+  let ungroupedPopover = document.querySelector(".action-popover");
+  const ungroupedInput = ungroupedPopover.querySelector(".session-picker-field .taginput");
+  ungroupedInput.value = "Ungrouped Session";
+  ungroupedInput.dispatchEvent(new Event("input", { bubbles: true }));
+  ungroupedInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await wait();
+  ungroupedPopover = document.querySelector(".action-popover");
+  const ungroupedApply = buttonNamed(ungroupedPopover, "Save as Session");
+  const applyOwnsFocus = document.activeElement === ungroupedApply;
+  ungroupedApply.click();
+  await wait();
+  check(applyOwnsFocus && ungroupedSession?.isNew &&
+      ungroupedSession.name === "Ungrouped Session" &&
+      !("organization" in ungroupedSession),
+    "an ungrouped new Session focuses Apply and omits the optional organization field");
+
+  const labelCreationSlot = document.createElement("span");
+  const labelCreationOpener = document.createElement("button");
+  labelCreationOpener.textContent = "Label";
+  labelCreationSlot.append(labelCreationOpener);
+  host.append(labelCreationSlot);
+  const labelCreationPanel = createAnchoredPanel(labelCreationSlot);
+  labelCreationPanel.anchor(labelCreationOpener);
+  let appliedCreationLabels = [];
+  labelCreationPanel.toggle(() => listHelpers.cardLabelPanel((labels) => {
+    appliedCreationLabels = labels;
+  }, "Add labels", labelCreationPanel), "label");
+  stage("new Label organization step");
+  await wait();
+  creationPopover = document.querySelector(".action-popover");
+  const labelCreationInput = creationPopover.querySelector(".palette-label-field .taginput");
+  labelCreationInput.value = "Fresh Label";
+  labelCreationInput.dispatchEvent(new Event("input", { bubbles: true }));
+  labelCreationInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await wait();
+  creationPopover = document.querySelector(".action-popover");
+  check(creationPopover.querySelector('[data-inline-organization-editor="label"]') &&
+      appliedCreationLabels.length === 0,
+    "a newly typed Label keeps its Apply action and reveals inline Organize");
+  buttonNamed(creationPopover, "Organize…").click();
+  await wait();
+  const labelGroupInput = creationPopover.querySelector(".organization-inline-entry .taginput");
+  labelGroupInput.value = "Personal";
+  labelGroupInput.dispatchEvent(new Event("input", { bubbles: true }));
+  labelGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  labelGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await waitSettled();
+  const creationLabelProjection = organization.projectOrganization(
+    "label", [{ label: "Fresh Label" }], await organization.readOrganizationState("label")
+  );
+  check(appliedCreationLabels.join() === "Fresh Label" &&
+      creationLabelProjection.groupIdsByMemberKey.get("Fresh Label")?.has(personal.id),
+    "the Label picker applies its target and durable group membership from one confirmed flow");
+
+  labelCreationPanel.anchor(labelCreationOpener);
+  labelCreationPanel.toggle(() => listHelpers.cardLabelPanel((labels) => {
+    appliedCreationLabels = labels;
+  }, "Add labels", labelCreationPanel), "label");
+  stage("multiple Label organization");
+  await wait();
+  creationPopover = document.querySelector(".action-popover");
+  const multiLabelInput = creationPopover.querySelector(".palette-label-field .taginput");
+  for (const name of ["Research", "Inbox"]) {
+    multiLabelInput.value = name;
+    multiLabelInput.dispatchEvent(new Event("input", { bubbles: true }));
+    multiLabelInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  }
+  await wait();
+  buttonNamed(creationPopover, "Organize…").click();
+  await wait();
+  let sharedGroupInput = creationPopover.querySelector(".organization-inline-entry .taginput");
+  sharedGroupInput.value = "Work";
+  sharedGroupInput.dispatchEvent(new Event("input", { bubbles: true }));
+  sharedGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  buttonNamed(creationPopover, "Set groups separately").click();
+  await wait();
+  const separateEntries = [...creationPopover.querySelectorAll(".organization-inline-entry")];
+  check(separateEntries.length === 2 &&
+      separateEntries.every((entry) => entry.querySelector(".chip")?.textContent.includes("Work")),
+    "multiple Labels default to one shared addition and can expand to one exact input each");
+  const inboxEntry = separateEntries.find((entry) => entry.textContent.includes("Inbox"));
+  inboxEntry.querySelector(".chip .x").click();
+  const inboxGroupInput = inboxEntry.querySelector(".taginput");
+  inboxGroupInput.value = "Personal";
+  inboxGroupInput.dispatchEvent(new Event("input", { bubbles: true }));
+  inboxGroupInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  buttonNamed(creationPopover, "Add labels").click();
+  await waitSettled();
+  const exactLabelProjection = organization.projectOrganization(
+    "label", [{ label: "Research" }, { label: "Inbox" }],
+    await organization.readOrganizationState("label")
+  );
+  check(exactLabelProjection.groupIdsByMemberKey.get("Research")?.has(work.id) &&
+      !exactLabelProjection.groupIdsByMemberKey.get("Research")?.has(personal.id) &&
+      exactLabelProjection.groupIdsByMemberKey.get("Inbox")?.has(personal.id) &&
+      !exactLabelProjection.groupIdsByMemberKey.get("Inbox")?.has(work.id),
+    "separate Label inputs commit exact memberships together without a second screen");
+
   let lensTarget = null;
   let refreshes = 0;
   const controls = controlsModule.createOrganizationControls({
@@ -101,10 +252,13 @@ try {
     `${index.scrollWidth}/${index.clientWidth}`);
 
   let popover = null;
-  buttonNamed(index, "Add labels")?.click();
+  const addLabelsButton = buttonNamed(index, "Manage labels");
+  check(addLabelsButton, "active group exposes its inverse Manage labels action");
+  addLabelsButton.click();
   stage("active picker");
   await wait();
   popover = document.querySelector(".action-popover");
+  check(popover, "active group opens its anchored member picker");
   const internalScroller = popover.querySelector(".organization-checks");
   internalScroller.dispatchEvent(new Event("scroll"));
   await wait();
@@ -148,7 +302,8 @@ try {
   const groupInput = popover?.querySelector(".organization-group-entry .taginput");
   check(groupInput && popover.querySelectorAll('.organization-check input[type="checkbox"]').length === 0,
     "card Groups uses one tag-style text entry instead of a checkbox ledger");
-  check(popover.textContent.includes("Enter adds a group. Enter again applies."),
+  check(popover.textContent.includes("Enter adds a group.") &&
+      popover.textContent.includes("Enter again applies."),
     "card Groups explains the two-Enter keyboard flow");
   groupInput.value = "Pers";
   groupInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -295,6 +450,8 @@ try {
       document.activeElement?.closest(".organization-row")?.getAttribute("aria-label") === "Label groups",
     "successful delete restores focus to Ungrouped after rerender");
 
+  dismissAnchoredPanel();
+  await wait();
   result.dataset.status = "pass";
   result.textContent = `PASS ${checks.length}: ${checks.join(" | ")}`;
 } catch (error) {

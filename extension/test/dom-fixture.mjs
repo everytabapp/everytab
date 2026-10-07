@@ -91,7 +91,12 @@ class FixtureElement {
     const styleValues = new Map();
     this.style = {
       setProperty: (name, value) => styleValues.set(name, String(value)),
-      getPropertyValue: (name) => styleValues.get(name) ?? ""
+      getPropertyValue: (name) => styleValues.get(name) ?? "",
+      removeProperty: (name) => {
+        const previous = styleValues.get(name) ?? "";
+        styleValues.delete(name);
+        return previous;
+      }
     };
   }
 
@@ -150,6 +155,19 @@ class FixtureElement {
       child.parentNode?.removeChild(child);
       child.parentNode = this;
       this.childNodes.push(child);
+      setConnected(child, this.isConnected);
+    }
+  }
+  prepend(...nodes) {
+    for (const source of [...nodes].reverse()) {
+      let child = source;
+      if (child == null) continue;
+      if (!(child instanceof FixtureElement) && !(child instanceof FixtureText)) {
+        child = new FixtureText(child, this.ownerDocument);
+      }
+      child.parentNode?.removeChild(child);
+      child.parentNode = this;
+      this.childNodes.unshift(child);
       setConnected(child, this.isConnected);
     }
   }
@@ -228,6 +246,8 @@ class FixtureElement {
   animate(keyframes, options) {
     const animation = {
       cancelled: false,
+      // This fixture models DOM effects without advancing a browser timeline.
+      finished: Promise.resolve(),
       cancel() { this.cancelled = true; }
     };
     this.ownerDocument.animations.push({ element: this, keyframes, options, animation });
@@ -236,12 +256,29 @@ class FixtureElement {
   }
   set innerHTML(value) { this._innerHTML = String(value); }
   get innerHTML() { return this._innerHTML ?? ""; }
+  cloneNode(deep = false) {
+    const copy = new FixtureElement(this.tagName, this.ownerDocument);
+    for (const [name, value] of this.attributes) copy.setAttribute(name, value);
+    copy.hidden = this.hidden;
+    copy.disabled = this.disabled;
+    copy.value = this.value;
+    if (this._innerHTML !== undefined) copy._innerHTML = this._innerHTML;
+    if (deep) {
+      for (const child of this.childNodes) {
+        copy.append(child instanceof FixtureElement
+          ? child.cloneNode(true)
+          : new FixtureText(child.value, this.ownerDocument));
+      }
+    }
+    return copy;
+  }
 }
 
 class FixtureDocument {
   constructor() {
     this.animations = [];
     this.onAnimate = null;
+    this.listeners = new Map();
     this.documentElement = new FixtureElement("html", this);
     this.body = new FixtureElement("body", this);
     this.documentElement.append(this.body);
@@ -260,6 +297,34 @@ class FixtureDocument {
   }
   getElementById(id) { return this.querySelector(`#${id}`); }
   hasFocus() { return true; }
+  addEventListener(type, listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(listener);
+  }
+  removeEventListener(type, listener) {
+    const listeners = this.listeners.get(type) ?? [];
+    const index = listeners.indexOf(listener);
+    if (index >= 0) listeners.splice(index, 1);
+  }
+  async dispatch(type, init = {}) {
+    const event = {
+      type,
+      target: this.body,
+      currentTarget: this,
+      defaultPrevented: false,
+      propagationStopped: false,
+      repeat: false,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.propagationStopped = true; },
+      ...init
+    };
+    for (const listener of this.listeners.get(type) ?? []) await listener(event);
+    return event;
+  }
 }
 
 export function installDomFixture() {

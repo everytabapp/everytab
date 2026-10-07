@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Inline, no-modal JSON Restore preview, confirmation, result, and Undo. */
 import { el } from "./dom.js";
 import {

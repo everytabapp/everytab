@@ -1,42 +1,111 @@
-/**
- * M6 — labels as THE organizing concept (user decision: collections merged
- * away). Items stay where they live (Inbox / Archive); labels organize
- * across them. The old "file to collection" flow becomes "label & archive":
- * tag the item, move it to the searchable Archive.
- */
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+/** Label editing, aggregation, and saved-item organization across Inbox and Archive. */
 import { STORE_KEYS, ARCHIVE_OVERLAY_KEY } from "./types.js";
-import { getDeviceId, listItems, upsertItem, newMeta, mutateStores } from "./store.js";
+import {
+  getDeviceId, listItems, listNamedSessions, readSessionNavigationData,
+  newMeta, mutateStores,
+  mutateNamedSessionStores
+} from "./store.js";
 import { JOURNAL_KEY, makeJournalEntry, appendedJournal } from "./journal.js";
 import { mapWithTabsRemoved } from "./actions.js";
 import { pspan } from "./perf.js";
 import {
-  LABEL_META_KEY, touchedLabelMeta, renamedLabelMeta, touchLabels, getLabelMeta
+  LABEL_META_KEY, touchedLabelMeta, renamedLabelMeta, getLabelMeta
 } from "./label-meta.js";
+import { canonicalJson } from "./storage/canonical.js";
 import {
   deleteOrganizationMembershipsForMember, renameLabelOrganizationMemberships
 } from "./organization.js";
+import {
+  canUseCurrentSavedCarrier, groupSavedItems, groupSavedTabSelections
+} from "./saved-selection-safety.js";
+
+const tabIdentity = (ref) => {
+  const copy = { ...(ref ?? {}) };
+  delete copy.labels;
+  return canonicalJson(copy);
+};
+
+const tabLayout = (record) => Array.isArray(record?.tabs)
+  ? record.tabs.map(tabIdentity)
+  : Array.isArray(record?.windows)
+    ? record.windows.map((window) => window.map(tabIdentity))
+    : null;
+
+const fullTabLayout = (record) => Array.isArray(record?.tabs)
+  ? record.tabs
+  : Array.isArray(record?.windows) ? record.windows : null;
+
+function sameCarrierIdentity(expected, current) {
+  return expected?.id === current?.id &&
+    expected?.createdAt === current?.createdAt &&
+    expected?.deviceId === current?.deviceId;
+}
+
+function sameOccurrenceLayout(expected, current) {
+  const before = tabLayout(expected);
+  const now = tabLayout(current);
+  return before !== null && now !== null && canonicalJson(before) === canonicalJson(now);
+}
+
+function hasAmbiguousOccurrences(record) {
+  const refs = Array.isArray(record?.tabs) ? record.tabs : (record?.windows ?? []).flat();
+  const identities = refs.map(tabIdentity);
+  return new Set(identities).size !== identities.length;
+}
+
+function indexedOccurrencesUnambiguous(expected, current) {
+  if (!hasAmbiguousOccurrences(current)) return true;
+  return canonicalJson(fullTabLayout(expected)) === canonicalJson(fullTabLayout(current));
+}
 
 /**
- * E2-0c — one-record commit helper: write the updated record + its undo entry
- * in ONE atomic set (upsertItem semantics: fresh map, caller's record, fresh
- * modifiedAt). Every single-record journaled label op goes through here.
- * F21: when `bumpLabels` is given, the label-recency bump for those labels rides
- * in the SAME atomic commit (grow-only max), so recency can't desync from the
- * label write. Removal ops pass nothing (removal is not "use").
- * @param {string} store @param {object} record the full record to write
- * @param {string} label journal label @param {object} inverse journal inverse
- * @param {string[]} [bumpLabels] labels to mark used in the same commit
+ * Commit label-only edits against current records under the store lock. The UI
+ * snapshot supplies identity and layout only; every mutation and Undo prestate
+ * comes from the fresh record. Missing, deleted, automatic-Snapshot, changed-
+ * layout, and ambiguous indexed targets are conservative no-ops.
+ * @param {string} store
+ * @param {{expected:object,indexed?:boolean,edit:(current:object)=>({record:object,count:number}|null)}[]} requests
+ * @param {{describe?:(count:number,records:object[])=>string,bumpLabels?:string[]}} [options]
  */
-async function commitRecordWithJournal(store, record, label, inverse, bumpLabels) {
-  const entry = makeJournalEntry(label, inverse);
-  const now = Date.now();
-  const touch = bumpLabels && bumpLabels.length > 0;
-  const keys = touch ? [store, JOURNAL_KEY, LABEL_META_KEY] : [store, JOURNAL_KEY];
-  await mutateStores(keys, (maps) => ({
-    [store]: { ...(maps[store] ?? {}), [record.id]: { ...record, modifiedAt: now } },
-    [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry),
-    ...(touch ? { [LABEL_META_KEY]: touchedLabelMeta(maps[LABEL_META_KEY], bumpLabels, now) } : {})
-  }));
+async function commitLabelEdits(store, requests, { describe, bumpLabels = [] } = {}) {
+  const journaled = typeof describe === "function";
+  const touch = bumpLabels.length > 0;
+  const keys = [store, ...(journaled ? [JOURNAL_KEY] : []), ...(touch ? [LABEL_META_KEY] : [])];
+  const commit = store === STORE_KEYS.sessions ? mutateNamedSessionStores : mutateStores;
+  let changed = 0;
+  await commit(keys, (maps) => {
+    const map = { ...(maps[store] ?? {}) };
+    const puts = [];
+    const edited = [];
+    const now = Date.now();
+    for (const request of requests) {
+      const expected = request.expected;
+      const current = map[expected?.id];
+      if (!current || current.deletedAt ||
+          (store === STORE_KEYS.sessions && current.auto) ||
+          !sameCarrierIdentity(expected, current) ||
+          !sameOccurrenceLayout(expected, current) ||
+          (request.indexed && !indexedOccurrencesUnambiguous(expected, current))) continue;
+      const result = request.edit(current);
+      if (!result || !Number.isInteger(result.count) || result.count <= 0) continue;
+      puts.push({ store, item: current });
+      edited.push(current);
+      map[current.id] = { ...result.record, modifiedAt: now };
+      changed += result.count;
+    }
+    if (puts.length === 0) return null;
+    const sets = { [store]: map };
+    if (journaled) {
+      const entry = makeJournalEntry(describe(changed, edited), { puts });
+      sets[JOURNAL_KEY] = appendedJournal(maps[JOURNAL_KEY], entry);
+    }
+    if (touch) sets[LABEL_META_KEY] = touchedLabelMeta(maps[LABEL_META_KEY], bumpLabels, now);
+    return sets;
+  });
+  return changed;
 }
 
 /**
@@ -62,7 +131,7 @@ export function tabLabels(item, ref) {
  * can open/unlabel precisely.
  * @returns {LabelGroup[]}
  */
-function collectLabelsFromSnapshots(inbox, archive, sessions, meta) {
+export function collectLabelsFromSnapshots(inbox, archive, sessions, meta) {
   /** @type {Map<string, {label: string, entries: Map<string, LabelEntry>, tabs: number}>} */
   const out = new Map();
   const touch = (label, store, item, wi, i, ref) => {
@@ -103,19 +172,25 @@ function collectLabelsFromSnapshots(inbox, archive, sessions, meta) {
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-async function readLabelSnapshots() {
+/**
+ * @param {{inboxItems?: () => Promise<import("./types.js").InboxItem[]>}} [reads]
+ *   A refresh that already lists the Inbox can share that clone here.
+ */
+async function readLabelSnapshots(reads = {}) {
   // These four snapshots are independent. Starting them together matters on a
   // cold label picker/nav refresh, while getMap's exact invalidation still
   // supplies an isolated clone for each store read.
-  const [inbox, archive, sessions, meta] = await Promise.all([
-    listItems(STORE_KEYS.inbox),
+  const [inbox, archive, sessionNavigation, meta] = await Promise.all([
+    reads.inboxItems?.() ?? listItems(STORE_KEYS.inbox),
     listItems(STORE_KEYS.archive),
-    listItems(STORE_KEYS.sessions),
+    readSessionNavigationData(),
     getLabelMeta()
   ]);
+  const sessions = sessionNavigation.namedSessions;
   return {
     archive,
     sessions,
+    snapshotCount: sessionNavigation.snapshotCount,
     labelGroups: collectLabelsFromSnapshots(inbox, archive, sessions, meta)
   };
 }
@@ -125,17 +200,69 @@ export async function collectLabels() {
 }
 
 /**
+ * Project the exact saved-tab occurrences shared by every selected label.
+ * Identity includes store, carrier record, Session window, and row index: two
+ * copies of the same URL in different saved records remain two independent
+ * things and can never manufacture a false intersection.
+ * @param {LabelGroup[]} groups
+ * @param {string[]} selectedLabels
+ * @returns {{labels:string[], refs:import("./types.js").TabRef[],
+ *   locs:{store:string,item:any,wi:number|null,i:number}[]}}
+ */
+export function intersectLabelGroups(groups, selectedLabels) {
+  const byName = new Map((groups ?? []).map((group) => [
+    String(group.label).toLocaleLowerCase(), group
+  ]));
+  const labels = [];
+  const selected = [];
+  const seen = new Set();
+  for (const raw of selectedLabels ?? []) {
+    const group = byName.get(String(raw).trim().toLocaleLowerCase());
+    const key = group?.label?.toLocaleLowerCase();
+    if (!group || seen.has(key)) continue;
+    seen.add(key);
+    labels.push(group.label);
+    selected.push(group);
+  }
+  if (!selected.length) return { labels: [], refs: [], locs: [] };
+
+  const occurrenceKey = (entry, tab) =>
+    `${entry.store}:${entry.item.id}:${tab.wi ?? "-"}:${tab.i}`;
+  const occurrences = selected.map((group) => {
+    const map = new Map();
+    for (const entry of group.entries ?? []) {
+      for (const tab of entry.tabs ?? []) {
+        map.set(occurrenceKey(entry, tab), {
+          ref: tab.ref,
+          loc: { store: entry.store, item: entry.item, wi: tab.wi ?? null, i: tab.i }
+        });
+      }
+    }
+    return map;
+  });
+  const [first, ...rest] = occurrences;
+  const refs = [];
+  const locs = [];
+  for (const [key, value] of first) {
+    if (!rest.every((map) => map.has(key))) continue;
+    refs.push(value.ref);
+    locs.push(value.loc);
+  }
+  return { labels, refs, locs };
+}
+
+/**
  * Read the shared immutable saved-library snapshot used by Dashboard
  * navigation. Counts and label aggregation are derived from one set of store
  * reads, so large Archive and Session maps are never cloned twice per refresh.
  */
-export async function readLabelNavigationSnapshot() {
-  const { archive, sessions, labelGroups } = await readLabelSnapshots();
+export async function readLabelNavigationSnapshot(reads = {}) {
+  const { archive, sessions, snapshotCount, labelGroups } = await readLabelSnapshots(reads);
   return {
     archiveCount: archive.length,
     labelGroups,
-    namedSessions: sessions.filter((session) => !session.auto),
-    snapshotCount: sessions.filter((session) => session.auto).length
+    namedSessions: sessions,
+    snapshotCount
   };
 }
 
@@ -201,9 +328,14 @@ export function filterLabelGroups(groups, text) {
 /** Add a label to an item in place. @param {string} store @param {object} item @param {string} label */
 export async function addLabel(store, item, label) {
   const l = label.trim();
-  if (!l || (item.labels ?? []).includes(l)) return;
-  await upsertItem(store, { ...item, labels: [...(item.labels ?? []), l] });
-  await touchLabels([l]); // F21: mark the label used (post-write; upsertItem isn't a mutateStores)
+  if (!l) return;
+  await commitLabelEdits(store, [{
+    expected: item,
+    edit(current) {
+      if ((current.labels ?? []).includes(l)) return null;
+      return { record: { ...current, labels: [...(current.labels ?? []), l] }, count: 1 };
+    }
+  }], { bumpLabels: [l] });
 }
 
 /** @param {string|string[]|undefined} labels */
@@ -213,6 +345,16 @@ function normalizeLabels(labels) {
 }
 
 const mergeLabels = (a, b) => [...new Set([...(a ?? []), ...b])];
+const includesEveryLabel = (existing, wanted) =>
+  wanted.every((label) => (existing ?? []).includes(label));
+
+async function newMetadataBatch(count) {
+  if (count <= 0) return [];
+  const first = await newMeta();
+  return [first, ...Array.from({ length: count - 1 }, () => ({
+    ...first, id: crypto.randomUUID()
+  }))];
+}
 
 /**
  * Save one or more open-tab refs as labeled Archive copies and bump label
@@ -287,11 +429,21 @@ export async function saveLabeledCopies(refs, labels) {
 export async function applyLabels(store, item, labels) {
   const add = normalizeLabels(labels);
   if (add.length === 0) return 0;
-  const tabs = item.tabs.map((t) => ({ ...t, labels: mergeLabels(t.labels, add) }));
-  // E2-0c: record + undo entry in ONE atomic commit. F21: + the recency bump.
-  await commitRecordWithJournal(store, { ...item, tabs },
-    `Labeled ${tabs.length} tab${tabs.length === 1 ? "" : "s"}`, { puts: [{ store, item }] }, add);
-  return tabs.length;
+  return commitLabelEdits(store, [{
+    expected: item,
+    edit(current) {
+      let count = 0;
+      const tabs = current.tabs.map((tab) => {
+        if (includesEveryLabel(tab.labels, add)) return tab;
+        count += 1;
+        return { ...tab, labels: mergeLabels(tab.labels, add) };
+      });
+      return count > 0 ? { record: { ...current, tabs }, count } : null;
+    }
+  }], {
+    describe: (count) => `Labeled ${count} tab${count === 1 ? "" : "s"}`,
+    bumpLabels: add
+  });
 }
 
 /**
@@ -300,11 +452,24 @@ export async function applyLabels(store, item, labels) {
  * @param {string} store @param {object} item @param {string} label
  */
 export async function removeLabel(store, item, label) {
-  const tabs = item.tabs.map((t) =>
-    t.labels?.includes(label) ? { ...t, labels: t.labels.filter((x) => x !== label) } : t);
-  await commitRecordWithJournal(store,
-    { ...item, labels: (item.labels ?? []).filter((x) => x !== label), tabs },
-    `Removed label “${label}”`, { puts: [{ store, item }] });
+  await commitLabelEdits(store, [{
+    expected: item,
+    edit(current) {
+      const inItem = (current.labels ?? []).includes(label);
+      const inTabs = current.tabs.some((tab) => tab.labels?.includes(label));
+      if (!inItem && !inTabs) return null;
+      return {
+        record: {
+          ...current,
+          labels: (current.labels ?? []).filter((value) => value !== label),
+          tabs: current.tabs.map((tab) => tab.labels?.includes(label)
+            ? { ...tab, labels: tab.labels.filter((value) => value !== label) }
+            : tab)
+        },
+        count: 1
+      };
+    }
+  }], { describe: () => `Removed label “${label}”` });
 }
 
 /**
@@ -317,14 +482,125 @@ export async function removeLabel(store, item, label) {
  */
 export async function removeLabelFromTab(store, item, index, label) {
   if (!item.tabs[index]) return;
-  const fromItemGrain = (item.labels ?? []).includes(label);
-  const tabs = item.tabs.map((t, i) => {
-    if (i === index) return { ...t, labels: (t.labels ?? []).filter((x) => x !== label) };
-    return fromItemGrain ? { ...t, labels: mergeLabels(t.labels, [label]) } : t;
+  await commitLabelEdits(store, [{
+    expected: item,
+    indexed: true,
+    edit(current) {
+      const target = current.tabs[index];
+      if (!target) return null;
+      const fromItemGrain = (current.labels ?? []).includes(label);
+      if (!fromItemGrain && !target.labels?.includes(label)) return null;
+      const tabs = current.tabs.map((tab, i) => {
+        if (i === index) {
+          return { ...tab, labels: (tab.labels ?? []).filter((value) => value !== label) };
+        }
+        return fromItemGrain ? { ...tab, labels: mergeLabels(tab.labels, [label]) } : tab;
+      });
+      return {
+        record: {
+          ...current,
+          labels: fromItemGrain
+            ? (current.labels ?? []).filter((value) => value !== label)
+            : current.labels,
+          tabs
+        },
+        count: 1
+      };
+    }
+  }], { describe: () => `Removed label “${label}” from a tab` });
+}
+
+/**
+ * Remove the displayed labels from exact selected saved occurrences. Validate
+ * the complete selection first, then commit all carriers and one Undo together.
+ * @param {{store:string,item:object,wi?:number|null,i:number,label:string}[]} selections
+ * @returns {Promise<{ok:boolean,count:number,reason?:string}>}
+ */
+export async function removeLabelsFromSelections(selections) {
+  return commitSelectionLabels(selections);
+}
+
+/** Add labels to selected saved occurrences, with one atomic edit and Undo. */
+export async function applyLabelsToSelections(selections, labels) {
+  const add = normalizeLabels(labels);
+  if (!add.length) return { ok: true, count: 0 };
+  return commitSelectionLabels(selections, add);
+}
+
+/** Shared selection validation, carrier grouping, persistence and Undo. */
+async function commitSelectionLabels(selections, addedLabels = null) {
+  const adding = addedLabels !== null;
+  const stale = { ok: false, reason: "stale", count: 0 };
+  if (!Array.isArray(selections)) return stale;
+  const groups = new Map();
+  for (const source of structuredClone(selections)) {
+    const { store, item, wi, i, label } = source ?? {};
+    if (![STORE_KEYS.inbox, STORE_KEYS.archive, STORE_KEYS.sessions].includes(store) ||
+        !item?.id || (!adding && (typeof label !== "string" || !label)) ||
+        !Number.isInteger(i) || i < 0) return stale;
+    const isSession = store === STORE_KEYS.sessions;
+    if (isSession && (!Number.isInteger(wi) || wi < 0 || item.auto)) return stale;
+    if (!(isSession ? item.windows?.[wi]?.[i] : item.tabs?.[i])) return stale;
+    const key = `${store}:${item.id}`;
+    const group = groups.get(key) ?? { store, id: item.id, views: new Set(), picks: new Map() };
+    group.views.add(item);
+    const position = isSession ? `${wi}:${i}` : String(i);
+    const pick = group.picks.get(position) ?? { wi, i, labels: new Set() };
+    for (const name of addedLabels ?? [label]) pick.labels.add(name);
+    group.picks.set(position, pick);
+    groups.set(key, group);
+  }
+  if (!groups.size) return { ok: true, count: 0 };
+  const stores = [...new Set([...groups.values()].map(group => group.store))];
+  const commit = stores.includes(STORE_KEYS.sessions) ? mutateNamedSessionStores : mutateStores;
+  let result = stale;
+  await commit([...stores, JOURNAL_KEY, ...(adding ? [LABEL_META_KEY] : [])], maps => {
+    for (const group of groups.values()) {
+      const current = maps[group.store]?.[group.id];
+      if (!current || current.deletedAt || (group.store === STORE_KEYS.sessions && current.auto)) return null;
+      for (const expected of group.views) {
+        if (!sameCarrierIdentity(expected, current) || !sameOccurrenceLayout(expected, current) ||
+            !indexedOccurrencesUnambiguous(expected, current)) return null;
+      }
+    }
+    const sets = {}, puts = [];
+    let count = 0;
+    const now = Date.now();
+    for (const group of groups.values()) {
+      const current = maps[group.store][group.id];
+      const isSession = group.store === STORE_KEYS.sessions;
+      const demoted = isSession || adding ? [] : (current.labels ?? []).filter(label =>
+        [...group.picks.values()].some(pick => pick.labels.has(label)));
+      let touched = 0;
+      const edit = (tab, i, wi) => {
+        const pick = group.picks.get(isSession ? `${wi}:${i}` : String(i));
+        const labels = mergeLabels(tab.labels, demoted);
+        const remaining = !pick ? labels : adding
+          ? mergeLabels(labels, [...pick.labels].filter(label =>
+            isSession || !current.labels?.includes(label)))
+          : labels.filter(label => !pick.labels.has(label));
+        if (remaining.length !== labels.length) touched++;
+        return remaining.length === (tab.labels ?? []).length &&
+          remaining.every((label, index) => label === tab.labels[index])
+          ? tab : { ...tab, labels: remaining };
+      };
+      const updated = isSession
+        ? { ...current, windows: current.windows.map((window, wi) => window.map((tab, i) => edit(tab, i, wi))) }
+        : { ...current, labels: (current.labels ?? []).filter(label => !demoted.includes(label)), tabs: current.tabs.map((tab, i) => edit(tab, i)) };
+      if (!touched) continue;
+      count += touched;
+      puts.push({ store: group.store, item: current });
+      sets[group.store] ??= { ...maps[group.store] };
+      sets[group.store][group.id] = { ...updated, modifiedAt: now };
+    }
+    result = { ok: true, count };
+    if (!puts.length) return null;
+    const entry = makeJournalEntry(adding ? "Labeled selected tabs" : "Removed labels from selected tabs", { puts });
+    sets[JOURNAL_KEY] = appendedJournal(maps[JOURNAL_KEY], entry);
+    if (adding) sets[LABEL_META_KEY] = touchedLabelMeta(maps[LABEL_META_KEY], addedLabels, now);
+    return sets;
   });
-  const itemLabels = fromItemGrain ? (item.labels ?? []).filter((x) => x !== label) : item.labels;
-  await commitRecordWithJournal(store, { ...item, labels: itemLabels, tabs },
-    `Removed label “${label}” from a tab`, { puts: [{ store, item }] });
+  return result;
 }
 
 /**
@@ -348,19 +624,24 @@ export async function labelSessionTabs(session, labels, where = null) {
   const hit = (wi, i) => picks
     ? !!picks.get(wi)?.has(i)
     : (where?.wi == null || wi === where.wi) && (where?.i == null || i === where.i);
-  let labeled = 0;
-  const windows = session.windows.map((w, wi) =>
-    w.map((t, i) => {
-      if (!hit(wi, i)) return t;
-      labeled += 1;
-      return { ...t, labels: mergeLabels(t.labels, add) };
-    })
-  );
-  if (labeled === 0) return 0;
-  await commitRecordWithJournal(STORE_KEYS.sessions, { ...session, windows },
-    `Labeled ${labeled} tab${labeled === 1 ? "" : "s"} in “${session.name}”`,
-    { puts: [{ store: STORE_KEYS.sessions, item: session }] }, add); // F21: recency bump
-  return labeled;
+  return commitLabelEdits(STORE_KEYS.sessions, [{
+    expected: session,
+    indexed: where !== null,
+    edit(current) {
+      let count = 0;
+      const windows = current.windows.map((window, wi) => window.map((tab, i) => {
+        if (!hit(wi, i)) return tab;
+        if (includesEveryLabel(tab.labels, add)) return tab;
+        count += 1;
+        return { ...tab, labels: mergeLabels(tab.labels, add) };
+      }));
+      return count > 0 ? { record: { ...current, windows }, count } : null;
+    }
+  }], {
+    describe: (count, records) =>
+      `Labeled ${count} tab${count === 1 ? "" : "s"} in “${records[0].name}”`,
+    bumpLabels: add
+  });
 }
 
 /**
@@ -372,14 +653,23 @@ export async function labelSessionTabs(session, labels, where = null) {
  */
 export async function removeSessionLabel(session, label, where = null) {
   if (session.auto) return;
-  const windows = session.windows.map((w, wi) => w.map((t, i) => {
-    if (where && (wi !== where.wi || i !== where.i)) return t;
-    if (!t.labels?.includes(label)) return t;
-    return { ...t, labels: t.labels.filter((x) => x !== label) };
-  }));
-  await commitRecordWithJournal(STORE_KEYS.sessions, { ...session, windows },
-    `Removed label “${label}”${where ? " from a tab" : ""} in “${session.name}”`,
-    { puts: [{ store: STORE_KEYS.sessions, item: session }] });
+  await commitLabelEdits(STORE_KEYS.sessions, [{
+    expected: session,
+    indexed: where !== null,
+    edit(current) {
+      let count = 0;
+      const windows = current.windows.map((window, wi) => window.map((tab, i) => {
+        if (where && (wi !== where.wi || i !== where.i)) return tab;
+        if (!tab.labels?.includes(label)) return tab;
+        count += 1;
+        return { ...tab, labels: tab.labels.filter((value) => value !== label) };
+      }));
+      return count > 0 ? { record: { ...current, windows }, count } : null;
+    }
+  }], {
+    describe: (_count, records) =>
+      `Removed label “${label}”${where ? " from a tab" : ""} in “${records[0].name}”`
+  });
 }
 
 /**
@@ -400,7 +690,7 @@ export async function renameLabel(from, to) {
   const now = Date.now();
   const deviceId = await getDeviceId();
   let count = 0;
-  await mutateStores(
+  await mutateNamedSessionStores(
     [STORE_KEYS.inbox, STORE_KEYS.archive, STORE_KEYS.sessions, LABEL_META_KEY,
       STORE_KEYS.organizationMemberships, JOURNAL_KEY],
     (maps) => {
@@ -471,7 +761,7 @@ export async function deleteLabelEverywhere(label) {
   // commit in ONE atomic set.
   const now = Date.now();
   let count = 0;
-  await mutateStores(
+  await mutateNamedSessionStores(
     [STORE_KEYS.inbox, STORE_KEYS.archive, STORE_KEYS.sessions,
       STORE_KEYS.organizationMemberships, JOURNAL_KEY],
     (maps) => {
@@ -541,46 +831,60 @@ export async function deleteLabelEverywhere(label) {
  * @returns {Promise<number>} items moved
  */
 export async function labelAndArchive(items, labels) {
-  if (items.length === 0) return 0;
+  const grouped = groupSavedItems(items);
+  if (grouped.length === 0) return 0;
   const add = normalizeLabels(labels);
-  const now = Date.now();
-  const puts = [];
-  const dels = [];
-  /** @type {object[]} archive records, built OUTSIDE the lock (async newMeta) */
-  const created = [];
-  for (const item of items) {
-    puts.push({ store: STORE_KEYS.inbox, item });
-    if (add.length > 0 && item.kind === "window" && item.tabs.length > 1) {
-      for (const t of item.tabs) {
-        created.push({
-          ...(await newMeta()),
-          kind: "tab",
-          tabs: [t],
-          source: item.source,
-          labels: mergeLabels(item.labels, add),
-          archivedAt: now
-        });
-      }
-    } else {
-      created.push({ ...item, labels: mergeLabels(item.labels, add), archivedAt: now });
-    }
-  }
-  for (const c of created) dels.push({ store: STORE_KEYS.archive, id: c.id });
-  // E2-0c: every archive record + every inbox tombstone + the undo entry are
-  // ONE atomic commit — the "label & archive" move can no longer half-apply.
-  const entry = makeJournalEntry(
-    `Archived ${items.length} item${items.length === 1 ? "" : "s"}`, { puts, dels }
-  );
+  const metadataCount = add.length > 0
+    ? grouped.reduce((count, expected) =>
+      count + (expected.tabs.length > 1 ? expected.tabs.length : 0), 0)
+    : 0;
+  const metadata = await newMetadataBatch(metadataCount);
+  let metadataIndex = 0;
+  const prepared = grouped.map((expected) => {
+    const count = add.length > 0 && expected.tabs.length > 1 ? expected.tabs.length : 0;
+    const metas = metadata.slice(metadataIndex, metadataIndex + count);
+    metadataIndex += count;
+    return { expected, metas };
+  });
   // F21: this is an apply path only when labels were typed; bump those in-commit.
   const touchKeys = add.length > 0 ? [LABEL_META_KEY] : [];
+  let moved = 0;
   await mutateStores([STORE_KEYS.inbox, STORE_KEYS.archive, JOURNAL_KEY, ...touchKeys], (maps) => {
     const inbox = { ...(maps[STORE_KEYS.inbox] ?? {}) };
     const archive = { ...(maps[STORE_KEYS.archive] ?? {}) };
-    for (const c of created) archive[c.id] = { ...c, modifiedAt: now };
-    for (const item of items) {
-      const cur = inbox[item.id];
-      if (cur) inbox[item.id] = { ...cur, deletedAt: now, modifiedAt: now };
+    const puts = [];
+    const dels = [];
+    const now = Date.now();
+    for (const { expected, metas } of prepared) {
+      const current = maps[STORE_KEYS.inbox]?.[expected.id];
+      if (!canUseCurrentSavedCarrier(expected, current)) continue;
+      const destinations = add.length > 0 && current.kind === "window" && current.tabs.length > 1
+        ? current.tabs.map((ref, index) => ({
+          ...metas[index], kind: "tab", tabs: [ref], source: current.source,
+          labels: mergeLabels(current.labels, add), archivedAt: now, modifiedAt: now
+        }))
+        : [{
+          ...current, labels: mergeLabels(current.labels, add),
+          archivedAt: now, modifiedAt: now
+        }];
+      const destinationIds = new Set(destinations.map((record) => record.id));
+      const reusesWholeTombstone = destinations.length === 1 &&
+        destinations[0].id === current.id && Number.isFinite(archive[current.id]?.deletedAt);
+      if (destinationIds.size !== destinations.length ||
+          destinations.some((record) => Object.hasOwn(archive, record.id)) &&
+          !reusesWholeTombstone) continue;
+      puts.push({ store: STORE_KEYS.inbox, item: current });
+      for (const record of destinations) {
+        archive[record.id] = record;
+        dels.push({ store: STORE_KEYS.archive, id: record.id });
+      }
+      inbox[current.id] = { ...current, deletedAt: now, modifiedAt: now };
+      moved += 1;
     }
+    if (moved === 0) return null;
+    const entry = makeJournalEntry(
+      `Archived ${moved} item${moved === 1 ? "" : "s"}`, { puts, dels }
+    );
     return {
       [STORE_KEYS.inbox]: inbox,
       [STORE_KEYS.archive]: archive,
@@ -588,7 +892,7 @@ export async function labelAndArchive(items, labels) {
       ...(add.length > 0 ? { [LABEL_META_KEY]: touchedLabelMeta(maps[LABEL_META_KEY], add, now) } : {})
     };
   });
-  return items.length;
+  return moved;
 }
 
 /**
@@ -607,32 +911,41 @@ export async function labelAndArchive(items, labels) {
 export async function labelTabsFromItems(sources, labels, store = STORE_KEYS.inbox) {
   const add = normalizeLabels(labels);
   if (add.length === 0) return 0;
-  const puts = [];
-  const updated = [];
-  let labeled = 0;
+  const grouped = new Map();
   for (const { item, indexes } of sources) {
-    const want = new Set(indexes.filter((i) => item.tabs[i]));
-    if (want.size === 0) continue;
-    puts.push({ store, item });
-    const tabs = item.tabs.map((t, i) => (want.has(i) ? { ...t, labels: mergeLabels(t.labels, add) } : t));
-    updated.push({ ...item, tabs });
-    labeled += want.size;
+    if (!item?.id) continue;
+    const existing = grouped.get(item.id);
+    if (existing && (!sameCarrierIdentity(existing.expected, item) ||
+        canonicalJson(fullTabLayout(existing.expected)) !== canonicalJson(fullTabLayout(item)))) {
+      existing.conflicting = true;
+      continue;
+    }
+    const group = existing ?? { expected: item, indexes: new Set(), conflicting: false };
+    for (const index of indexes ?? []) {
+      if (Number.isInteger(index) && item.tabs[index]) group.indexes.add(index);
+    }
+    grouped.set(item.id, group);
   }
-  if (labeled === 0) return 0;
-  // E2-0c: every updated record + the undo entry in ONE atomic commit.
-  // F21: + the recency bump for the applied labels, in the same commit.
-  const entry = makeJournalEntry(`Labeled ${labeled} tab${labeled === 1 ? "" : "s"}`, { puts });
-  const now = Date.now();
-  await mutateStores([store, JOURNAL_KEY, LABEL_META_KEY], (maps) => {
-    const map = { ...(maps[store] ?? {}) };
-    for (const u of updated) map[u.id] = { ...u, modifiedAt: now };
-    return {
-      [store]: map,
-      [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry),
-      [LABEL_META_KEY]: touchedLabelMeta(maps[LABEL_META_KEY], add, now)
-    };
+  const requests = [...grouped.values()]
+    .filter((group) => !group.conflicting && group.indexes.size > 0)
+    .map((group) => ({
+      expected: group.expected,
+      indexed: true,
+      edit(current) {
+        let count = 0;
+        const tabs = current.tabs.map((tab, index) => {
+          if (!group.indexes.has(index)) return tab;
+          if (includesEveryLabel(tab.labels, add)) return tab;
+          count += 1;
+          return { ...tab, labels: mergeLabels(tab.labels, add) };
+        });
+        return count > 0 ? { record: { ...current, tabs }, count } : null;
+      }
+    }));
+  return commitLabelEdits(store, requests, {
+    describe: (count) => `Labeled ${count} tab${count === 1 ? "" : "s"}`,
+    bumpLabels: add
   });
-  return labeled;
 }
 
 /**
@@ -647,46 +960,57 @@ export async function labelTabsFromItems(sources, labels, store = STORE_KEYS.inb
  */
 export async function archiveTabsFromItems(sources, labels) {
   const add = normalizeLabels(labels);
-  const now = Date.now();
-  const puts = [];
-  const dels = [];
-  const created = [];
-  const applied = [];
-  let archived = 0;
-  for (const { item, indexes } of sources) {
-    const refs = indexes.map((i) => item.tabs[i]).filter(Boolean);
-    if (refs.length === 0) continue;
-    puts.push({ store: STORE_KEYS.inbox, item });
-    if (add.length > 0) {
-      for (const t of refs) {
-        created.push({
-          ...(await newMeta()), kind: "tab", tabs: [t], source: item.source,
-          labels: mergeLabels(item.labels, add), archivedAt: now
-        });
-      }
-    } else {
-      created.push({
-        ...(await newMeta()), kind: refs.length > 1 ? "window" : "tab", tabs: refs,
-        source: item.source, labels: [...(item.labels ?? [])], archivedAt: now
-      });
-    }
-    applied.push({ item, indexes });
-    archived += refs.length;
-  }
-  if (archived === 0) return 0;
-  for (const c of created) dels.push({ store: STORE_KEYS.archive, id: c.id });
-  // E2-0c: every created archive record + every inbox split + the undo entry
-  // are ONE atomic commit — the tab-grain archive exit can no longer half-apply.
-  const entry = makeJournalEntry(
-    `Archived ${archived} tab${archived === 1 ? "" : "s"}`, { puts, dels }
-  );
+  const grouped = groupSavedTabSelections(sources);
+  if (grouped.length === 0) return 0;
+  const metadataCount = grouped.reduce((count, group) =>
+    count + (add.length > 0 ? group.indexes.length : 1), 0);
+  const metadata = await newMetadataBatch(metadataCount);
+  let metadataIndex = 0;
+  const prepared = grouped.map((group) => {
+    const count = add.length > 0 ? group.indexes.length : 1;
+    const metas = metadata.slice(metadataIndex, metadataIndex + count);
+    metadataIndex += count;
+    return { ...group, metas };
+  });
   // F21: only an apply path when labels were typed; bump those in-commit.
   const touchKeys = add.length > 0 ? [LABEL_META_KEY] : [];
+  let archived = 0;
   await mutateStores([STORE_KEYS.inbox, STORE_KEYS.archive, JOURNAL_KEY, ...touchKeys], (maps) => {
     let inbox = maps[STORE_KEYS.inbox] ?? {};
     const archive = { ...(maps[STORE_KEYS.archive] ?? {}) };
-    for (const c of created) archive[c.id] = { ...c, modifiedAt: now };
-    for (const { item, indexes } of applied) inbox = mapWithTabsRemoved(inbox, item, indexes, now);
+    const puts = [];
+    const dels = [];
+    const now = Date.now();
+    for (const { expected, indexes, metas } of prepared) {
+      const current = maps[STORE_KEYS.inbox]?.[expected.id];
+      if (!canUseCurrentSavedCarrier(expected, current, { indexed: true })) continue;
+      const refs = indexes.map((index) => current.tabs[index]);
+      const destinations = add.length > 0
+        ? refs.map((ref, index) => ({
+          ...metas[index], kind: "tab", tabs: [ref], source: current.source,
+          labels: mergeLabels(current.labels, add), archivedAt: now, modifiedAt: now
+        }))
+        : [{
+          ...metas[0], kind: refs.length > 1 ? "window" : "tab", tabs: refs,
+          source: current.source, labels: [...(current.labels ?? [])],
+          ...(Object.hasOwn(current, "windowTitle") ? { windowTitle: current.windowTitle } : {}),
+          archivedAt: now, modifiedAt: now
+        }];
+      const destinationIds = new Set(destinations.map((record) => record.id));
+      if (destinationIds.size !== destinations.length ||
+          destinations.some((record) => Object.hasOwn(archive, record.id))) continue;
+      puts.push({ store: STORE_KEYS.inbox, item: current });
+      for (const record of destinations) {
+        archive[record.id] = record;
+        dels.push({ store: STORE_KEYS.archive, id: record.id });
+      }
+      inbox = mapWithTabsRemoved(inbox, current, indexes, now);
+      archived += refs.length;
+    }
+    if (archived === 0) return null;
+    const entry = makeJournalEntry(
+      `Archived ${archived} tab${archived === 1 ? "" : "s"}`, { puts, dels }
+    );
     return {
       [STORE_KEYS.inbox]: inbox,
       [STORE_KEYS.archive]: archive,
@@ -695,43 +1019,4 @@ export async function archiveTabsFromItems(sources, labels) {
     };
   });
   return archived;
-}
-
-/**
- * One-time migration: every live collection becomes an archived bundle
- * labeled with the collection's name. Idempotent (collections are
- * tombstoned as they convert; tombstones sync). Runs at worker startup.
- * @returns {Promise<number>} collections migrated
- */
-export async function migrateCollectionsToLabels() {
-  /** @type {import("./types.js").Collection[]} */
-  const collections = await listItems(STORE_KEYS.collections);
-  if (collections.length === 0) return 0;
-  const now = Date.now();
-  const created = [];
-  for (const c of collections) {
-    if (c.tabs?.length) {
-      created.push({
-        ...(await newMeta()),
-        kind: c.tabs.length > 1 ? "window" : "tab",
-        tabs: c.tabs,
-        source: "manual",
-        labels: [...new Set([c.name, ...(c.labels ?? [])])],
-        archivedAt: now
-      });
-    }
-  }
-  // E2-0c: the whole migration commits atomically — archived bundles + every
-  // collection tombstone in ONE set (idempotency via tombstones preserved).
-  await mutateStores([STORE_KEYS.archive, STORE_KEYS.collections], (maps) => {
-    const archive = { ...(maps[STORE_KEYS.archive] ?? {}) };
-    for (const item of created) archive[item.id] = { ...item, modifiedAt: now };
-    const colls = { ...(maps[STORE_KEYS.collections] ?? {}) };
-    for (const c of collections) {
-      const cur = colls[c.id];
-      if (cur) colls[c.id] = { ...cur, deletedAt: now, modifiedAt: now };
-    }
-    return { [STORE_KEYS.archive]: archive, [STORE_KEYS.collections]: colls };
-  });
-  return collections.length;
 }

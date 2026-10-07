@@ -1,3 +1,6 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
 /* P11-09: dedicated, isolated three-pane colour-scheme workbench. */
 * { box-sizing: border-box; }
 html, body { width: 100%; min-height: 100%; margin: 0; }

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * P11-14 organization controls shared by Labels and Sessions.
  *
@@ -5,7 +8,7 @@
  * owns one interaction grammar: a same-page group lens plus anchored top-layer
  * palettes for creation, membership, rename, and group-only deletion.
  */
-import { el } from "./dom.js";
+import { el, isComposingKey } from "./dom.js";
 import { createAnchoredPanel } from "./tablist.js";
 import { msg } from "../lib/i18n.js";
 import { listUnit } from "./list-copy.js";
@@ -13,6 +16,8 @@ import {
   createOrganizationGroup,
   renameOrganizationGroup,
   deleteOrganizationGroup,
+  projectOrganization,
+  readOrganizationState,
   replaceMemberGroups,
   replaceGroupMembers
 } from "../lib/organization.js";
@@ -32,9 +37,9 @@ export function organizationLensAfterMemberCreate(currentLens, _createdGroupId) 
 
 const labelsFor = (kind) => kind === "label"
   ? { singular: msg("organization_label_singular"), plural: msg("organization_label_plural"),
-      title: msg("organization_label_groups") }
+      title: msg("organization_label_groups"), section: msg("shell_section_labels") }
   : { singular: msg("organization_session_singular"), plural: msg("organization_session_plural"),
-      title: msg("organization_session_groups") };
+      title: msg("organization_session_groups"), section: msg("shell_section_sessions") };
 
 const groupRecord = (entry) => entry?.group ?? entry;
 const groupName = (entry) => groupRecord(entry)?.name ?? msg("organization_unnamed_group");
@@ -122,6 +127,7 @@ function textCreator({ kind, onCreated, memberKeys = [], autofocus = false }) {
   };
   create.addEventListener("click", commit);
   input.addEventListener("keydown", (event) => {
+    if (isComposingKey(event)) return;
     if (event.key !== "Enter") return;
     event.preventDefault();
     commit();
@@ -269,6 +275,7 @@ function groupEntryPicker({ groups, selected, onSubmit, onCancel }) {
     const q = normalized(query);
     options = available
       .filter((entry) => !selectedIds.has(entry.id) && (!q || normalized(entry.name).includes(q)))
+      .slice(0, 5)
       .map((entry) => ({ type: "existing", entry }));
     const exactExists = available.some((entry) => normalized(entry.name) === q) ||
       pendingNames.some((name) => normalized(name) === q);
@@ -296,6 +303,7 @@ function groupEntryPicker({ groups, selected, onSubmit, onCancel }) {
   input.addEventListener("input", () => { selectedOption = -1; renderMenu(); });
   input.addEventListener("blur", () => setTimeout(closeMenu, 150));
   input.addEventListener("keydown", (event) => {
+    if (isComposingKey(event)) return;
     const menuOpen = !menu.classList.contains("hidden");
     if (event.key === "ArrowDown" && menuOpen) {
       event.preventDefault();
@@ -338,6 +346,198 @@ function groupEntryPicker({ groups, selected, onSubmit, onCancel }) {
       if (input.value.trim()) addTyped();
       return { groupIds: [...selectedIds], createNames: [...pendingNames] };
     }
+  };
+}
+
+/**
+ * Inline progressive disclosure shared by Label and Session action pickers.
+ * It never shows the complete Group catalogue outside the searchable field.
+ * Multiple members start in additive mode; a single member and the explicit
+ * "separately" path expose complete membership choices with stale revisions.
+ *
+ * @param {{kind:"label"|"session", onSubmit?:()=>void, onChange?:()=>void}} options
+ */
+export function createInlineOrganizationEditor({ kind, onSubmit = null, onChange = null }) {
+  const copy = labelsFor(kind);
+  const root = el("div", { class: "organization-inline", hidden: true,
+    "data-inline-organization-editor": kind });
+  const body = el("div", { class: "organization-inline-body", hidden: true });
+  const description = el("span", { class: "organization-inline-copy" },
+    msg("organization_inline_description", [copy.plural, copy.section]));
+  const toggle = el("button", { class: "organization-inline-toggle", type: "button",
+    "aria-expanded": "false", onclick: () => setOpen(!open) }, msg("organization_inline_open"));
+  const heading = el("div", { class: "organization-inline-heading" },
+    el("span", {}, el("strong", {}, msg("organization_inline_title", [copy.plural])), description),
+    toggle);
+  root.append(heading, body);
+
+  let members = [];
+  let open = false;
+  let active = false;
+  let separate = false;
+  let state = null;
+  let projection = null;
+  let load = null;
+  let renderToken = 0;
+  let sharedPicker = null;
+  let memberPickers = new Map();
+  let retainedShared = { groupIds: [], createNames: [] };
+  const retainedByMember = new Map();
+
+  const normalizeMembers = (next) => {
+    const seen = new Set();
+    return (Array.isArray(next) ? next : []).map((entry) => ({
+      key: String(entry?.key ?? "").trim(),
+      name: String(entry?.name ?? entry?.key ?? "").trim(),
+      isNew: Boolean(entry?.isNew)
+    })).filter((entry) => entry.key && !seen.has(entry.key) && seen.add(entry.key));
+  };
+  const memberShape = (member) => kind === "label"
+    ? { label: member.key }
+    : { id: member.key, name: member.name, auto: false };
+
+  function rememberChoices() {
+    if (sharedPicker) retainedShared = sharedPicker.getSelection();
+    for (const [key, picker] of memberPickers) retainedByMember.set(key, picker.getSelection());
+  }
+
+  async function ensureProjection() {
+    if (!load) load = (async () => {
+      state = await readOrganizationState(kind);
+      return state;
+    })();
+    await load;
+    projection = projectOrganization(kind, members.map(memberShape), state,
+      { memberKey: (member) => kind === "label" ? member.label : member.id });
+  }
+
+  function entryField({ title, note, selected, retained, memberKey = "" }) {
+    const picker = groupEntryPicker({
+      groups: projection?.groups ?? [],
+      selected: retained?.groupIds?.length ? retained.groupIds : selected,
+      onSubmit,
+      onCancel: null
+    });
+    // Pending new names are local to this editor. Re-seed them without exposing
+    // the complete catalogue or writing anything before the primary Apply.
+    for (const name of retained?.createNames ?? []) {
+      const input = picker.element.querySelector("input");
+      input.value = name;
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    }
+    if (memberKey) memberPickers.set(memberKey, picker);
+    else sharedPicker = picker;
+    return el("div", { class: "organization-inline-entry" },
+      el("div", { class: "organization-inline-entry-label" },
+        el("strong", { title }, title), el("span", {}, note)),
+      picker.element);
+  }
+
+  async function renderBody() {
+    const token = ++renderToken;
+    rememberChoices();
+    await ensureProjection();
+    if (token !== renderToken || !open) return;
+    memberPickers = new Map();
+    sharedPicker = null;
+    if (members.length === 1) separate = true;
+    const intro = el("p", { class: "organization-inline-help" }, separate
+      ? msg("organization_inline_exact_help")
+      : msg("organization_inline_shared_help", [String(members.length), copy.plural]));
+    const fields = el("div", { class: separate ? "organization-inline-separate" : "" });
+    if (separate) {
+      for (const member of members) {
+        const current = [...(projection.groupIdsByMemberKey.get(member.key) ?? [])];
+        fields.append(entryField({
+          title: member.name,
+          note: msg("organization_inline_selected_member", [copy.singular]),
+          selected: current,
+          retained: retainedByMember.get(member.key),
+          memberKey: member.key
+        }));
+      }
+    } else {
+      fields.append(entryField({
+        title: msg("organization_inline_add_to_all", [String(members.length), copy.plural]),
+        note: msg("organization_inline_shared_addition"),
+        selected: [], retained: retainedShared
+      }));
+    }
+    const separateAction = !separate && members.length > 1
+      ? el("div", { class: "organization-inline-separate-action" },
+          el("span", {}, msg("organization_inline_different_question")),
+          el("button", { type: "button", onclick: async () => {
+            rememberChoices();
+            separate = true;
+            for (const member of members) {
+              const current = [...(projection.groupIdsByMemberKey.get(member.key) ?? [])];
+              retainedByMember.set(member.key, {
+                groupIds: [...new Set([...current, ...retainedShared.groupIds])],
+                createNames: [...retainedShared.createNames]
+              });
+            }
+            await renderBody();
+            onChange?.();
+          } }, msg("organization_inline_separate")))
+      : null;
+    body.replaceChildren(intro, fields);
+    if (separateAction) body.append(separateAction);
+  }
+
+  async function setOpen(next) {
+    if (members.length === 0) return;
+    open = Boolean(next);
+    if (open) active = true;
+    toggle.textContent = open ? msg("organization_inline_hide") : msg("organization_inline_open");
+    toggle.setAttribute("aria-expanded", String(open));
+    body.hidden = !open;
+    if (open) await renderBody();
+    onChange?.();
+  }
+
+  return {
+    element: root,
+    async setMembers(next) {
+      rememberChoices();
+      const priorKeys = new Set(members.map((member) => member.key));
+      members = normalizeMembers(next);
+      for (const key of [...retainedByMember.keys()]) {
+        if (!members.some((member) => member.key === key)) retainedByMember.delete(key);
+      }
+      const keysChanged = members.length !== priorKeys.size ||
+        members.some((member) => !priorKeys.has(member.key));
+      if (keysChanged) projection = null;
+      root.hidden = members.length === 0;
+      if (members.length === 0) {
+        open = false;
+        active = false;
+        body.hidden = true;
+        toggle.textContent = msg("organization_inline_open");
+        toggle.setAttribute("aria-expanded", "false");
+      } else if (open) {
+        await renderBody();
+      }
+    },
+    async getPlan() {
+      if (!active || members.length === 0) return null;
+      await ensureProjection();
+      rememberChoices();
+      if (!separate) {
+        if (retainedShared.groupIds.length === 0 && retainedShared.createNames.length === 0) return null;
+        return { mode: "add", memberKeys: members.map((member) => member.key), ...retainedShared };
+      }
+      return {
+        mode: "replace",
+        members: members.map((member) => ({
+          memberKey: member.key,
+          ...(retainedByMember.get(member.key) ?? {
+            groupIds: [...(projection.groupIdsByMemberKey.get(member.key) ?? [])], createNames: []
+          }),
+          revision: projection.memberRevisionByKey.get(member.key)
+        }))
+      };
+    },
+    isOpen: () => open
   };
 }
 
@@ -478,7 +678,8 @@ export function createOrganizationControls({
             showNotice?.(msg("organization_group_updated", [copy.singular]));
             await refreshAndFocus(() => findCommand("add", group.id) ?? findLens(group.id));
           } }, msg("organization_apply_members", [copy.plural]));
-          return el("div", { class: "organization-form" }, picker.element, feedback.node,
+          return el("div", { class: "organization-form" }, picker.element,
+            el("p", { class: "palette-help" }, msg("organization_membership_help")), feedback.node,
             el("div", { class: "organization-form-actions" }, apply));
         }, `add-${kind}s-to-group`);
       }
@@ -502,6 +703,7 @@ export function createOrganizationControls({
             await refreshAndFocus(() => findCommand("manage", group.id) ?? findLens(group.id));
           } }, msg("action_rename"));
           input.addEventListener("keydown", (event) => {
+            if (isComposingKey(event)) return;
             if (event.key !== "Enter") return;
             event.preventDefault();
             rename.click();

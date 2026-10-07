@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Synthetic native Library measurement</title>
+<pre id="result">Running synthetic storage measurements…</pre>
+<script type="module">
+  import { runBenchmark } from './native-storage-benchmark-page.mjs';
+  window.benchmarkState = { status: 'running' };
+  try {
+    const report = await runBenchmark(progress => { window.benchmarkState.progress = progress; });
+    window.benchmarkState = { status: 'pass', report };
+  } catch {
+    window.benchmarkState = { status: 'fail', error: 'Native storage measurement or verification failed' };
+  }
+  document.querySelector('#result').textContent = JSON.stringify(window.benchmarkState);
+</script>
+</html>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { createChromeI18nMock } from "./message-fixture.mjs";
+import { installBrowserMapStorageAuthority } from "./storage-authority-fixture.mjs";
 
 const bootSource = readFileSync(new URL("../js/boot.js", import.meta.url), "utf8");
 const searchSource = readFileSync(new URL("../js/lib/search.js", import.meta.url), "utf8");
@@ -81,6 +82,7 @@ globalThis.chrome = {
     }
   }
 };
+installBrowserMapStorageAuthority();
 const store = await import(`../js/lib/store.js?batch5=${Date.now()}`);
 const miss = await store.listItems("inbox");
 assert.equal(cloneCalls, 1,
@@ -152,7 +154,8 @@ assert.deepEqual(
 assert.equal(inferJournalDescriptor("Old imported wording"), null,
   "unknown historical Journal wording remains a compatibility fallback");
 globalThis.chrome.i18n = createChromeI18nMock();
-const { activityEntryLabel } = await import(`../js/ui/activity-copy.js?batch5=${Date.now()}`);
+const { activityEntryLabel, activityAttentionLabel } =
+  await import(`../js/ui/activity-copy.js?batch5=${Date.now()}`);
 assert.equal(activityEntryLabel({
   label: "compatibility fallback", actionKind: "moved-tabs-session",
   actionParams: { count: 4, name: "Research" }
@@ -165,6 +168,62 @@ assert.equal(activityEntryLabel({
   actionParams: { location: "archive" }
 }), "Deleted an Archive item",
 "Activity localizes language-neutral saved-location parameters");
+const namedAutoSave = {
+  label: "compatibility fallback", actionKind: "auto-saved-tabs",
+  actionParams: { count: 1, name: "Project brief" }
+};
+assert.equal(activityEntryLabel(namedAutoSave), "Auto-saved “Project brief” to the Inbox",
+  "one-tab automatic Activity names the tab it saved");
+assert.equal(activityAttentionLabel(namedAutoSave), "Saved “Project brief” to Inbox",
+  "Needs you uses a shorter title-aware automatic label");
+const namedAutoSaveBatch = {
+  label: "compatibility fallback", actionKind: "auto-saved-tabs",
+  actionParams: { count: 3, name: "Project brief" }
+};
+assert.equal(activityEntryLabel(namedAutoSaveBatch),
+  "Auto-saved “Project brief” and 2 more to the Inbox",
+  "multi-tab automatic Activity identifies the first affected link");
+assert.equal(activityAttentionLabel(namedAutoSaveBatch),
+  "Saved “Project brief” +2 to Inbox",
+  "multi-tab automatic Needs you stays compact while identifying the affected links");
+const namedAutoArchive = {
+  label: "compatibility fallback", actionKind: "auto-archived-items",
+  actionParams: { count: 1, name: "Project brief" }
+};
+assert.equal(activityEntryLabel(namedAutoArchive),
+  "Auto-archived “Project brief” from the Inbox",
+  "one-item automatic expiry identifies the affected link in Activity");
+assert.equal(activityAttentionLabel(namedAutoArchive),
+  "Archived “Project brief” from Inbox",
+  "one-item automatic expiry identifies the affected link in Needs you");
+const namedAutoArchiveBatch = {
+  label: "compatibility fallback", actionKind: "auto-archived-items",
+  actionParams: { count: 3, name: "Project brief" }
+};
+assert.equal(activityEntryLabel(namedAutoArchiveBatch),
+  "Auto-archived “Project brief” and 2 more from the Inbox",
+  "multi-item automatic expiry identifies its first affected link in Activity");
+assert.equal(activityAttentionLabel(namedAutoArchiveBatch),
+  "Archived “Project brief” +2 from Inbox",
+  "multi-item automatic expiry stays compact while identifying the affected links");
+const earlierAutoSave = {
+  label: "Auto-saved 2 tabs to the Inbox", actionKind: "auto-saved-tabs",
+  actionParams: { count: 2 },
+  reopen: [[{ title: "Earlier project", url: "https://earlier.example" }]]
+};
+assert.equal(activityEntryLabel(earlierAutoSave),
+  "Auto-saved “Earlier project” and 1 more to the Inbox",
+  "an earlier automatic save recovers its link name from its existing Undo payload");
+const earlierAutoArchive = {
+  label: "Auto-archived 1 Inbox item", actionKind: "auto-archived-items",
+  actionParams: { count: 1 },
+  puts: [{ store: "inbox", item: {
+    id: "earlier", tabs: [{ title: "Earlier project", url: "https://earlier.example" }]
+  } }]
+};
+assert.equal(activityAttentionLabel(earlierAutoArchive),
+  "Archived “Earlier project” from Inbox",
+  "an earlier automatic expiry recovers its link name from its existing Undo payload");
 
 for (const [source, oldCopy, name] of [
   [archiveSource, "Tabs auto-saved to Inbox", "automatic Archive notifications"],

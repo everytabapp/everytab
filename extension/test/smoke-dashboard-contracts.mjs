@@ -6,7 +6,7 @@ export async function runSmokeDashboardContracts({ check }) {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const { fileURLToPath } = await import("node:url");
-    const { countItems, listItems: list } = await import("../js/lib/store.js");
+    const { countItems, countInboxTabs, listItems: list } = await import("../js/lib/store.js");
     const root = fileURLToPath(new URL("../", import.meta.url));
     const dash = fs.readFileSync(path.join(root, "js/ui/dashboard.js"), "utf8");
   
@@ -23,6 +23,58 @@ export async function runSmokeDashboardContracts({ check }) {
     check(await countItems("e32-absent-key") === 0,
       "E3-2: counting an absent store is zero, not a throw");
     await chrome.storage.local.set({ [key]: {} }); // the mock has no remove()
+
+    const originalInbox = (await chrome.storage.local.get(STORE_KEYS.inbox))[STORE_KEYS.inbox];
+    const { installDomFixture } = await import("./dom-fixture.mjs");
+    const inboxFixture = installDomFixture();
+    try {
+      const { createInboxSurface } = await import("../js/ui/inbox-surface.js");
+      const inboxSurface = createInboxSurface({ rerender() {}, shouldRenderBody: () => false });
+      const tab = { url: "https://fixture.example/saved", title: "Saved fixture" };
+      const singlesAndBundles = {
+        single: { id: "single", kind: "tab", tabs: [tab] },
+        bundle: { id: "bundle", kind: "window", tabs: [tab, tab, tab] },
+        empty: { id: "empty", kind: "window", tabs: [] },
+        missing: { id: "missing", kind: "window" },
+        deleted: { id: "deleted", kind: "window", tabs: [tab, tab], deletedAt: 9 }
+      };
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: singlesAndBundles });
+      check(await countInboxTabs() === 4,
+        "Inbox badge counts saved occurrences across singles and bundles, including repeated URLs");
+      check((await inboxSurface.render()).heading === "Inbox (4)",
+        "shared Dashboard and Side Panel Inbox heading uses the same mixed-record tab total");
+      check(await countItems(STORE_KEYS.inbox) === 4,
+        "record counting keeps its existing meaning for other navigation badges");
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: {
+        ...singlesAndBundles,
+        bundle: { ...singlesAndBundles.bundle, tabs: [tab] },
+        single: { ...singlesAndBundles.single, deletedAt: 10 }
+      } });
+      check(await countInboxTabs() === 1,
+        "Inbox badge follows a shortened bundle and a subsequently deleted single");
+      check((await inboxSurface.render()).heading === "Inbox (1)",
+        "Inbox heading updates after bundle shrink and single deletion");
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: {
+        empty: singlesAndBundles.empty, missing: singlesAndBundles.missing,
+        deleted: singlesAndBundles.deleted
+      } });
+      check(await countInboxTabs() === 0,
+        "empty or missing tab arrays and deleted bundles contribute no saved tabs");
+      check((await inboxSurface.render()).heading === "Inbox (0)",
+        "empty and deleted saved groups do not inflate the Inbox heading");
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: {} });
+      check(await countInboxTabs() === 0, "an empty Inbox has a zero tab badge");
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: {
+        savedWindow: { id: "savedWindow", kind: "window", tabs: Array.from({ length: 33 }, () => tab) }
+      } });
+      check(await countInboxTabs() === 33 && await countItems(STORE_KEYS.inbox) === 1,
+        "one 33-tab Inbox bundle reports 33 saved tabs while remaining one stored record");
+      check((await inboxSurface.render()).heading === "Inbox (33)",
+        "a 33-tab saved bundle has matching Inbox badge and heading totals");
+    } finally {
+      inboxFixture.restore();
+      await chrome.storage.local.set({ [STORE_KEYS.inbox]: originalInbox ?? {} });
+    }
   
     /* The gate, and the one place that catches up. */
     check(
@@ -47,11 +99,9 @@ export async function runSmokeDashboardContracts({ check }) {
         !dashCss.includes(".workbench-bar {"),
       "F23/F34-4: Home is retired and exactly one routed collection mounts"
     );
-    const home = fs.readFileSync(path.join(root, "js/ui/home-surface.js"), "utf8");
     check(
-      // F34-4: the module is retired in place, because the build environment
-      // cannot unlink files. Nothing may import it, and it must export nothing.
-      home.includes("RETIRED by F34-4") && home.includes("export {};") &&
+      // F34-4: the retired module is absent and no surface imports it.
+      !fs.existsSync(path.join(root, "js/ui/home-surface.js")) &&
         !dash.includes("home-surface.js") &&
         !fs.readFileSync(path.join(root, "js/ui/sidepanel.js"), "utf8").includes("home-surface.js") &&
         !dash.includes('el("h2", {}, "Workbench")') &&
@@ -62,30 +112,31 @@ export async function runSmokeDashboardContracts({ check }) {
       "F24/F38: the retired Home module is unreferenced and the fluid Search/collection axes survive"
     );
     check(
-      dash.includes("const hero = el(") &&
-        /const hero = el\([\s\S]{0,600}class: "hero-top"[\s\S]{0,120}heroUtility,[\s\S]{0,80}pageUtilities\.starred[\s\S]{0,80}focusStrip/.test(dash) &&
-        /const dailyStage = el\("div"[\s\S]{0,120}reconnectBanner, sectionsWrap/.test(dash) &&
+      /const hero = el\([\s\S]{0,240}class: "hero-top"[\s\S]{0,120}heroUtility,[\s\S]{0,80}pageUtilities\.starred[\s\S]{0,80}reconnectBanner,[\s\S]{0,80}focusStrip/.test(dash) &&
+        /const dailyStage = el\("div", \{ class: "daily-stage" \}, sectionsWrap\)/.test(dash) &&
         /const main = el\("main"[\s\S]{0,180}hero, dailyStage/.test(dash) &&
         !dashCss.includes('body[data-workbench="true"] .pu-'),
       "F40: Search, push Starred, fixed responsive Needs you, and active Focus are global across routes"
     );
     const focusStripSrc = fs.readFileSync(path.join(root, "js/ui/focus-strip.js"), "utf8");
     const boxSrc = fs.readFileSync(path.join(root, "js/ui/command-box.js"), "utf8");
+    const { createChromeI18nMock } = await import("./message-fixture.mjs");
+    globalThis.chrome = { ...(globalThis.chrome ?? {}), i18n: createChromeI18nMock() };
     const { attentionItems: boxAttentionItems } = await import("../js/ui/command-box.js");
     check(
       focusStripSrc.includes("export async function getFocusGuardStatus()") &&
-        focusStripSrc.includes("export function startFocusGuard()") &&
+      focusStripSrc.includes("export function startFocusGuard(endChoice)") &&
         focusStripSrc.includes("export function endFocusGuard()") &&
         focusStripSrc.includes('type: "focus-guard-start"') &&
         // F44: the entry point moved off the sidebar onto the top-right utility
         // line, beside Needs you; the status band stays but owns no action.
         dash.includes('class: "hero-focus-action"') &&
         dash.includes('const focusUtility = el("div", { class: "hero-focus" }, focusPrimary, focusSettingsButton);') &&
-        dash.includes('active ? "End Focus" : ready ? "Start Focus" : "Set up Focus"') &&
+        dash.includes('const label = active ? localeMessage("focus_action_active")') &&
         dash.includes('const duringCount = Number(focusNavStatus?.duringCount) || 0;') &&
         !dash.includes('el("span", { class: "n" }, String(duringCount))') &&
         dash.includes('const result = await endFocusGuard();') &&
-        dash.includes('if (!result?.ok) showNotice("Couldn\'t end Focus.");') &&
+        dash.includes('if (!result?.ok) showNotice(localeMessage("focus_end_failed"));') &&
         !dash.includes("focusNavButton") &&
         !/navMain\.replaceChildren\(\s*[a-zA-Z]*[Ff]ocus/.test(dash) &&
         dash.includes('go("settings-focus", { origin: "rail" })') &&
@@ -100,11 +151,12 @@ export async function runSmokeDashboardContracts({ check }) {
       // F34-4: What's happening became the attention row. It still routes to a
       // named collection, and now says nothing at all when nothing is true.
       boxAttentionItems({ duplicates: 1 }).map((i) => i.page).join() === "duplicates" &&
-      boxSrc.includes("onclick: () => go(item.page)") &&
+      boxSrc.includes('item.kind === "automatic" && item.entryId') &&
+      boxSrc.includes('`activity:${encodeURIComponent(item.entryId)}`') &&
       boxSrc.includes('class: "page-attention-link"') &&
       !boxSrc.includes("page-attention-item-dot") &&
       !boxSrc.includes("pu-attention-dot") &&
-      boxSrc.includes('onclick: () => go("activity") }, "All activity"') &&
+      boxSrc.includes('onclick: () => go("activity") }, localeMessage("attention_all_activity")') &&
       boxSrc.includes("await requestUndo(item.entryId)"),
       "P11-25: direct Needs-you entries route to their collection and automatic work retains Undo plus Activity"
     );
@@ -161,13 +213,10 @@ export async function runSmokeDashboardContracts({ check }) {
         dashCss.includes("+ var(--section-lead-h, 44px) + var(--section-local-h, 0px) + var(--sp-6));"),
       "F27/F40: every route is orienting and sticky offsets clear the complete Canvas-line stack"
     );
-    const navSrc = fs.readFileSync(path.join(root, "js/ui/workbench-navigation.js"), "utf8");
     check(
       // F34-4 retired the navigator, so its scroll policy has nothing left to
-      // decide. The module is a tombstone in place, because the build environment
-      // cannot unlink files; it must export nothing and be imported by nobody.
-      navSrc.includes("RETIRED by F34-4") && navSrc.includes("export {};") &&
-        !navSrc.includes("export function workbenchScrollTarget") &&
+      // decide. Both obsolete modules are absent and imported by nobody.
+      !fs.existsSync(path.join(root, "js/ui/workbench-navigation.js")) &&
         ![dash, fs.readFileSync(path.join(root, "js/ui/sidepanel.js"), "utf8")]
           .some((src) => src.includes("workbench-navigation.js")) &&
         // The side panel keeps its own switcher, which is the surviving instance
@@ -188,7 +237,9 @@ export async function runSmokeDashboardContracts({ check }) {
     const lazy = ["close-day", "inbox", "archive", "sessions", "snapshots",
       "snoozed", "duplicates", "stats", "activity", "labels", "data"];
     check(
-      lazy.every((id) => dash.includes(`lazySection("${id}"`)) &&
+      lazy.filter((id) => id !== "duplicates").every((id) => dash.includes(`lazySection("${id}"`)) &&
+        dash.includes('if (!sectionVisible("duplicates"))') &&
+        dash.includes('sectionRenderers.set("duplicates", renderDuplicates)') &&
       dash.includes('sectionRenderers.set("open", renderOpen)'),
       "E3-2: every section is gated, and Open registers its own existing gate"
     );
@@ -213,8 +264,9 @@ export async function runSmokeDashboardContracts({ check }) {
   
     /* Counts that only ever wanted a number no longer build and sort a list. */
     check(
-      dash.includes("countItems(STORE_KEYS.inbox)") &&
-      dash.includes("countItems(STORE_KEYS.snoozes)") &&
+      dash.includes("reads.inboxItems()") &&
+      dash.includes("reads.snoozeItems()") &&
+      dash.includes("readLabelNavigationSnapshot(reads)") &&
       dash.includes("readLabelNavigationSnapshot()") &&
       !/navBtn\("inbox", "Inbox", "inbox", inbox\.length\)/.test(dash) &&
       !/String\(inbox\.length\)\), " in inbox"/.test(dash),
@@ -305,7 +357,7 @@ export async function runSmokeDashboardContracts({ check }) {
     );
     check(
       listCss.includes(".tablist > .keeper-panel-slot:empty { display: none; }") &&
-      read("../tools/shell-harness.html").includes('<div class="bulk-bar is-empty"></div><div class="keeper-panel-slot"></div>'),
+      read("../../tools/shell-harness.html").includes('<div class="bulk-bar is-empty"></div><div class="keeper-panel-slot"></div>'),
       "F43: the empty keeper helper cannot create a grid gap before the first sticky cap"
     );
     const tablistKeyboard = read("../js/ui/tablist.js");
@@ -399,14 +451,14 @@ export async function runSmokeDashboardContracts({ check }) {
       const boxSource = strip(read("../js/ui/command-box.js"));
       const listCfg = strip(read("../js/ui/list-configs.js"));
       check(
-        boxSource.includes('onclick: () => go("activity") }, "All activity")') &&
+        boxSource.includes('onclick: () => go("activity") }, localeMessage("attention_all_activity"))') &&
         !boxSource.includes('el("span", { "aria-hidden": "true" }, "→")') &&
         /\.page-attention-activity:hover, \.page-attention-activity:focus-visible \{[^}]*text-decoration: underline/s.test(css),
         "P11-25/F45: All activity names the arrow-free full-history route and underlines on hover"
       );
       check(
-        strip(read("../js/ui/tablist.js")).includes('? listWindowCardTitle(s.tabs.length)\n        : listSingleTabTitle()') &&
-        !/kind: "snooze",[\s\S]{0,400}title: s\.title \|\| s\.url,/.test(strip(read("../js/ui/tablist.js"))),
+        strip(read("../js/ui/tablist.js")).includes('? listWindowCardTitle(refs.length)\n        : listSingleTabTitle()') &&
+        !/kind: "snooze",\s*title:\s*s\.title \|\| s\.url,/.test(strip(read("../js/ui/tablist.js"))),
         "F45: a snoozed single tab heads its card with the structural descriptor, exactly as Inbox and Archive do"
       );
       check(
@@ -464,8 +516,8 @@ export async function runSmokeDashboardContracts({ check }) {
         boxSource.includes("starBody.addEventListener(\"dragover\""),
         "F46r: the launcher keeps the ordinary pointer, the favicon is the visible handle, and the whole rail accepts the drop"
       );
-      const sidepanelHarness = strip(read("../tools/sidepanel-harness.html"));
-      const sidepanelFixtures = strip(read("../tools/sidepanel-fixtures.js"));
+      const sidepanelHarness = strip(read("../../tools/sidepanel-harness.html"));
+      const sidepanelFixtures = strip(read("../../tools/sidepanel-fixtures.js"));
       check(
         sidepanelHarness.includes('params.get("folded") === "1"') &&
         sidepanelHarness.indexOf('document.getElementById("rows-one").innerHTML') <
@@ -485,7 +537,6 @@ export async function runSmokeDashboardContracts({ check }) {
       const primitivesCss = read("../css/primitives.css");
       const sidepanelCss = read("../css/sidepanel.css");
       const onboardingCss = read("../css/onboarding.css");
-      const typeAudit = JSON.parse(read("../tools/q3-type-role-audit.json"));
       check(
         typographyTokens.includes("--text-section: 16px;") &&
         /\.section-lead h2 \{[^}]*font-size: var\(--text-section\)/s.test(css) &&
@@ -495,10 +546,6 @@ export async function runSmokeDashboardContracts({ check }) {
         "P11-08: the approved 16px section role is semantic at runtime and changing popup, Search, and side-panel counts use tabular numerals"
       );
       check(
-        typeAudit.sectionRole.approvedPx === 16 &&
-        typeAudit.sectionRole.historicalReferences[0].values.length === 2 &&
-        typeAudit.surfaceInventory.length === 6 &&
-        typeAudit.copyPressure.expansion === 1.4 &&
         /--text-section: 18px/.test(readProjectEvidence(
           "../../d4-design-system-spec.md",
           "./ci-evidence/d4-design-system-spec.md"
@@ -643,7 +690,7 @@ export async function runSmokeDashboardContracts({ check }) {
         const {
           applyExpandedCopyFixture, applyFoldedPressureFixture,
           foldedPressureGeometry, FOLDED_PRESSURE_WIDTHS
-        } = await import("../tools/sidepanel-fixtures.js");
+        } = await import("../../tools/sidepanel-fixtures.js");
         const dom = installDomFixture();
         try {
           const make = (tag, className = "", text = "") => {
@@ -746,16 +793,16 @@ export async function runSmokeDashboardContracts({ check }) {
         journalSrc.includes("export function isVisibleActivityEntry(entry)") &&
         /Auto-saved \$\{refs\.length\} tab/.test(archiveSrc) &&
         /Auto-archived \$\{expired\.length\} Inbox item/.test(archiveSrc) &&
-        archiveSrc.includes("{ auto: true }") &&
-        /mutateStores\(\[STORE_KEYS\.inbox, JOURNAL_KEY\]/.test(archiveSrc) &&
+        archiveSrc.includes("auto: true,") &&
+        /mutateStores\(\[STORE_KEYS\.inbox, JOURNAL_KEY, RECOVERY_GRACE_KEY\]/.test(archiveSrc) &&
         /mutateStores\(\[STORE_KEYS\.inbox, STORE_KEYS\.archive, COUNTERS_KEY, JOURNAL_KEY\]/.test(archiveSrc),
         "F46: both automatic sweeps journal an inverse in their own atomic commit, marked as the extension's own work"
       );
       check(
         archiveSrc.includes("export function setArchiveUndoRegistrar(fn)") &&
         (archiveSrc.match(/title: localeMessage\("action_undo"\)/g) ?? []).length === 2 &&
-        strip(read("../js/background.js")).includes("setArchiveUndoRegistrar((notificationId, entryId) => cmdUndo.set(notificationId, entryId));"),
-        "F46: the auto-save notification that already existed now carries the same Undo button the manual commands use"
+        (archiveSrc.match(/registerUndoButton\(id, undoId\)/g) ?? []).length === 2,
+        "F46: automatic archive notifications advertise and register the shared Undo action"
       );
       check(
         activitySrc.includes('let filter = localStorage.getItem("tvActivityFilter") ?? "all";') &&
@@ -771,7 +818,7 @@ export async function runSmokeDashboardContracts({ check }) {
       check(
         activitySrc.includes('class: "activity-controls section-local-sticky"') &&
         activitySrc.includes('class: "activity-filter"') &&
-        activitySrc.includes("`EveryTab keeps the last ${JOURNAL_CAP} actions.") &&
+        activitySrc.includes('localeMessage("activity_count_tip", [formatNumber(JOURNAL_CAP), modifierLabel])') &&
         /\.activity-seg\.on \{[^}]*background: var\(--surface\)/s.test(css) &&
         /body\[data-workbench="true"\] \.label-index,\s*body\[data-workbench="true"\] \.activity-controls \{/s.test(css) &&
         !activitySrc.includes('class: "activity-lede"') &&
@@ -779,7 +826,7 @@ export async function runSmokeDashboardContracts({ check }) {
         "F46r2: Activity's controls are the section's own local sticky strip, on the same axis and spacing as every other collection"
       );
       check(
-        activitySrc.includes('el("span", { class: "activity-undo-label" }, "Undo")') &&
+        activitySrc.includes('el("span", { class: "activity-undo-label" }, localeMessage("action_undo"))') &&
         /\.tablist\[data-tablist="activity"\] \.tacts \{\s*opacity: 1; visibility: visible/s.test(css) &&
         /\.tablist\[data-tablist="activity"\] \.activity-undo-label \{ display: inline; \}/.test(css),
         "F46r: history's one action is always visible and always named, whatever the Icons-only preference says"
@@ -831,9 +878,9 @@ export async function runSmokeDashboardContracts({ check }) {
     check(presentLabelBranch.includes("if (present)") && presentLabelBranch.includes("positionLabelCard(label)"),
       "N33: goToLabel anchors a present All-lens card before its ordinary refresh; a group-lens reset renders All first");
     check(
-      gtl.includes('labelFilter = "";') &&
+      gtl.includes("selectedLabels = [];") &&
         db.includes('activate: () => go("labels", { origin: "jump" })'),
-      "F28: label jumps clear filtering and use a route origin that cannot override their destination"
+      "F28: external label jumps clear additive facets and use a route origin that cannot override their destination"
     );
     const gts2 = sessionsSurface.slice(sessionsSurface.indexOf("async function goToSession"),
       sessionsSurface.indexOf("async function setGroupLens"));
@@ -898,7 +945,10 @@ export async function runSmokeDashboardContracts({ check }) {
     check(
       labelsSurface.includes("activeGroupLens = ALL_ORGANIZATION_LENS;") &&
         sessionsSurface.includes("activeGroupLens = ALL_ORGANIZATION_LENS;") &&
-        labelsSurface.includes("onJump: jumpWithinLabelLens") &&
+        labelsSurface.includes("onJump: navigateWithinLabelLens") &&
+        labelsSurface.includes("jumpWithinLabelLens(label);") &&
+        labelsSurface.includes('chipLabel: localeMessage("list_jump_to_labels")') &&
+        labelsSurface.includes("selectedLabels = [];") &&
         sessionsSurface.includes("onJump: jumpWithinSessionLens") &&
         !labelsSurface.slice(labelsSurface.indexOf("function jumpWithinLabelLens"),
           labelsSurface.indexOf("async function goToLabel")).includes("activeGroupLens =") &&

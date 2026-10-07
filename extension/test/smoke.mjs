@@ -82,13 +82,18 @@ Object.defineProperty(globalThis, "navigator", {
   configurable: true
 });
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
 const {
   takeSnapshot, saveAllWindowsAsSession, saveWindowAsSession, restoreWindowRefs,
-  restoreSession, restoreSessionById
+  restoreSession, restoreSessionWindow, restoreSessionById
 } =
   await import("../js/lib/sessions.js");
 const {
-  mapGroupIndexes, groupPlanFromRefs, fetchGroupTemplates, recreateWindowGroups,
+  mapGroupIndexes, groupPlanFromRefs, fetchGroupTemplates, fetchLiveGroupDetails, recreateWindowGroups,
   hasTabGroupsPermission, ensureTabGroupsPermission, setGroupRestoreNotifier, GROUP_COLOR_HEX
 } = await import("../js/lib/tab-groups.js");
 const { buildJsonExport, importJson, buildOneTabExport, parseOneTabImport } = await import(
@@ -104,7 +109,7 @@ const { listActions: listOrganizeActions, undoAction: undoOrganizeAction, clearJ
   await import("../js/lib/journal.js");
 const { listItems, upsertItem, newMeta, getSettings, getFreshSettings } = await import("../js/lib/store.js");
 const { STORE_KEYS, ARCHIVE_OVERLAY_KEY } = await import("../js/lib/types.js");
-const { removeTabFromInboxItem, dumpTab } = await import("../js/lib/actions.js");
+const { removeTabFromInboxItem, dumpTab, dumpTabs } = await import("../js/lib/actions.js");
 const { deleteSavedItem } = await import("../js/lib/saved-item-actions.js");
 const { windowFingerprint, sameWindowFingerprint, closeWindowSafely } =
   await import("../js/lib/close-window.js");
@@ -171,15 +176,11 @@ const { check, finish } = createSmokeChecks();
 
   const { readFileSync: readCloseWindow } = await import("node:fs");
   const src = (path) => readCloseWindow(new URL(path, import.meta.url), "utf8");
-  const background = src("../js/background.js");
   const config = src("../js/ui/list-configs.js");
   const helper = src("../js/ui/list-helpers.js");
   const surface = src("../js/ui/open-surface.js");
   const tablist = src("../js/ui/tablist.js");
   const css = src("../css/tablist-d4.css");
-  check(background.includes('handler("close-window", "async"') &&
-        background.includes("closeWindowSafely(msg.windowId"),
-    "P11-03: the background routes whole-window messages through the guarded domain operation");
   check(config.includes('id: "close-window"') &&
         config.includes("expectedPinnedTabIds") && config.includes("beforeRemoveCard?.()") &&
         surface.includes("chrome.windows.getCurrent()") && surface.includes("browserWindowCount"),
@@ -353,10 +354,6 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   // --- source contracts: the feature is wired where it must be ---
   const { readFileSync: readF13 } = await import("node:fs");
   const readSrc = (p) => readF13(new URL(p, import.meta.url), "utf8");
-  const bgSrc = readSrc("../js/background.js");
-  check(/handler\("sort-window", "async"/.test(bgSrc) && /sortWindowById\(msg\.windowId, msg\.mode\)/.test(bgSrc) &&
-        /handler\("gather-domain", "async"/.test(bgSrc) && /gatherDomainToNewWindow\(msg\.domain\)/.test(bgSrc),
-    "F13: background routes sort-window + gather-domain to the organize orchestrators");
   // F14: the Open config moved to list-configs.js and the Open-surface render +
   // inline panels (Organize, drift, nudge, drag) moved to open-surface.js (2b);
   // scan all three so these Open-surface contracts hold regardless of host module.
@@ -379,11 +376,14 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   // still asserts Sort is offered and gather is not.
   check(/popupStatic\.sort\(\)/.test(popSrc) && /type: "sort-window"/.test(popSrc) && !/type: "gather-domain"/.test(popSrc),
     "F13: popup offers Sort for the current window only (gather stays dashboard-only)");
-  // Popup "Save as session" must be one-in-flight-guarded (withPending) so rapid
-  // clicks can't each create a duplicate session, and must confirm immediately.
-  check(/saveBtn\.onclick = \(e\) => withPending\(e\.currentTarget/.test(popSrc) &&
-        /setMsg\(popupStatic\.saving\(\)\);\s*\n\s*const res = await send\(\{ type: "save-window-session"/.test(popSrc),
-    "popup: Save-as-session is withPending-guarded and shows immediate feedback");
+  // Popup tab/window Session actions share the regular searchable picker, keep
+  // one request in flight per scope, and acknowledge the work immediately.
+  check(/sessionComboboxButton\(popupStatic\.saveSession\(\)/.test(popSrc) &&
+        /sessionComboboxButton\(localeMessage\("popup_save_in_session"\)/.test(popSrc) &&
+        /tabSessionPending/.test(popSrc) && /windowSessionPending/.test(popSrc) &&
+        /setMsg\(popupStatic\.saving\(\)\)/.test(popSrc) &&
+        /type: "save-window-session"/.test(popSrc) && /type: "save-tabs-session"/.test(popSrc),
+    "popup: tab/window Session actions share the guarded name-or-existing picker");
   const orgSrc = readSrc("../js/lib/organize.js");
   check(!orgSrc.includes("chrome.storage.local.set") && /recordAction\(/.test(orgSrc),
     "F13: organize.js writes no raw storage — it journals through recordAction");
@@ -434,6 +434,13 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   const noPerm = await fetchGroupTemplates([7, 9], false);
   check(noPerm.length === 2 && Object.keys(noPerm[0]).length === 0 && Object.keys(noPerm[1]).length === 0,
     "F18: fetchGroupTemplates returns membership-only {} entries without permission");
+  const liveDetails = await fetchLiveGroupDetails([7, 9, 7, -1], true);
+  check(liveDetails.size === 2 && liveDetails.get(7)?.title === "Work" &&
+      liveDetails.get(7)?.color === "blue" && liveDetails.get(9)?.color === "red",
+    "F18: live group details deduplicate ids while retaining Chrome names and colors");
+  const liveMembershipOnly = await fetchLiveGroupDetails([7, 9], false);
+  check(liveMembershipOnly.size === 2 && Object.keys(liveMembershipOnly.get(7)).length === 0,
+    "F18: live group membership remains available without optional metadata permission");
 
   // --- recreateWindowGroups: groups, title/color, collapsed LAST ---
   const rRefs = [{ groupIndex: 0 }, { groupIndex: 0 }, { groupIndex: 1 }, {}];
@@ -463,7 +470,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   setGroupRestoreNotifier((msg) => { noticed = msg; });
   failGroupOps = true;
   const failed = await recreateWindowGroups(500, rRefs, [21, 22, 23, 24], rGroups, gate);
-  check(failed.attempted && failed.ok === false && noticed === "Tab groups could not be recreated",
+  check(failed.attempted && failed.ok === false && noticed === "tab-group-restore",
     "F18: a recreate failure leaves tabs ungrouped, reports the notice, and never throws");
   failGroupOps = false;
   setGroupRestoreNotifier(null);
@@ -531,6 +538,20 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         tabGroupsUpdateCalls[tabGroupsUpdateCalls.length - 1].props.collapsed === true,
     "F18: restore recreates both groups and collapses last");
 
+  // A window-level Session restore is the exact one-window slice of Restore
+  // all: one window, its group template, and its drift binding are preserved.
+  createdWindows = []; tabsGroupCalls = []; tabGroupsUpdateCalls = [];
+  mem.sessionWindows = {};
+  const restoredWindowId = await restoreSessionWindow(session, 0);
+  check(createdWindows.length === 1 && restoredWindowId === createdWindows[0].id &&
+        JSON.stringify(mem.sessionWindows[restoredWindowId]) ===
+          JSON.stringify({ sessionId: session.id, windowIndex: 0 }) &&
+        tabsGroupCalls.length === 2,
+    "Session window Restore opens and binds exactly that saved window with its groups");
+  check(await restoreSessionWindow(session, -1) === null &&
+        await restoreSessionWindow(session, 4) === null && createdWindows.length === 1,
+    "Session window Restore rejects an unavailable saved-window index");
+
   // flat restore without permission
   grantedPermissions = new Set();
   tabsGroupCalls = []; createdWindows = [];
@@ -585,7 +606,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   // dashboard.js into the shared Open surface (open-surface.js).
   const nudgeSrc = readS("../js/ui/open-surface.js");
   check(/ensureTabGroupsPermission/.test(setSrc) && /ensureTabGroupsPermission/.test(nudgeSrc),
-    "F18: permission is requested only from the two §6 surfaces (settings row + nudge)");
+    "F18: permission is requested only from the two explicit surfaces (Settings + contextual group row)");
   const dashCss = readS("../css/dashboard.css");
   check(Object.keys(GROUP_COLOR_HEX).every((c) => dashCss.includes(`.gdot-${c}`)),
     "F18: every Chrome group color has a matching read-only chip dot class");
@@ -666,10 +687,10 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   const keysOf = (g) => new Set((g?.items ?? []).flatMap((it) => it.keys));
   const rowGroup = SHORTCUTS.find((g) => /focused tab row/.test(g.group));
   const cardGroup = SHORTCUTS.find((g) => /focused card header/.test(g.group));
-  check(rowGroup && ["x", "r", "l", "s", "d", "a", "i", "z"].every((k) => keysOf(rowGroup).has(k)),
-    "N28: the ? overlay documents the universal row keys incl. i (save) and z (suspend)");
-  check(cardGroup && ["r", "c", "l", "d", "i"].every((k) => keysOf(cardGroup).has(k)),
-    "N28: the ? overlay documents the card-header keys (r/c/l/d/i)");
+  check(rowGroup && ["x", "r", "l", "s", "d", "a", "i", "t", "z"].every((k) => keysOf(rowGroup).has(k)),
+    "N28: the ? overlay documents the universal row keys incl. i (save), t (Session), and z (suspend)");
+  check(cardGroup && ["r", "c", "l", "d", "i", "t"].every((k) => keysOf(cardGroup).has(k)),
+    "N28: the ? overlay documents the card-header keys (r/c/l/d/i/t)");
   check(!SHORTCUTS.some((g) => g.group === "Inbox (on the focused tab row or card)"),
     "N28: the Inbox-only shortcuts group was generalized to 'Any list'");
 
@@ -699,6 +720,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   const moved = [];
   const noop = () => {};
   let dragId = null;
+  const protectionTargets = [];
   const cfg = buildOpenListConfig({
     data: {
       groups: ["G"], bindings: {}, sessionsById: new Map(), simpleWindows: [],
@@ -709,7 +731,8 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     renderOpen: noop, renderArchive: noop, renderLabels: noop, goToLabel: noop,
     mark: (ic) => ic, cardLabelPanel: () => ({}), buildOpenSnooze: () => ({}),
     idleNudge: () => null, sessionComboboxButton: () => ({}), copyRefs: noop,
-    buildOrganizePanel: () => ({}), driftBanner: () => null, groupNudge: () => "NUDGE",
+    buildOrganizePanel: () => ({}), driftBanner: () => null, groupAccessAction: () => "GROUP ACCESS",
+    buildProtectionPanel: (target) => { protectionTargets.push(target); return {}; },
     openRowDrag: { marker: true }, newWindowZone: () => ({}),
     endWindowZone: (group) => ({ endOf: group }),
     moveOpenTabs: async (ids, destination, afterWindowId = null) => {
@@ -724,18 +747,27 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     "F14: buildOpenListConfig returns the Open config shape (default presentation, injected data)");
 
   const rowIds = cfg.rowActions.map((a) => a.id);
-  check(JSON.stringify(rowIds) === JSON.stringify(["star", "switch", "dump", "label", "snooze", "suspend", "wake", "close"]),
-    "F22/F14: Open adds Star without disturbing the established action order");
+  check(JSON.stringify(rowIds) === JSON.stringify([
+    "star", "switch", "dump", "session", "label", "snooze", "protection", "suspend", "wake", "close", "close-unsaveable"
+  ]), "F22/F14: Open keeps one recoverable and one explicitly non-recoverable Close path");
   const keyOf = (id) => cfg.rowActions.find((a) => a.id === id)?.key;
+  check(keyOf("protection") === "p", "Open protection owns the available P row shortcut");
   check(keyOf("switch") === "r" && keyOf("dump") === "i" && keyOf("label") === "l" &&
         keyOf("snooze") === "s" && keyOf("suspend") === "z" && keyOf("wake") === "z",
     "F14: Open row action keys preserved (r/i/l/s/z)");
   const grpIds = cfg.groupActions.map((a) => a.id);
   check(JSON.stringify(grpIds) === JSON.stringify(
-    ["idle-nudge", "dump-window", "save-session", "copy", "organize", "close-window"]),
-    "P11-03/D4-2b: Open window header keeps its action order and ends with whole-window Close");
+    ["idle-nudge", "dump-window", "save-session", "label-window", "snooze-window", "protection-window", "copy", "organize", "close-window"]),
+    "Open window header keeps the row action order before window-only actions and Close");
   check(cfg.groupActions.at(-1)?.danger === true && typeof cfg.groupActions.at(-1)?.render === "function",
     "P11-03: whole-window Close is an explicit rendered danger confirmation");
+  check(cfg.groupActions.find((action) => action.id === "protection-window")?.key === "p",
+    "Open-window protection shares P with the row action");
+  cfg.groupActions.find((action) => action.id === "protection-window").run({
+    group: { data: { id: 42 } }, panel: { toggle: (build) => build() }
+  });
+  check(protectionTargets[0]?.windowId === 42,
+    "Open-window protection opens the shared picker for the exact window");
 
   // invoke row callbacks → correct background messages (proves msg is wired)
   cfg.rowOpen({ live: { tabId: 5, windowId: 1 } });
@@ -753,22 +785,26 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     "F14: Open row runs dispatch the same background messages as the dashboard did");
   const susp = cfg.rowActions.find((a) => a.id === "suspend");
   const wake = cfg.rowActions.find((a) => a.id === "wake");
-  check(susp.when({ live: { suspended: false } }) === true && susp.when({ live: { suspended: true } }) === false &&
-        wake.when({ live: { suspended: true } }) === true && wake.when({ live: { suspended: false } }) === false,
+  const closeUnsaveable = cfg.rowActions.find((a) => a.id === "close-unsaveable");
+  check(susp.when({ live: { selectable: true, suspended: false } }) === true &&
+        susp.when({ live: { selectable: true, suspended: true } }) === false &&
+        susp.when({ live: { selectable: false, suspended: false } }) === false &&
+        wake.when({ live: { selectable: true, suspended: true } }) === true &&
+        wake.when({ live: { selectable: true, suspended: false } }) === false &&
+        wake.when({ live: { selectable: false, suspended: true } }) === false,
     "F14: suspend/wake `when` guards are mutually exclusive (one 'z' toggles)");
+  check(closeUnsaveable.when({ live: { selectable: false } }) === true &&
+        closeUnsaveable.when({ live: { selectable: true } }) === false &&
+        closeUnsaveable.danger === true && typeof closeUnsaveable.render === "function",
+    "Open exposes the explicit no-Undo Close only for non-saveable live tabs");
 
-  // Keyboard move commits through the same worker-owned set-move seam.
-  await cfg.keyMoveCommit({ live: { tabId: 2 } }, { kind: "row", index: 0, group: { live: [{ windowId: 1, chromeIndex: 4 }] } });
-  await cfg.keyMoveCommit({ live: { tabId: 2 } }, { kind: "groupEnd", group: { data: { id: 99 } } });
-  await cfg.keyMoveCommit({ live: { tabId: 2 } }, { kind: "zoneGroup" });
-  check(moved.length === 3 && moved.every((entry) => entry.ids[0] === 2) &&
-        moved[0].destination.kind === "window" && moved[0].destination.index === 4 &&
-        moved[1].destination.windowId === 99 && moved[2].destination.kind === "new-window",
-    "F14: keyboard move dispatches every slot through the shared set-move seam");
+  check(!cfg.rowActions.some((action) => action.id === "move") &&
+      cfg.rowDrag?.marker === true && typeof cfg.bulkActions === "function",
+    "Open rows omit the redundant Move action while drag and selected-set Move remain available");
 
-  // F18 nudge shows on at most one window per render (mutable local preserved)
-  check(cfg.groupBanner({ data: {} }) === "NUDGE" && cfg.groupBanner({ data: {} }) === null,
-    "F14: the group-preservation nudge is consumed after the first window");
+  check(cfg.groupBanner({ data: {} }) === null &&
+      cfg.rowGroupSupplement({ named: false }) === "GROUP ACCESS",
+    "F14: group access is contextual to the affected live-group heading");
 
   // drag-over reads the injected dragged-set getter (empty → no preventDefault)
   let prevented = 0;
@@ -805,11 +841,11 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   });
 
   check(cfg.section === "inbox" && cfg.selectable === "tab" && cfg.presentation === "default" &&
-        cfg.groups[0] === "IG" && cfg.rowDrag.m === 1,
-    "F14: buildInboxListConfig returns the Inbox config shape (default presentation, injected data)");
+        cfg.groups[0] === "IG" && cfg.groupCap === cfg.groups.length && cfg.rowDrag.m === 1,
+    "F14: buildInboxListConfig returns the uncapped Inbox config shape (default presentation, injected data)");
   check(JSON.stringify(cfg.rowActions.map((a) => `${a.id}:${a.key}`)) ===
-        JSON.stringify(["star:undefined", "restore:r", "label:l", "snooze:s", "archive:a", "delete:d"]),
-    "F22/F14: Inbox adds Star and preserves every existing row key");
+        JSON.stringify(["star:b", "restore:r", "label:l", "session:t", "snooze:s", "archive:a", "delete:d"]),
+    "F22/F14: Inbox adds the Star shortcut and preserves every existing row key");
   const winIds = cfg.groupActions({ data: { kind: "window" } }).map((a) => a.id);
   const tabIds = cfg.groupActions({ data: { kind: "tab" } }).map((a) => a.id);
   check(JSON.stringify(winIds) === JSON.stringify(["restore-all", "copy", "session", "label-window", "snooze", "delete"]) &&
@@ -831,8 +867,8 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   cfg.onGroupDragOver({ data: { id: 1 } }, evt());       // no drag → early return
   dragState = { itemId: 5 };
   cfg.onGroupDragOver({ data: { id: 1 } }, evt());       // live drag onto a different bundle → preventDefault
-  cfg.onGroupDragOver({ data: { id: 5 } }, evt());       // onto its own source bundle → early return
-  check(prevented === 1, "F14: Inbox onGroupDragOver honors the injected inboxDrag() getter + same-bundle guard");
+  cfg.onGroupDragOver({ data: { id: 5 } }, evt());       // own bundle remains a valid selected-set reorder target
+  check(prevented === 2, "F14: Inbox onGroupDragOver honors the injected inboxDrag() getter");
   if (prevDoc === undefined) delete globalThis.document; else globalThis.document = prevDoc;
 }
 
@@ -853,7 +889,8 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     renderLabels: noop, renderSnoozes: noop, goToLabel: () => seen.push("goToLabel"),
     msg: (m) => seen.push(["msg", m]), cardLabelPanel: () => ({}),
     copySession: (s) => seen.push(["copySession", s.id]), buildSnoozePanel: () => ({}),
-    confirmDelete: () => ({}), delSession: async () => {}
+    confirmDelete: () => ({}), delSession: async () => {},
+    sessionComboboxButton: () => ({}), sessionTargetCount: 2
   });
 
   const cfg = mk({ sessionSnoozes: snoozes, selectable: "tab", empty: "none" });
@@ -861,15 +898,16 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         cfg.immutable({ data: { auto: true } }) === true && cfg.immutable({ data: { auto: false } }) === false,
     "F14: buildSessionListConfig base + `...rest` override (selectable/empty) and immutable(auto) guard");
   check(JSON.stringify(cfg.rowActions.map((a) => `${a.id}:${a.key}`)) ===
-        JSON.stringify(["star:undefined", "restore-tab:r", "label:l", "remove:d"]) &&
-        cfg.windowActions[0].id === "restore-window",
-    "F22/F14: Sessions adds Star and preserves row/window actions");
+        JSON.stringify(["star:b", "restore-tab:r", "label:l", "remove:d"]) &&
+        cfg.windowActions[0].id === "restore-window" &&
+        cfg.windowActions[0].icon === "refresh",
+    "F22/F14: Sessions adds the Star shortcut and exposes a recognizable window Restore action");
   check(JSON.stringify(cfg.groupActions.map((a) => a.id)) ===
-        JSON.stringify(["restore-all", "copy", "label-session", "rename", "snooze-session", "delete"]),
+        JSON.stringify(["restore-all", "copy", "label-session", "add-session", "rename", "snooze-session", "delete"]),
     "F14: Sessions card actions include snooze-session when a snooze map is supplied");
   const noSnooze = mk({ empty: "none" }).groupActions.map((a) => a.id);
   check(!noSnooze.includes("snooze-session") &&
-        JSON.stringify(noSnooze) === JSON.stringify(["restore-all", "copy", "label-session", "rename", "delete"]),
+        JSON.stringify(noSnooze) === JSON.stringify(["restore-all", "copy", "label-session", "add-session", "rename", "delete"]),
     "F14: Snapshots (no snooze map) omit snooze-session");
   check(/snoozed until/.test(cfg.groups[0].meta),
     "F14: a scheduled session gets the 'snoozed until' meta badge");
@@ -913,18 +951,24 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     confirmDelete: () => { confirmed++; return "CONFIRM"; }
   });
 
-  check(cfg.section === "labels" && cfg.presentation === "default" && cfg.selectable === "none" &&
+  check(cfg.section === "labels" && cfg.presentation === "default" && cfg.selectable === "tab" &&
         cfg.onChange === renderLabels && cfg.groups.length === 2 && cfg.groupCap === 2,
     "F14: buildLabelsListConfig returns the Labels config shape, uncapped (groupCap = group count)");
   /* F49r: the row's own title link already opens the page, so the duplicate
      "Open" action gave way to the one thing the section could not do — add
      ANOTHER label to a tab that is already here. */
-  check(JSON.stringify(cfg.rowActions.map((a) => `${a.id}:${a.key}`)) ===
-        JSON.stringify(["star:undefined", "label:l", "unlabel:d"]),
-    "F22/F14/F49r: Labels keeps Star, replaces the duplicate Open with Label, and preserves the remove key");
-  check(JSON.stringify(cfg.groupActions.map((a) => `${a.id}:${a.key ?? ""}`)) ===
+  check(JSON.stringify(cfg.rowActions(groups[0]).map((a) => `${a.id}:${a.key}`)) ===
+        JSON.stringify(["star:b", "label:l", "unlabel:d"]),
+    "F22/F14/F49r: Labels keeps the Star shortcut, replaces the duplicate Open with Label, and preserves the remove key");
+  check(JSON.stringify(cfg.groupActions(groups[0]).map((a) => `${a.id}:${a.key ?? ""}`)) ===
         JSON.stringify(["open-all:r", "copy:c", "rename:", "delete:d"]),
     "F14: Labels card actions + keys are preserved (open-all/copy/rename/delete)");
+  const intersectionGroup = { ...groups[0], data: { ...groups[0].data, combined: true } };
+  check(JSON.stringify(cfg.rowActions(intersectionGroup).map((a) => a.id)) ===
+        JSON.stringify(["star", "label"]) &&
+        JSON.stringify(cfg.groupActions(intersectionGroup).map((a) => a.id)) ===
+        JSON.stringify(["open-all", "copy"]),
+    "Label intersections expose only actions that are truthful for the combined result");
 
   // rowMeta resolves each tab's location text (inbox / archive / session name) via
   // the whereText helper that moved into the builder.
@@ -935,12 +979,12 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   // injected-callback paths: chip nav, the row Label panel, and copy(refs, heading)
   cfg.onChipOpen("x");
   let labelPanelOpened = null;
-  cfg.rowActions.find((a) => a.id === "label").run({
+  cfg.rowActions(groups[0]).find((a) => a.id === "label").run({
     index: 0,
     group: { data: { locs: [{ store: SK.inbox, item: { id: "i1" }, i: 0 }] } },
     panel: { toggle: (build, kind) => { labelPanelOpened = kind; build(); } }
   });
-  cfg.groupActions.find((a) => a.id === "copy").run({ group: { refs: ["R"], data: { label: "work" } } });
+  cfg.groupActions(groups[0]).find((a) => a.id === "copy").run({ group: { refs: ["R"], data: { label: "work" } } });
   check(seen.some((s) => s === "goToLabel") &&
         labelPanelOpened === "label" &&
         seen.some((s) => Array.isArray(s) && s[0] === "labelPanel" && s[1] === "Add labels") &&
@@ -948,7 +992,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     "F14/F49r: Labels chip-open, the row Label panel, and copy(heading) wire to their injected callbacks");
 
   // the two-step delete affordance renders through the injected confirmDelete
-  check(cfg.groupActions.find((a) => a.id === "delete").render({ group: { data: { label: "work" } } }) === "CONFIRM" &&
+  check(cfg.groupActions(groups[0]).find((a) => a.id === "delete").render({ group: { data: { label: "work" } } }) === "CONFIRM" &&
         confirmed === 1,
     "F14: the Labels delete card action renders through the injected confirmDelete");
 }
@@ -962,7 +1006,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   const seen = [];
   const noop = () => {};
   const prevDoc = globalThis.document;
-  globalThis.document = { createElement: () => ({
+  globalThis.document = { createElementNS: () => ({ setAttribute() {}, appendChild() {} }), createElement: () => ({
     addEventListener() {}, setAttribute() {}, append() {}, focus() {}, style: {},
     classList: { add() {}, remove() {}, contains: () => false, toggle() {} }
   }) };
@@ -970,7 +1014,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
     data: { groups: ["SG"] },
     renderSnoozes: () => seen.push("renderSnoozes"),
     renderSessions: () => seen.push("renderSessions"),
-    msg: (m) => seen.push(["msg", m]),
+    msg: (m) => { seen.push(["msg", m]); return { ok: true, status: "delivered" }; },
     copyRefs: (refs) => seen.push(["copyRefs", refs])
   });
 
@@ -984,12 +1028,13 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         JSON.stringify(["wake:r", "reschedule:", "cancel:d"]),
     "F14: Snoozed card actions + keys are preserved (wake/reschedule/cancel)");
 
-  // wake dispatches wake-snooze + refresh; cancel runs the journaled cancel + refreshes both sections
-  cfg.groupActions.find((a) => a.id === "wake").run({ group: { data: { id: "z1" } } });
+  // Wake carries its displayed record; cancelling a missing item is not success.
+  await cfg.groupActions.find((a) => a.id === "wake").run({ group: { data: { id: "z1" } } });
   await cfg.groupActions.find((a) => a.id === "cancel").run({ group: { data: { id: "z1" } } });
-  check(seen.some((s) => Array.isArray(s) && s[0] === "msg" && s[1].type === "wake-snooze" && s[1].id === "z1") &&
-        seen.some((s) => s === "renderSessions") && seen.some((s) => s === "renderSnoozes"),
-    "F14: Snoozed wake/cancel wire to the wake-snooze message + injected render/nav callbacks");
+  check(seen.some((s) => Array.isArray(s) && s[0] === "msg" &&
+        s[1].type === "wake-snooze" && s[1].id === "z1" && s[1].expected?.id === "z1") &&
+        !seen.some((s) => s === "renderSessions") && seen.some((s) => s === "renderSnoozes"),
+    "Snoozed actions carry the displayed record and refresh only on success");
 
   // reschedule opens the inline datetime panel (openReschedule moved into the builder)
   let toggledKey = null;
@@ -1043,12 +1088,19 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         /popupStatic\.sidePanelFailed\(\)/.test(popup),
     "F14-2a #3: popup footer opens the side panel for the current window with a visible rejection state");
 
-  // #4 open-side-panel command: exists with NO default key; worker route → last-focused normal window; listed
-  check(!!manifest.commands["open-side-panel"] && !manifest.commands["open-side-panel"].suggested_key,
-    "F14-2a #4: open-side-panel command exists with no suggested key (N18 opt-in)");
-  check(/command === "open-side-panel"/.test(bg) && /getLastFocused/.test(bg) &&
-        /w\.type === "normal" && !w\.incognito/.test(bg) && /chrome\.sidePanel\.open/.test(bg),
-    "F14-2a #4: the worker route opens the side panel in the last-focused normal window");
+  // #4 open-side-panel command: default key; immediate command-tab route with fallback; listed
+  check(manifest.commands["open-side-panel"]?.suggested_key?.default === "Alt+Shift+S" &&
+        manifest.commands["open-side-panel"]?.suggested_key?.mac === "MacCtrl+Shift+S",
+    "F14-2a #4: open-side-panel uses macOS Control+Shift+S and the platform-safe Alt equivalent elsewhere");
+  const keyboardCommands = rf(new URL("../js/background/keyboard-command-owner.js", import.meta.url), "utf8");
+  check(/installKeyboardCommandOwner/.test(bg) &&
+        /command === "open-side-panel"/.test(keyboardCommands) &&
+        /commandTab\?\.windowId/.test(keyboardCommands) &&
+        /getLastFocused/.test(keyboardCommands) &&
+        /candidate\.type === "normal" && !candidate\.incognito/.test(keyboardCommands) &&
+        /chrome\.sidePanel\.open/.test(keyboardCommands) &&
+        /chrome\.sidePanel\.close/.test(keyboardCommands),
+    "F14-2a #4: the command-tab route preserves activation and toggles the Side Panel, with a normal-window fallback");
   check(/"open-side-panel": msg\("command_side_panel_description"\)/.test(shortcuts) &&
         /"open-side-panel"/.test(shortcuts.match(/const ORDER = \[[^\]]*\]/)?.[0] ?? ""),
     "F14-2a #4: the live command list includes open-side-panel");
@@ -1079,13 +1131,15 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   check(/function buildOpenSnooze\(/.test(os) && /function buildOrganizePanel\(/.test(os) &&
         /function driftBanner\(/.test(os) && /const openRowDrag =/.test(os) &&
         /function newWindowZone\(/.test(os) && /function idleNudge\(/.test(os) &&
-        /function groupNudge\(/.test(os) && /async function moveOpenTabs\(/.test(os),
+        /function groupAccessAction\(/.test(os) && /async function moveOpenTabs\(/.test(os),
     "F14-2b: the Open-only inline panels + drag + nudges live in the surface");
   // and builds the shared config
   check(/buildOpenListConfig\(/.test(os) && /import \{ buildOpenListConfig \} from "\.\/list-configs\.js"/.test(os),
     "F14-2b: the surface builds Open through the shared buildOpenListConfig");
   check(/rowCap:\s*\(\)\s*=>\s*undefined/.test(db) &&
         /typeof ctx\.rowCap === "function" \? ctx\.rowCap\(\) : ctx\.rowCap/.test(os) &&
+        /const OPEN_WINDOW_CAP = 50;/.test(os) &&
+        /const OPEN_SURFACE_INITIAL_BUDGET = 300;/.test(os) &&
         /requestedRowCap \?\? OPEN_WINDOW_CAP/.test(os) &&
         /msg\("list_show_latest_only"/.test(
           rf(new URL("../js/ui/tablist.js", import.meta.url), "utf8")
@@ -1131,8 +1185,10 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   check(/selectionActionButton\("restore"/.test(ss) &&
         /selectionActionButton\("copy"/.test(ss) &&
         /selectionActionButton\("label"/.test(ss) &&
+        /deleteSessionTabs\(toSessionSources\(c\.selection\)\)/.test(ss) &&
+        /ctx\.confirmDelete\(/.test(ss) &&
         /cardLabelPanel\(/.test(ss) && !/createLabelInput/.test(ss),
-    "shared Sessions bulk selection uses compact icon commands and the current anchored label panel");
+    "shared Sessions bulk selection uses compact icon commands, anchored labels, and confirmed Delete");
 
   // Labels surface extracted too: collect/sort + shared index bar + N29 quick
   // pass live in one per-document factory; the dashboard is now only a host.
@@ -1237,7 +1293,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         /\.tablist\[data-compact\] \.item-head \{[\s\S]*?background: var\(--workbench-header\)/.test(pcss) &&
         /\.section-local-sticky \{[\s\S]*?position: sticky/.test(pcss),
     "P11-13: compact window/group caps reuse the Dashboard ledger material and pin beneath every measured navigation layer");
-  const panelHarness = rf(new URL("../tools/sidepanel-harness.html", import.meta.url), "utf8");
+  const panelHarness = rf(new URL("../../tools/sidepanel-harness.html", import.meta.url), "utf8");
   check(/data-surface="sidepanel"/.test(panelHarness) &&
         /fixtureWidth = Number\(params\.get\("width"\)\)/.test(panelHarness) &&
         /focus-access hidden/.test(panelHarness) && /section-local-sticky/.test(panelHarness) &&
@@ -1272,6 +1328,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   // listeners as the dashboard, and copies NO action arrays (one behavior source).
   check(/import \{ createOpenSurface \} from "\.\/open-surface\.js"/.test(spx) &&
         /createOpenSurface\(\{/.test(spx) && /presentation: "compact"/.test(spx) &&
+        /OPEN_FILTER_HOST/.test(spx) && /filterHost: OPEN_FILTER_HOST/.test(spx) &&
         /shouldRenderBody: \(\) => activeSection === "open"/.test(spx),
     "F14-2b-2e: the panel builds Open via the shared createOpenSurface in compact presentation");
   check(/createFocusStrip\(\{/.test(spx) && /getSearchInput: \(\) => searchInput/.test(spx) &&
@@ -1282,7 +1339,7 @@ await runSmokeSearchPopup({ check, session: sessionMem });
   check(/chrome\.tabs\.onCreated\.addListener\(tabsSoon\)/.test(spx) &&
         /chrome\.windows\.onFocusChanged\.addListener\(tabsSoon\)/.test(spx) &&
         /createLeadingTrailingRefresh\([\s\S]{0,100}\(\) => renderOpen\(\),[\s\S]{0,50}delay: 120/.test(spx),
-    "F14-2b-2e: the panel wires the same leading/trailing tab listeners as the dashboard");
+    "F14-2b-2e: the panel keeps its one-context leading/trailing live-tab refresh");
   check(!/import[^\n]*["'][^"']*dashboard\.js["']/.test(spx),
     "F14-2b-2e: sidepanel.js never imports the side-effectful dashboard.js");
 
@@ -1316,13 +1373,18 @@ await runSmokeSearchPopup({ check, session: sessionMem });
         /host: el\("div", \{ class: "panel-section-host"/.test(spx) &&
         /rendered: false,[\s\S]*?dirty: true,[\s\S]*?scrollTop: 0,[\s\S]*?generation: 0/.test(spx),
     "F14-2c lifecycle: one document-local cache registry owns all five stable hosts");
+  check(spx.includes('createVisibleDocumentTasks') &&
+        spx.includes('if (!panelRefreshTasks.isVisible()) {') &&
+        spx.includes('panelRefreshTasks.request(id);') &&
+        spx.includes('panelRefreshTasks.request("focus")'),
+    "Side Panel list and Focus refresh entry points use document visibility, not keyboard focus");
   check(/selectSection\("open"\);/.test(spx) &&
         /panelBody\.replaceChildren\(state\.host\)/.test(spx) &&
         /if \(renderNow && \(!next\.rendered \|\| next\.dirty\)\) refreshSection\(id\)/.test(spx),
     "F14-2c lifecycle: boot renders only Open and a clean cached switch skips its renderer");
   check(/\{ keys: \[STORE_KEYS\.inbox\], sections: \["inbox", "labels", "open"\] \}/.test(spx) &&
         /\{ keys: \[STORE_KEYS\.archive, ARCHIVE_OVERLAY_KEY\], sections: \["labels", "open"\] \}/.test(spx) &&
-        /\{ keys: \[STORE_KEYS\.sessions, SESSION_IDENTITY_INDEX_KEY\], sections: \["sessions", "snoozed", "labels", "open"\] \}/.test(spx) &&
+        /\{ keys: \[STORE_KEYS\.sessions, NAMED_SESSION_RECORDS_KEY, SESSION_IDENTITY_INDEX_KEY\],[\s\S]*?sections: \["sessions", "snoozed", "labels", "open"\] \}/.test(spx) &&
         /\{ keys: \[STORE_KEYS\.snoozes\], sections: \["snoozed", "inbox", "sessions"\] \}/.test(spx) &&
         /activeSection === id \? refreshSection\(id\)/.test(spx),
     "F14-2c lifecycle: storage dependencies dirty hidden hosts and refresh only the active one");
@@ -1348,7 +1410,6 @@ runSmokeCopyPolicy(check);
 {
   const { readFileSync: readF16 } = await import("node:fs");
   const psrc = readF16(new URL("../js/ui/popup.js", import.meta.url), "utf8");
-  const bsrc = readF16(new URL("../js/background.js", import.meta.url), "utf8");
   const html = readF16(new URL("../popup.html", import.meta.url), "utf8");
 
   check(/import \{ createLabelInput \} from "\.\/labelinput\.js"/.test(psrc),
@@ -1356,6 +1417,12 @@ runSmokeCopyPolicy(check);
   check(/labelTabBtn/.test(psrc) && /popupStatic\.label\(\)/.test(psrc) &&
         /function buildLabelPanel\(/.test(psrc) && /function toggleLabel\(/.test(psrc),
     "F16: the This-tab group has a Label… toggle + inline label panel");
+  check(/keepAwakeBtn/.test(psrc) && /buildProtectionPanel\(active.id/.test(psrc) &&
+        /readProtectionStatus\(active.id\)/.test(psrc),
+    "popup: This tab uses the shared scoped automation protection picker");
+  check(/tabSuspendStatusSlot/.test(psrc) && /renderKeepAwakeStatus/.test(psrc) &&
+        /protectionStatusText/.test(psrc) && /settings:protection/.test(psrc),
+    "popup: page-exception status persists across opens and links to its Settings manager");
   // nit 1: labeling saves a labeled COPY to the Archive and leaves the tab open —
   // it must NOT close the tab (no dump-tabs / window.close in the label path).
   check(/saveLabeledCopies\(\[ref\], labels\)/.test(psrc),
@@ -1364,10 +1431,8 @@ runSmokeCopyPolicy(check);
     "F16 (nit 1): the panel primary + hint describe the keep-open copy");
   check(!/type: "dump-tabs"/.test(psrc),
     "F16 (nit 1): the popup no longer sends dump-tabs (which closes tabs)");
-  check(/handler\("dump-tabs", "async"[\s\S]*?\(\{ n: await dumpTabs\(msg\.tabIds, msg\.label\) \}\)/.test(bsrc),
-    "F16 (nit 1): the dump-tabs route is reverted to its original { n } shape");
   // require a label (empty → nudge, not a no-op copy)
-  check(/if \(labels\.length === 0\) \{ labelMsg\.textContent = popupStatic\.typeLabelFirst\(\); return; \}/.test(psrc),
+  check(/if \(labels\.length === 0\) \{[\s\S]*?labelMsg\.textContent = popupStatic\.typeLabelFirst\(\);[\s\S]*?return;[\s\S]*?\}/.test(psrc),
     "F16: an empty label set is nudged, not saved");
   // nit 3: the label confirmation lives under This tab (labelMsg), not the shared
   // msg area that sits below This window.
@@ -1393,10 +1458,9 @@ runSmokeCopyPolicy(check);
         /dismissAnchoredPanel\(\);/.test(psrc) &&
         (psrc.match(/labelPanelTab\.style\.display = "none";/g) ?? []).length >= 3,
     "F16: the label panel is mutually exclusive with the snooze/sort panels (P3)");
-  // nit 2: the popup shows the page's existing labels (union over Inbox+Archive
-  // by normalized URL, via tabLabels — same matching as the dashboard row chips).
-  check(/import \{[^}]*\btabLabels\b[^}]*\} from "\.\.\/lib\/labels\.js"/.test(psrc) &&
-        /async function computeTabLabels\(/.test(psrc) && /tabLabelsSlot/.test(psrc),
+  // Label projection behavior is covered directly in popup-label-data.mjs.
+  check(psrc.includes('readPopupTabLabels as computeTabLabels') &&
+        psrc.includes('computeTabLabels(active, { inbox })') && /tabLabelsSlot/.test(psrc),
     "F16 (nit 2): the popup shows the tab's existing labels as read-only chips");
   check(/renderTabLabels\(initialLabels\)/.test(psrc) && /await refreshTabLabels\(tab\);/.test(psrc),
     "F16 (nit 2): the shown labels refresh on open and after a save");
@@ -1432,7 +1496,7 @@ runSmokeCopyPolicy(check);
   const { readFileSync: readR } = await import("node:fs");
   // F14: the Inbox render (data-gathering + sort) moved into inbox-surface.js.
   const isrc = readR(new URL("../js/ui/inbox-surface.js", import.meta.url), "utf8");
-  check(/\(await listItems\(IN\)\)\s*\.sort\(\(a, b\) => \(b\.createdAt/.test(isrc),
+  check(/const items = rawItems\s*\.sort\(\(a, b\) => \(b\.createdAt/.test(isrc),
     "Inbox order: the Inbox surface sorts by createdAt (stable), so labeling doesn't jump the item");
 }
 
@@ -1455,6 +1519,12 @@ runSmokeCopyPolicy(check);
     "D3 polish: sidebar exposes explicit Light, Dark, and Scheme default buttons");
   check(settingsThemeSrc.includes('class: "scheme-favorites", open: ""'),
     "D3 polish: rotation favorites are expanded by default but remain collapsible");
+  check(!settingsThemeSrc.includes("const schemeSelect") &&
+    settingsThemeSrc.includes('class: "scheme-apply"') &&
+    settingsThemeSrc.includes('class: "scheme-star-toggle"') &&
+    settingsThemeSrc.indexOf('localizedRow("interfaceStyle"') <
+      settingsThemeSrc.indexOf('localizedRow("mode"'),
+  "Appearance uses one apply/favorite scheme grid and starts with Interface style");
   check(dashboardThemeSrc.includes('class: `mode-choice tip${') &&
     dashboardThemeSrc.includes('title,') &&
     dashboardThemeSrc.includes('settingsModeChoiceLabel(choice.id)') &&
@@ -1463,17 +1533,43 @@ runSmokeCopyPolicy(check);
   check(dashboardThemeSrc.indexOf('class: "side-vault-row"') <
     dashboardThemeSrc.indexOf('class: "appearance-row"'),
     "D3 polish: vault sync status occupies its own row above appearance controls");
-  check(dashboardThemeSrc.includes("function positionThemePop(trigger)") &&
-    dashboardThemeSrc.includes("trigger.getBoundingClientRect()") &&
-    dashboardThemeSrc.includes("window.innerHeight - r.top + gap") &&
-    dashboardThemeSrc.includes('app.append(el("div", { class: "app" }, skipLink, sidebar, main), themePop, toast);') &&
-    dashboardCssSrc.includes(".theme-pop { position: fixed;"),
-    "D3 polish: scheme picker is a viewport portal anchored directly above its trigger");
-  check(dashboardThemeSrc.includes('class: "theme-opt-label"') &&
-    dashboardThemeSrc.includes("Math.min(408, window.innerWidth") &&
-    dashboardCssSrc.includes(".theme-opt-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;") &&
+  check(dashboardThemeSrc.includes('id: "sidebar-scheme-picker"') &&
+    dashboardThemeSrc.includes("themePop") &&
+    dashboardThemeSrc.includes('app.append(el("div", { class: "app" }, skipLink, sidebar, main, themePop), toast);') &&
+    dashboardCssSrc.includes(".theme-pop { position: fixed;") &&
+    dashboardCssSrc.includes("left: var(--nav-w, 204px); right: 0; bottom: 0;") &&
+    dashboardCssSrc.includes('[data-nav="header"] .theme-pop { left: 0;') &&
+    !dashboardThemeSrc.includes("setThemeSidebarTakeover") &&
+    !dashboardThemeSrc.includes("child.inert = open"),
+    "D3 polish: scheme picker is a content-only bottom sheet that leaves navigation and its trigger visible");
+  check(dashboardThemeSrc.includes('class: "theme-favorites-list"') &&
+    dashboardThemeSrc.includes('settingsStatic.schemePickerFavorites()') &&
+    dashboardThemeSrc.includes('class: "theme-first-column"') &&
+    dashboardThemeSrc.indexOf("favoritesSection") < dashboardThemeSrc.indexOf("catalogue)") &&
+    dashboardCssSrc.includes(".theme-favorites-list, .theme-group-options { display: flex; flex-direction: column;") &&
+    dashboardCssSrc.includes(".theme-opt-label { min-width: 0; overflow-wrap: anywhere;") &&
     settingsThemeSrc.includes('class: "scheme-favorite-label"'),
-    "D3 polish: scheme names stay on one ellipsized line with a reserved star lane");
+    "D3 polish: Favorites lead as a one-column list and scheme names remain readable without truncation");
+  check(dashboardThemeSrc.includes("renderFavorites();") &&
+    dashboardThemeSrc.includes("syncFavoriteButtons();") &&
+    !dashboardThemeSrc.includes("renderCatalogue();\n              requestAnimationFrame") &&
+    dashboardThemeSrc.includes("settings.uiScheme = s;\n              syncSelection();") &&
+    !dashboardThemeSrc.includes("await patchSettings({ uiScheme: s });\n              closeThemePop();"),
+    "D3 polish: favorite updates are local and choosing a scheme keeps the comparison sheet open");
+  check(dashboardThemeSrc.includes('class: "theme-sheet-settings"') &&
+    dashboardThemeSrc.includes('sheetSetting("interfaceStyle", "uiInterfaceStyle", "interfaceStyle")') &&
+    dashboardThemeSrc.includes('sheetSetting("rotation", "schemeRotate", "rotation")') &&
+    dashboardThemeSrc.includes('event.target.closest?.(".quick-theme")') &&
+    dashboardThemeSrc.includes("closeThemePop();") &&
+    dashboardCssSrc.includes(".theme-star { width: 28px; height: 30px;") &&
+    dashboardCssSrc.includes("display: grid; place-items: center; padding: 0;"),
+    "D3 polish: the sheet exposes compact style/rotation controls, aligned stars, and outside-click dismissal");
+  check(dashboardCssSrc.includes("transform: translate3d(0, calc(100% + 18px), 0);") &&
+    dashboardCssSrc.includes("animation: theme-sheet-in var(--motion-continuity) var(--ease-out) both") &&
+    dashboardCssSrc.includes("@keyframes theme-sheet-out") &&
+    dashboardCssSrc.includes("@keyframes theme-sheet-rail-in") &&
+    dashboardCssSrc.includes("height: min(520px, calc(100vh - 72px));"),
+    "D3 polish: the stable-height scheme sheet enters on the compositor with one centre-drawn boundary");
 }
 
 /* --- suspender URL unwrapping --- */
@@ -1527,8 +1623,14 @@ mockWindows = [
       { id: 12, index: 1, url: "", pendingUrl: "https://b.com", title: "B (asleep)" },
       { id: 13, index: 2, url: "chrome://settings", title: "settings" },
       {
-        id: 14,
+        id: 15,
         index: 3,
+        url: "file:///Users/example/irreplaceable.html",
+        title: "Irreplaceable local page"
+      },
+      {
+        id: 14,
+        index: 4,
         url: "chrome-extension://abc/suspended.html#uri=https://c.com",
         title: "C (suspended)"
       }
@@ -1542,8 +1644,10 @@ check(snap1 !== null, "first snapshot created");
 check(snap1.windows.length === 2, "two windows captured");
 check(
   JSON.stringify(snap1.windows[0].map((t) => t.url)) ===
-    JSON.stringify(["https://a.com", "https://b.com", "https://c.com"]),
-  "asleep + suspended tabs captured, chrome:// excluded"
+    JSON.stringify([
+      "https://a.com", "https://b.com", "file:///Users/example/irreplaceable.html", "https://c.com"
+    ]),
+  "asleep, local-file, and suspended tabs captured while chrome:// stays excluded"
 );
 check(snap1.windows[0][0].pinned === true, "pinned flag captured");
 
@@ -1554,14 +1658,15 @@ mockWindows[1].tabs.push({ id: 22, index: 1, url: "https://e.com", title: "E" })
 const snap3 = await takeSnapshot();
 check(snap3 !== null, "changed state → new snapshot");
 
-// Existing explicit keep-all: snapshotKeep 0 remains unlimited after the fresh default changes.
+// A legacy explicit snapshotKeep 0 reads as the 1000 maximum: well above six.
 mem.settings = { snapshotKeep: 0, snapshotEveryMinutes: 15 };
 for (let i = 0; i < 4; i++) {
   mockWindows[1].tabs.push({ id: 30 + i, index: 2 + i, url: `https://f${i}.com`, title: "F" });
   await takeSnapshot();
 }
 let autosLeft = (await listItems(STORE_KEYS.sessions)).filter((s) => s.auto);
-check(autosLeft.length === 6, `keep-all retains 6 (got ${autosLeft.length})`);
+check(autosLeft.length === 6, `legacy 0 keeps all six under the 1000 maximum (got ${autosLeft.length})`);
+check(mem.settings.snapshotKeep === 0, "the stored legacy 0 is not rewritten by Snapshot capture");
 
 // opt-in pruning: keep=2
 mem.settings = { snapshotKeep: 2, snapshotEveryMinutes: 15 };
@@ -1674,7 +1779,6 @@ const {
   SEARCH_STORE_KEYS, SEARCH_DEBOUNCE_MS
 } = await import("../js/lib/search.js");
 const { searchResultMeta } = await import("../js/lib/search-copy.js");
-const { seedBuiltinViews, matchesForView } = await import("../js/lib/smartviews.js");
 
 /* --- E3-5: one invalidated search snapshot per active interaction --- */
 check(
@@ -1894,6 +1998,25 @@ if (typeof createSearchSnapshot === "function") {
       (await progressive.complete)?.map((result) => result.type).join(",") === "open,session",
     "B8: progressive Search publishes ordinary sources first, then preserves exact Snapshot completion order");
 
+  let sharedCompletionBuilds = 0;
+  const sharedCompletionSession = createSearchSession({
+    buildSnapshot: async () => progressiveComplete,
+    buildPrimarySnapshot: async () => progressivePrimary,
+    buildCompletionSnapshot: async () => {
+      sharedCompletionBuilds += 1;
+      return progressiveComplete;
+    }
+  });
+  const completeDomains = await sharedCompletionSession.scopeNames("domain");
+  const sharedProgressive = await sharedCompletionSession.searchProgressively("needle");
+  await sharedProgressive.complete;
+  check(completeDomains.includes("secondary.example") && sharedCompletionBuilds === 1,
+    "Search completion shares one transient Session/Snapshot build with complete facets in a generation");
+  sharedCompletionSession.invalidate();
+  await sharedCompletionSession.scopeNames("domain");
+  check(sharedCompletionBuilds === 2,
+    "Search completion reuse ends at invalidation so later facets read current saved data");
+
   let releaseCompletion;
   const heldCompletion = new Promise((resolve) => { releaseCompletion = resolve; });
   const staleProgressiveSession = createSearchSession({
@@ -1974,11 +2097,20 @@ if (typeof createSearchSnapshot === "function") {
   await invalidationSession.search("needle");
   check(invalidationBuilds === 2 + SEARCH_STORE_KEYS.length,
     "E3 Archive overlay: its physical-key change invalidates the logical Archive search source");
+  const beforeV2Revision = invalidationBuilds;
+  storageChanged.fire({ storageV2Revision: { newValue: {
+    id: "remote-session-revision",
+    changedKeys: [STORE_KEYS.sessions]
+  } } }, "local");
+  await invalidationSession.search("needle");
+  check(invalidationBuilds === beforeV2Revision + 1,
+    "storage revision pulses invalidate Search after a remote Session pull");
+  const beforeBrowserEvents = invalidationBuilds;
   tabUpdated.fire(701, { title: "Changed" }, {});
   await invalidationSession.search("needle");
   windowRemoved.fire(7);
   await invalidationSession.search("needle");
-  check(invalidationBuilds === 4 + SEARCH_STORE_KEYS.length,
+  check(invalidationBuilds === beforeBrowserEvents + 2,
     "E3-5 measurement: representative tab and window events each force one rebuild");
   unbind();
 
@@ -2024,6 +2156,9 @@ check(searchResultTarget({ type: "open", url: "https://do-not-degrade.example" }
   const dashboardSrc = readFileSync(new URL("../js/ui/dashboard.js", import.meta.url), "utf8");
   const manifestSrc = readFileSync(new URL("../manifest.json", import.meta.url), "utf8");
   const backgroundSrc = readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
+  const omniboxOwnerSrc = readFileSync(
+    new URL("../js/background/omnibox-owner.js", import.meta.url), "utf8"
+  );
   const seamBody = searchSrc.match(/export function searchResultTarget\(result\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
   const commitBody = boxSrc.match(
     /async function commitCurrentInput\(\) \{([\s\S]*?)\n  \}/
@@ -2046,7 +2181,8 @@ check(searchResultTarget({ type: "open", url: "https://do-not-degrade.example" }
         /scopeSuggestions\(input\.value\)/.test(boxSrc),
     "E3-5 characterization: keyboard selection, Enter/Esc ladder, ghosts, and scope suggestions remain wired");
   check(/runGeneration\.invalidate\(\);[\s\S]*?clearPendingRows\(\);[\s\S]*?inputPreparation =/.test(boxSrc) &&
-        /clearPendingRows\(\);[\s\S]*?timer = setTimeout\(run, SEARCH_DEBOUNCE_MS\);[\s\S]*?inputPreparation =/.test(boxSrc) &&
+        /clearPendingRows\(\{ preserveVisible: true \}\);[\s\S]*?timer = setTimeout\(run, SEARCH_DEBOUNCE_MS\);[\s\S]*?inputPreparation =/.test(boxSrc) &&
+        /setResultsPending\(true\)/.test(boxSrc) &&
         /searchSession\.searchProgressively\(/.test(boxSrc) &&
         /await inputPreparation/.test(commitBody) && /await run\(true\)/.test(commitBody) &&
         /activateEntry\(rowEntries\[selectedIndex\]\)/.test(commitBody) &&
@@ -2056,15 +2192,12 @@ check(searchResultTarget({ type: "open", url: "https://do-not-degrade.example" }
         boxSrc.includes('msg("search_web_failure")') && boxSrc.includes('msg("action_try_again")'),
     "P11-21 regression: web handoff is single-flight and a current failure remains retryable in place");
   check(!dashboardSrc.includes("openSmartResult") &&
-        !dashboardSrc.includes('from "../lib/smartviews.js"') &&
         !dashboardSrc.includes('makeSec("smartviews")'),
     "F14-2e seam/F45: retired Smart Views leave no Dashboard-local result dispatch");
-  check(/"omnibox"\s*:/.test(manifestSrc) && /chrome\.omnibox\./.test(backgroundSrc),
+  check(/"omnibox"\s*:/.test(manifestSrc) &&
+        /installOmniboxOwner/.test(backgroundSrc) &&
+        /chrome\.omnibox\./.test(omniboxOwnerSrc),
     "F20: the shipped omnibox adapter consumes the F14-2e search-result seam");
-  check(/restoreSessionById/.test(backgroundSrc) &&
-        /handler\("restore-session", "async"/.test(backgroundSrc) &&
-        /notification_session_missing_title/.test(backgroundSrc),
-    "P11-19: Search restore is worker-owned, rereads by id, and reports a stale Session");
 }
 
 /* ===== F20: `et` omnibox search ===== */
@@ -2359,13 +2492,13 @@ check(JSON.stringify(omniboxNavigationPlan(
   const manifest = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
   const backgroundSrc = readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
   const omniboxSrc = readFileSync(new URL("../js/lib/omnibox.js", import.meta.url), "utf8");
-  const adapter = backgroundSrc.match(
-    /\/\* ---------- F20 omnibox ---------- \*\/([\s\S]*?)\/\* ---------- end F20 omnibox ---------- \*\//
-  )?.[1] ?? "";
+  const adapter = readFileSync(
+    new URL("../js/background/omnibox-owner.js", import.meta.url), "utf8"
+  );
   check(manifest.omnibox?.keyword === "et",
     "F20 contract: manifest registers the exact `et` keyword");
   check(JSON.stringify(manifest.permissions) === JSON.stringify([
-    "tabs", "storage", "unlimitedStorage", "alarms", "notifications",
+    "tabs", "favicon", "storage", "unlimitedStorage", "alarms", "notifications",
     "contextMenus", "search", "sessions", "sidePanel"
   ]) && manifest.optional_permissions.includes("history"),
   "P11-21 contract: default-provider handoff declares Search while History stays optional");
@@ -2373,8 +2506,8 @@ check(JSON.stringify(omniboxNavigationPlan(
         /onInputEntered\.addListener/.test(adapter) && /onInputCancelled\.addListener/.test(adapter),
   "F20 contract: worker wires default, change, Enter, and cancellation events");
   check(/import \{ hasHistoryAccess \} from "\.\/lib\/history-access\.js"/.test(backgroundSrc) &&
-        /const omniboxHasHistory = hasHistoryAccess/.test(adapter) &&
-        /restoreSession: restoreSearchSession/.test(adapter) &&
+        /hasHistory: omniboxHasHistory/.test(backgroundSrc) &&
+        /restoreSession: navigationActions\.restoreSession/.test(backgroundSrc) &&
         /searchWeb: \(queryInfo\) => chrome\.search\.query\(queryInfo\)/.test(adapter) &&
         !/permissions\.request|windows\.remove|storage\.local\.set/.test(adapter),
   "F20/P11-21 contract: History is only checked and accepted actions use explicit effects");
@@ -2392,7 +2525,10 @@ mockWindows = [
       { id: 11, index: 0, url: "https://github.com/acme/repo/pull/42", title: "Fix login PR" },
       { id: 12, index: 1, url: "https://youtube.com/watch?v=xyz", title: "Cool video" }
     ]
-  }
+  },
+  { id: 10, tabs: [
+    { id: 101, windowId: 10, index: 0, pinned: false, url: "https://third.com", title: "Third" }
+  ] }
 ];
 createdWindows = [];
 await upsertItem(STORE_KEYS.inbox, {
@@ -2434,51 +2570,6 @@ check(
   dedup.length === 1 && dedup[0].type === "open",
   "duplicate URL deduped, open tab wins"
 );
-
-/* --- M2: smart views --- */
-await seedBuiltinViews();
-await seedBuiltinViews(); // idempotent
-const views = await listItems(STORE_KEYS.smartviews);
-check(views.length === 3, `seed creates 3 builtins exactly once (got ${views.length})`);
-
-const prView = views.find((v) => v.name === "GitHub PRs");
-const prMatches = await matchesForView(prView);
-check(
-  prMatches.length === 1 && prMatches[0].type === "open",
-  "GitHub PRs view matches the open PR tab"
-);
-
-const videoView = views.find((v) => v.name === "Videos");
-const videoMatches = await matchesForView(videoView);
-check(videoMatches.length === 1, "Videos view matches and dedupes open+saved duplicate");
-
-// custom domain view over saved scope
-await upsertItem(STORE_KEYS.smartviews, {
-  ...(await newMeta()),
-  name: "Example blogs",
-  field: "domain",
-  pattern: "example\\.com$",
-  scope: "saved"
-});
-const customView = (await listItems(STORE_KEYS.smartviews)).find(
-  (v) => v.name === "Example blogs"
-);
-const customMatches = await matchesForView(customView);
-check(
-  customMatches.length === 2 && customMatches.every((m) => m.type !== "open"),
-  `domain view matches 2 saved example.com tabs, no open tabs (got ${customMatches.length})`
-);
-
-// invalid regex view → no crash, no matches
-await upsertItem(STORE_KEYS.smartviews, {
-  ...(await newMeta()),
-  name: "Broken",
-  field: "url",
-  pattern: "([",
-  scope: "all"
-});
-const broken = (await listItems(STORE_KEYS.smartviews)).find((v) => v.name === "Broken");
-check((await matchesForView(broken)).length === 0, "invalid regex returns empty, no crash");
 
 /* --- coalesce: overlapping renders can't interleave --- */
 const { coalesce } = await import("../js/ui/dom.js");
@@ -2741,6 +2832,21 @@ check(
   "auto-close preserves distinct YouTube videos even if a legacy caller supplies ignoreQuery"
 );
 
+const navigatingAwayTabs = [
+  { id: 93, index: 0, url: "https://www.youtube.com/watch?v=first", title: "First" },
+  {
+    id: 94,
+    index: 1,
+    url: "https://www.youtube.com/watch?v=first",
+    pendingUrl: "https://www.youtube.com/watch?v=second",
+    title: "Second"
+  }
+];
+check(
+  findDuplicateGroupsFromTabs(navigatingAwayTabs).length === 0,
+  "a tab navigating to a different page is not offered as a duplicate of its previous URL"
+);
+
 const duplicateWindows = () => [
   {
     id: 1,
@@ -2803,7 +2909,12 @@ check(
 );
 
 /* --- M3: suspension --- */
-const { isSuspendExempt, suspendSweep } = await import("../js/lib/suspend.js");
+const {
+  autoSuspendPageStatus, isSuspendExempt, listAutoSuspendPageExceptions,
+  matchesSuspendWhitelist, recentSuspendFloorIds, removeAutoSuspendPageException,
+  suspendSweep, exemptTabFromAutoSuspend,
+  TEMPORARY_SUSPEND_EXEMPTIONS_KEY
+} = await import("../js/lib/suspend.js");
 
 check(isSuspendExempt({ active: true, url: "https://x.com" }), "active exempt");
 check(isSuspendExempt({ pinned: true, url: "https://x.com" }), "pinned exempt");
@@ -2827,6 +2938,73 @@ check(
   !isSuspendExempt({ groupId: -1, url: "https://figma.com/file/1" }),
   "F9: no whitelist arg → not exempt (back-compat)"
 );
+check(
+  matchesSuspendWhitelist("https://exact.example/read?mode=one", [
+    "page:https://exact.example/read?mode=one"
+  ]) &&
+  !matchesSuspendWhitelist("https://exact.example/read?mode=two", [
+    "page:https://exact.example/read?mode=one"
+  ]) &&
+  !matchesSuspendWhitelist("https://exact.example/read/more?mode=one", [
+    "page:https://exact.example/read?mode=one"
+  ]),
+  "Popup Never suspend protects exactly one URL, while domain and fragment rules stay broad"
+);
+check(
+  matchesSuspendWhitelist("https://docs.example/workspace/page-2", [
+    "https://docs.example/workspace/"
+  ]),
+  "Never suspend retains the legacy full-URL substring behavior"
+);
+// Popup Keep awake: a one-day exact-page exemption stays device-local, while
+// Always joins the user's portable Never suspend setting. A parked EveryTab
+// suspend page resolves to the original page before either rule is written.
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mockWindows = [{ id: 8, tabs: [
+  { id: 191, index: 0, url: "https://awake.example/article?one=1", active: false, groupId: -1 }
+] }];
+const dayExemption = await exemptTabFromAutoSuspend(191, "day");
+check(dayExemption.ok && dayExemption.duration === "day" &&
+      mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY]?.["https://awake.example/article?one=1"] > Date.now() &&
+      !mem.settings.suspendWhitelist?.length,
+  "Keep awake for 24 hours is exact-page, device-local, and does not alter portable settings");
+mem.tabActivity = { 191: Date.now() - 2 * 3600_000 };
+discardedTabs = [];
+check((await suspendSweep()) === 0 && discardedTabs.length === 0,
+  "the automatic suspension sweep respects an active temporary exemption");
+
+const parkedUrl = chrome.runtime.getURL("suspend.html") + "?" + new URLSearchParams({
+  originalUrl: "https://parked.example/read", title: "Parked"
+});
+mockWindows = [{ id: 8, tabs: [
+  { id: 192, index: 0, url: parkedUrl, active: false, groupId: -1 }
+] }];
+const permanentExemption = await exemptTabFromAutoSuspend(192, "always");
+check(permanentExemption.ok && permanentExemption.duration === "always" &&
+      mem.settings.suspendWhitelist?.includes("page:https://parked.example/read") &&
+      mem.settings.archiveWhitelist?.includes("page:https://parked.example/read"),
+  "permanent popup protection resolves a suspended page and writes both compatibility aliases");
+check((await exemptTabFromAutoSuspend(192, "always")).already === true &&
+      mem.settings.suspendWhitelist.length === 1,
+  "repeating Never suspend is idempotent");
+const exemptionNow = Date.now();
+const awakeStatus = autoSuspendPageStatus(
+  "https://awake.example/article?one=1", mem.settings.suspendWhitelist,
+  mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY], exemptionNow);
+const parkedStatus = autoSuspendPageStatus(
+  "https://parked.example/read", mem.settings.suspendWhitelist,
+  mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY], exemptionNow);
+const pageExceptions = listAutoSuspendPageExceptions(
+  mem.settings.suspendWhitelist, mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY], exemptionNow);
+check(awakeStatus.kind === "temporary" && awakeStatus.expiresAt > exemptionNow &&
+      parkedStatus.kind === "permanent" && pageExceptions.length === 2,
+  "popup and Settings share persistent temporary and permanent page-exception status");
+await removeAutoSuspendPageException("https://awake.example/article?one=1");
+await removeAutoSuspendPageException("https://parked.example/read");
+check(!mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY]?.["https://awake.example/article?one=1"] &&
+      !mem.settings.suspendWhitelist?.some((rule) => rule === "page:https://parked.example/read"),
+  "removing a page exception clears its device timer or exact portable rule");
+delete mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY];
 // Incognito privacy: never saveable, never suspended, never auto-dumped — so no
 // incognito URL is ever written to storage/the vault.
 check(!isSaveableTab({ url: "https://x.com/1", incognito: true }), "incognito tab is never saveable (never captured)");
@@ -2852,13 +3030,125 @@ discardedTabs = [];
 const n1 = await suspendSweep();
 check(n1 === 1 && discardedTabs[0] === 101, "sweep discards only the stale tab");
 check(mem.tabActivity[103] !== undefined, "never-seen tab gets a fresh clock, not discarded");
+// Default suspendMinTabs=0 must not turn the last-moment guard into one full
+// tab enumeration per candidate.
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mem.tabActivity = {};
+mockWindows = [{ id: 6, tabs: Array.from({ length: 100 }, (_, index) => {
+  const id = 1100 + index;
+  mem.tabActivity[id] = oldTs;
+  return { id, index, url: `https://bulk-${index}.example`, active: false, groupId: -1 };
+}) }];
+const ordinaryQuery = chrome.tabs.query;
+let suspendQueryCount = 0;
+chrome.tabs.query = async (...args) => {
+  suspendQueryCount += 1;
+  return ordinaryQuery(...args);
+};
+discardedTabs = [];
+check((await suspendSweep()) === 100 && suspendQueryCount === 1,
+  "time-away revalidation keeps one planning query for 100 candidates when the tab-count gate is zero");
+chrome.tabs.query = ordinaryQuery;
+
+// A leave transition can land after planning. The fresh clock must win before
+// the browser receives an automatic suspension effect.
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mem.tabActivity = { 1151: oldTs };
+mockWindows = [{ id: 7, tabs: [
+  { id: 1151, index: 0, url: "https://fresh-leave.example", active: false, groupId: -1 }
+] }];
+const activityRaceGet = chrome.tabs.get;
+chrome.tabs.get = async (tabId) => {
+  if (tabId === 1151) mem.tabActivity[tabId] = Date.now();
+  return activityRaceGet(tabId);
+};
+discardedTabs = [];
+check((await suspendSweep()) === 0 && discardedTabs.length === 0,
+  "a departure clock written during suspension planning prevents the stale automatic effect");
+chrome.tabs.get = activityRaceGet;
+
+// The serialized age read can itself be held behind Store work. Protection
+// that changes while it waits must be observed by a post-age Chrome read.
+const { tabActivity: heldSuspendActivity } = await import("../js/lib/tab-activity.js");
+const ordinarySuspendAge = heldSuspendActivity.isOlderThan;
+let releaseSuspendAge;
+let enterSuspendAge;
+const suspendAgeEntered = new Promise((resolve) => { enterSuspendAge = resolve; });
+const suspendAgeGate = new Promise((resolve) => { releaseSuspendAge = resolve; });
+heldSuspendActivity.isOlderThan = async () => {
+  enterSuspendAge();
+  await suspendAgeGate;
+  return true;
+};
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mem.tabActivity = { 1152: oldTs };
+mockWindows = [{ id: 7, tabs: [
+  { id: 1152, index: 0, url: "https://held-age.example", active: false, groupId: -1 }
+] }];
+discardedTabs = [];
+const heldSuspendSweep = suspendSweep();
+await suspendAgeEntered;
+mockWindows[0].tabs[0].active = true;
+releaseSuspendAge();
+check((await heldSuspendSweep) === 0 && discardedTabs.length === 0,
+  "activation while the suspension age guard is held wins before the browser effect");
+heldSuspendActivity.isOlderThan = ordinarySuspendAge;
+
+let releaseSuspendDurationAge;
+let enterSuspendDurationAge;
+const suspendDurationAgeEntered = new Promise((resolve) => { enterSuspendDurationAge = resolve; });
+const suspendDurationAgeGate = new Promise((resolve) => { releaseSuspendDurationAge = resolve; });
+heldSuspendActivity.isOlderThan = async () => {
+  enterSuspendDurationAge();
+  await suspendDurationAgeGate;
+  return true;
+};
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mem.tabActivity = { 1153: oldTs };
+mockWindows = [{ id: 7, tabs: [
+  { id: 1153, index: 0, url: "https://held-duration.example", active: false, groupId: -1 }
+] }];
+discardedTabs = [];
+const heldSuspendDurationSweep = suspendSweep();
+await suspendDurationAgeEntered;
+mem.settings.suspendAfterMinutes = 120;
+releaseSuspendDurationAge();
+check((await heldSuspendDurationSweep) === 0 && discardedTabs.length === 0,
+  "extending the suspension duration while its age guard is held defers the candidate");
+heldSuspendActivity.isOlderThan = ordinarySuspendAge;
+
+// A user can add an exemption after the sweep chose a stale candidate. The
+// last-moment fresh read must win before Chrome receives the destructive effect.
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false };
+mem.tabActivity = { 105: oldTs };
+mockWindows = [{ id: 7, tabs: [
+  { id: 105, index: 0, url: "https://late-rule.example/read", active: false, groupId: -1 }
+] }];
+delete mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY];
+discardedTabs = [];
+const originalTabsGet = chrome.tabs.get;
+let injectedLateRule = false;
+chrome.tabs.get = async (tabId) => {
+  if (tabId === 105 && !injectedLateRule) {
+    injectedLateRule = true;
+    mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY] = {
+      "https://late-rule.example/read": Date.now() + 60_000
+    };
+  }
+  return originalTabsGet(tabId);
+};
+check((await suspendSweep()) === 0 && discardedTabs.length === 0,
+  "a newly added exemption wins the stale automatic-sweep race");
+chrome.tabs.get = originalTabsGet;
+delete mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY];
 // F9: a stale tab matching the never-suspend list is skipped by the sweep.
 mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false, suspendWhitelist: ["keep.com"] };
 mem.tabActivity = { 201: oldTs };
 mockWindows = [{ id: 9, tabs: [{ id: 201, index: 0, url: "https://keep.com/doc", active: false, groupId: -1 }] }];
 discardedTabs = [];
 check((await suspendSweep()) === 0 && discardedTabs.length === 0, "F9: sweep skips a whitelisted stale tab");
-// suspendMinTabs gate: a stale tab is left alone until the tab count exceeds N.
+// suspendMinTabs retained-awake floor: keep the N most recently used eligible
+// tabs awake, and only suspend older eligible tabs beyond that floor.
 mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false, suspendMinTabs: 5 };
 mem.tabActivity = { 301: oldTs, 302: oldTs };
 mockWindows = [{ id: 12, tabs: [
@@ -2866,10 +3156,34 @@ mockWindows = [{ id: 12, tabs: [
   { id: 302, index: 1, url: "https://b.com", active: false, groupId: -1 }
 ] }];
 discardedTabs = [];
-check((await suspendSweep()) === 0, "suspendMinTabs: 2 tabs ≤ threshold 5 → nothing suspended");
+check((await suspendSweep()) === 0, "suspendMinTabs: 2 eligible tabs fit inside the 5-tab recent floor");
 mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60, suspendLazyReload: false, suspendMinTabs: 1 };
 discardedTabs = [];
-check((await suspendSweep()) === 2, "suspendMinTabs: 2 tabs > threshold 1 → gate opens, stale tabs suspend");
+check((await suspendSweep()) === 1 && discardedTabs[0] === 301,
+  "suspendMinTabs: with 2 stale tabs and a floor of 1, only the least-recent tab suspends");
+const nineTabs = Array.from({ length: 9 }, (_, index) => ({
+  id: 320 + index,
+  index,
+  url: `https://recent-floor-${index}.example`,
+  active: index === 0,
+  groupId: -1,
+  lastAccessed: 9_000 - index
+}));
+const nineActivity = Object.fromEntries(nineTabs.map((tab, index) => [
+  tab.id, index === 0 ? Date.now() : oldTs - index
+]));
+check(
+  JSON.stringify([...recentSuspendFloorIds(nineTabs, nineActivity, 8)].sort((a, b) => a - b)) ===
+    JSON.stringify(nineTabs.slice(0, 8).map(({ id }) => id)),
+  "suspendMinTabs: at 9 awake tabs, the 8 most recent include the active tab and reserve exactly one older candidate"
+);
+mem.settings = { suspendEnabled: true, suspendAfterMinutes: 60,
+  suspendLazyReload: false, suspendMinTabs: 8 };
+mem.tabActivity = nineActivity;
+mockWindows = [{ id: 12, tabs: nineTabs }];
+discardedTabs = [];
+check((await suspendSweep()) === 1 && discardedTabs[0] === nineTabs[8].id,
+  "suspendMinTabs: reaching 9 with a recent floor of 8 suspends only the oldest eligible tab");
 // suspendMaxTabs hard cap: keep at most N awake, suspend the longest-idled beyond
 // it — works with the time-based slider OFF, and never touches the active tab.
 createdWindows = []; // clear any windows left over from the session-restore tests
@@ -2917,6 +3231,7 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
 
   // reconciliation: dead → recreated; user-closed → not resurrected; present → skipped
   delete mem.suspendedRegistry;
+  mem.tabActivity = { 701: 123 };
   await registerSuspended({ id: 701, title: "Dead", favIconUrl: "fav", windowId: 1, index: 2, pinned: false }, "https://dead.com/p");
   await registerSuspended({ id: 702, title: "Closed", windowId: 1, index: 5, pinned: false }, "https://closed.com");
   await registerSuspended({ id: 703, title: "LiveById", windowId: 1, index: 0, pinned: false }, "https://livebyid.com");
@@ -2936,9 +3251,143 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
     "N4 recover: still-present tabs (matched by id or by originalUrl) are skipped"
   );
   const regAfter = await getSuspendRegistry();
+  const recoveredDead = Object.entries(regAfter).find(([, entry]) =>
+    entry.originalUrl === "https://dead.com/p");
   check(!("701" in regAfter) && !("702" in regAfter), "N4 recover: stale registry entries pruned");
   check("703" in regAfter && Object.values(regAfter).some((e) => e.originalUrl === "https://dead.com/p"),
     "N4 recover: registry re-keyed to surviving + recreated tabs");
+  check(recoveredDead && mem.tabActivity[recoveredDead[0]] === 123,
+    "N4 recover: an exact suspended occurrence carries its away clock to a new tab id");
+
+  // Browser-start clearing and suspended recovery can overlap. The browser
+  // effect stays prompt, while exact clock transfer waits until the reset has
+  // committed so it cannot be erased by the old-session clear.
+  const { tabActivity } = await import("../js/lib/tab-activity.js");
+  delete mem.suspendedRegistry;
+  mem.tabActivity = { 707: 888 };
+  await registerSuspended({
+    id: 707, title: "Reset race", windowId: 1, index: 0, pinned: false, active: false
+  }, "https://reset-race.example");
+  mockWindows = [{ id: 1, focused: true, tabs: [] }];
+  createdTabs = [];
+  const resetRaceGetAll = chrome.windows.getAll;
+  let releaseActivityReset = () => {};
+  let markResetRead = () => {};
+  const resetReadStarted = new Promise((resolve) => { markResetRead = resolve; });
+  const heldActivityReset = new Promise((resolve) => { releaseActivityReset = resolve; });
+  let holdActivityReset = true;
+  chrome.windows.getAll = async (query = {}) => {
+    if (query.populate === true && holdActivityReset) {
+      holdActivityReset = false;
+      markResetRead();
+      await heldActivityReset;
+    }
+    return resetRaceGetAll(query);
+  };
+  const pendingActivityReset = tabActivity.beginBrowserSession();
+  await resetReadStarted;
+  let visibleRecovery = false;
+  let resetRaceSettled = false;
+  const pendingResetRaceRecovery = recoverSuspendedTabs({
+    onBrowserRecoveryComplete() { visibleRecovery = true; }
+  });
+  void pendingResetRaceRecovery.then(() => { resetRaceSettled = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  check(visibleRecovery && !resetRaceSettled,
+    "N4 recover: visible recovery completes before a pending browser-start clock reset");
+  releaseActivityReset();
+  await Promise.all([pendingActivityReset, pendingResetRaceRecovery]);
+  chrome.windows.getAll = resetRaceGetAll;
+  const resetRaceEntry = Object.entries(await getSuspendRegistry()).find(([, entry]) =>
+    entry.originalUrl === "https://reset-race.example");
+  check(resetRaceEntry && mem.tabActivity[resetRaceEntry[0]] === 888,
+    "N4 recover: exact awayAt transfers only after the browser-start clock reset");
+
+  // A failed clock reset is already diagnosed by its lifecycle caller. It must
+  // not strand the essential recovery registry under a vanished source id.
+  delete mem.suspendedRegistry;
+  mem.tabActivity = { 708: 889 };
+  await registerSuspended({
+    id: 708, title: "Failed reset", windowId: 1, index: 0, pinned: false, active: false
+  }, "https://failed-reset.example");
+  mockWindows = [{ id: 1, focused: true, tabs: [] }];
+  createdTabs = [];
+  chrome.windows.getAll = async (query = {}) => {
+    if (query.populate === true) throw new Error("window inventory unavailable");
+    return resetRaceGetAll(query);
+  };
+  await tabActivity.beginBrowserSession().catch(() => {});
+  chrome.windows.getAll = resetRaceGetAll;
+  check((await recoverSuspendedTabs()) === 1 &&
+      Object.values(await getSuspendRegistry()).some((entry) =>
+        entry.originalUrl === "https://failed-reset.example"),
+    "N4 recover: a rejected activity reset cannot prevent registry rekeying");
+  await tabActivity.initialize();
+
+  // A same-id recovery after the browser-start reset restores only a clock
+  // proven by that exact local registry occurrence.
+  delete mem.suspendedRegistry;
+  mem.tabActivity = { 705: 777 };
+  const sameIdUrl = `${SB}?originalUrl=https%3A%2F%2Fsame-id.example&title=Same`;
+  const sameIdTab = {
+    id: 705, index: 0, windowId: 1, url: sameIdUrl, active: false, groupId: -1
+  };
+  await registerSuspended(sameIdTab, "https://same-id.example");
+  mem.tabActivity = {};
+  mockWindows = [{ id: 1, tabs: [sameIdTab] }];
+  await recoverSuspendedTabs();
+  check(mem.tabActivity[705] === 777,
+    "N4 recover: a same-id exact occurrence restores its clock after browser-start clearing");
+
+  delete mem.suspendedRegistry;
+  delete mem.tabActivity;
+  const legacyTab = {
+    id: 706, index: 0, windowId: 1,
+    url: `${SB}?originalUrl=https%3A%2F%2Flegacy-clock.example&title=Legacy`,
+    active: false, groupId: -1
+  };
+  await registerSuspended(legacyTab, "https://legacy-clock.example");
+  mockWindows = [{ id: 1, tabs: [legacyTab] }];
+  await recoverSuspendedTabs();
+  check(mem.tabActivity?.[706] === undefined,
+    "N4 recover: a legacy occurrence without proven awayAt receives fresh grace");
+
+  // One update cycle can run several safety passes. A page that has not yet
+  // reasserted readiness is repaired and counted once, never once per pass.
+  delete mem.suspendedRegistry;
+  mem.suspendRecoveryCycle = {
+    id: "cycle-one",
+    kind: "reload",
+    attemptedOccurrenceIds: [],
+    recoveredOccurrenceIds: [],
+    complete: false
+  };
+  mockWindows = [{ id: 1, tabs: [
+    { id: 8801, index: 0, windowId: 1,
+      url: `${SB}?originalUrl=https%3A%2F%2Fonce.example&title=Once` }
+  ] }];
+  await registerSuspended(mockWindows[0].tabs[0], "https://once.example");
+  updatedTabs = [];
+  const firstCyclePass = await recoverSuspendedTabs({
+    allowReloadRepair: true,
+    recoveryCycleId: "cycle-one"
+  });
+  const secondCyclePass = await recoverSuspendedTabs({
+    allowReloadRepair: true,
+    recoveryCycleId: "cycle-one"
+  });
+  check(firstCyclePass === 1 && secondCyclePass === 0 && updatedTabs.length === 1 &&
+      mem.suspendRecoveryCycle.recoveredOccurrenceIds.length === 1,
+    "N4 recovery: repeated reload passes repair and count one logical tab once");
+
+  const { readFileSync: readSuspendLifecycle } = await import("node:fs");
+  const tabLifecycleOwner = readSuspendLifecycle(
+    new URL("../js/background/tab-lifecycle-owner.js", import.meta.url), "utf8"
+  );
+  const suspendPage = readSuspendLifecycle(new URL("../js/ui/suspend-page.js", import.meta.url), "utf8");
+  check(tabLifecycleOwner.includes("suspension.unregister(tabId)") &&
+      suspendPage.includes('type: "wake-suspended-page"'),
+    "N4 wake: page, worker, and navigation fallback all retire the recovery record");
 }
 
 /* --- N4b: the reload race — grace window + serialized passes --- */
@@ -2981,16 +3430,17 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
  * skipped those tabs on every pass, so a real page was silently replaced by a
  * blank new tab and never came back. */
 {
-  const { registerSuspended, recoverSuspendedTabs, getSuspendRegistry, markRecoveryGrace } =
+  const { registerSuspended, adoptSuspendedPage, recoverSuspendedTabs, getSuspendRegistry, markRecoveryGrace } =
     await import("../js/lib/suspend.js");
   const SB = "chrome-extension://test-ext-id/suspend.html";
-  const seed = async (liveUrl, { grace }) => {
+  const seed = async (liveUrl, { grace, adopted = false }) => {
     delete mem.suspendedRegistry;
     delete mem.suspendRecoveryGraceUntil;
     await registerSuspended({ id: 901, title: "Kept", windowId: 1, index: 4, pinned: false },
       "https://kept.example/page");
     if (grace) await markRecoveryGrace();
     mockWindows = [{ id: 1, tabs: [{ id: 901, index: 4, windowId: 1, url: liveUrl }] }];
+    if (adopted) await adoptSuspendedPage(mockWindows[0].tabs[0]);
     createdTabs = [];
     updatedTabs = [];
     return recoverSuspendedTabs();
@@ -3024,13 +3474,23 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
   check(n === 0 && updatedTabs.length === 0 && !("901" in (await getSuspendRegistry())),
     "N4c: a tab already showing its original page is never re-suspended, and its entry is dropped");
 
-  // 4. Our page really is still there → untouched, no duplicate (unchanged N4).
+  // 4. THE ERROR-5 SHAPE: Chrome's tab model still reports suspend.html while
+  //    its renderer shows "Can't open this page". Without a readiness message
+  //    from that page in this worker generation, force one in-place reload.
   n = await seed(`${SB}?originalUrl=https%3A%2F%2Fkept.example%2Fpage&title=Kept`, { grace: true });
+  check(n === 1 && updatedTabs.length === 1 && createdTabs.length === 0 &&
+      updatedTabs[0].id === 901 && updatedTabs[0].url.includes("recoveryAttempt="),
+    "N4c: a URL-shaped Error 5 document is forcibly reloaded in place during grace");
+
+  // 5. Our page really mounted and reasserted itself in this worker generation
+  //    → untouched, no duplicate.
+  n = await seed(`${SB}?originalUrl=https%3A%2F%2Fkept.example%2Fpage&title=Kept`,
+    { grace: true, adopted: true });
   check(n === 0 && updatedTabs.length === 0 && createdTabs.length === 0 &&
       "901" in (await getSuspendRegistry()),
-    "N4c: a live suspend page is still skipped and kept");
+    "N4c: an adopted live suspend page is still skipped and kept");
 
-  // 5. Persist BEFORE navigating: a worker killed mid-suspend must not leave a
+  // 6. Persist BEFORE navigating: a worker killed mid-suspend must not leave a
   //    tab parked on our page with nothing recording where it came from.
   const src = (await import("node:fs")).readFileSync(
     new URL("../js/lib/suspend.js", import.meta.url), "utf8");
@@ -3052,16 +3512,29 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
   check(
     form.includes("const stackedRow = (title, desc, ...controls) =>") &&
     form.includes('class: "setrow setrow-stacked"') &&
-    form.includes('localizedStackedRow("keepTabsOpen"') &&
-    form.includes('localizedStackedRow("neverSuspend"') &&
+    form.includes('localizedStackedRow("automationExclusions"') &&
+    form.includes('localizedRow("protectedPages"') &&
+    form.includes('dashboard.html#settings:protection') &&
+    form.includes('group("protection"') &&
+    !form.includes('localizedStackedRow("keepTabsOpen"') &&
+    !form.includes('localizedStackedRow("neverSuspend"') &&
     /\.setrow\.setrow-stacked \{ flex-direction: column/.test(cssF) &&
     /\.setrow\.setrow-stacked textarea \{[^}]*width: 100%/s.test(cssF),
-    "F48: the two pattern lists stack under their labels with the full column width"
+    "F48: the shared automation-protection list uses the full stacked column width"
+  );
+  check(
+    form.includes('localizedStackedRow("suspendPageExceptions"') &&
+      form.includes("listAutoSuspendPageExceptions") &&
+      form.includes("removeAutoSuspendPageException") &&
+      form.includes("visibleSuspendRules") &&
+      form.includes("storedSuspendRules") &&
+      /\.suspend-page-exception-row \{[^}]*display: grid/s.test(cssF),
+    "Suspension Settings shows permanent pages in the regular rule list and manages temporary pages separately"
   );
   check(
     stripF.includes('class: "fs-counts fs-counts-link"') &&
     stripF.includes("onclick: () => openBlockedSites()") &&
-    stripF.includes("const { getSearchInput, onMeasure, openBlockedSites } = ctx;") &&
+    stripF.includes("const { getSearchInput, onMeasure, openBlockedSites, getLayoutFollower = () => null } = ctx;") &&
     readF("../js/ui/dashboard.js").includes("void scrollToFocusSettings({ focusSites: true });") &&
     readF("../js/ui/dashboard.js").includes('focusSelector: focusSites ? ".focus-site-input" : null') &&
     stripF.includes("const focusedAccessDomain = strip.contains(document.activeElement)") &&
@@ -3078,6 +3551,7 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
       /\.settings-toolbar \{[^}]*position: sticky;[^}]*display: flex;[^}]*flex-direction: column/s.test(cssF) &&
       /scroll-margin-top: calc\(var\(--hero-h,[^;]*var\(--settings-toolbar-h/.test(cssF) &&
       form.includes('navChips.get(g).hidden = !visible;') &&
+      form.indexOf('group("intro"') < form.indexOf('keyboardGroup = group("keyboard"') &&
       form.includes('new ResizeObserver(measureToolbar).observe(toolbar)') &&
       /\.settings-toolbar \{ position: sticky; top: 0; z-index: 10;/.test(optionsF) &&
       optionsF.includes("scroll-margin-top: calc(var(--settings-toolbar-h, 0px) + 16px)") &&
@@ -3108,6 +3582,9 @@ check((await suspendSweep()) === 0, "sweep disabled by setting");
 }
 
 /* --- M4: auto-archive --- */
+// The preceding suspension recovery scenarios may leave reload grace open.
+// These cases exercise ordinary timer/cap behavior after that grace has ended.
+delete mem.suspendRecoveryGraceUntil;
 const { archiveSweep, sweepInboxExpiry, isArchiveExempt, matchesWhitelist } =
   await import("../js/lib/archive.js");
 
@@ -3134,6 +3611,16 @@ check(isArchiveExempt({ groupId: -1, url: "https://x.com", incognito: true }), "
 check(
   isArchiveExempt({ groupId: -1, url: "https://sub.keep.com/x" }, ["keep.com"]),
   "archive: whitelisted exempt"
+);
+check(
+  isArchiveExempt(
+    { groupId: -1, url: "https://exact.keep.example/read?mode=one" },
+    ["page:https://exact.keep.example/read?mode=one"]
+  ) && !isArchiveExempt(
+    { groupId: -1, url: "https://exact.keep.example/read?mode=two" },
+    ["page:https://exact.keep.example/read?mode=one"]
+  ),
+  "Auto-save uses the shared exact-page rule without widening it to sibling URLs"
 );
 const parkedTab = {
   groupId: -1,
@@ -3203,12 +3690,55 @@ check(
   !removedTabIds.includes(213) && !removedTabIds.includes(214) && !removedTabIds.includes(215),
   "Auto-save max tabs: whitelist, pinned, and active tabs remain protected"
 );
+// Both old permanent-list aliases and the popup's device-only 24-hour map are
+// real Auto-save guards. Only the unprotected surplus candidate may close.
+mem.settings = {
+  autoArchiveEnabled: false,
+  autoSaveMaxTabs: 1,
+  archiveWhitelist: [],
+  suspendWhitelist: ["page:https://permanent-protection.example/read"]
+};
+mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY] = {
+  "https://temporary-protection.example/read": NOW + DAY
+};
+mem.tabActivity = { 221: 100, 222: 200, 223: 300, 224: 400 };
+mockWindows = [{ id: 22, focused: true, tabs: [
+  { id: 221, index: 0, url: "https://permanent-protection.example/read", title: "Permanent", active: false, groupId: -1 },
+  { id: 222, index: 1, url: "https://temporary-protection.example/read", title: "Temporary", active: false, groupId: -1 },
+  { id: 223, index: 2, url: "https://ordinary.example/read", title: "Ordinary", active: false, groupId: -1 },
+  { id: 224, index: 3, url: "https://active-protection.example/read", title: "Active", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+check((await archiveSweep(NOW)) === 1 && removedTabIds.join(",") === "223",
+  "Auto-save effect honors permanent and 24-hour shared page protection");
+delete mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY];
 mem.settings = { autoArchiveEnabled: false, autoSaveMaxTabs: 10, archiveWhitelist: [] };
 removedTabIds = [];
 check(
   (await archiveSweep(NOW)) === 0 && removedTabIds.length === 0,
   "Auto-save max tabs: at or below the cap is a no-op"
 );
+
+// In a mixed timer+cap sweep, an unknown tab receives fresh grace for ranking
+// too. Chrome's older lastAccessed fallback must not move it ahead of a tab
+// with a proven older EveryTab departure clock.
+mem.settings = {
+  autoArchiveEnabled: true,
+  autoDumpAfterMinutes: 525_600,
+  autoSaveMaxTabs: 2,
+  archiveWhitelist: []
+};
+mem.tabActivity = { 216: NOW - 10 * DAY, 218: NOW };
+mockWindows = [{ id: 21, focused: true, tabs: [
+  { id: 216, index: 0, url: "https://known-away.example", title: "Known", active: false, groupId: -1 },
+  { id: 217, index: 1, url: "https://unknown-away.example", title: "Unknown", lastAccessed: 1, active: false, groupId: -1 },
+  { id: 218, index: 2, url: "https://cap-reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+check((await archiveSweep(NOW)) === 1 && removedTabIds.join(",") === "216",
+  "Auto-save cap ranks a first-sighting tab as fresh instead of trusting an older Chrome age");
 
 // Alarm, Settings, and tab-created triggers can land together in one worker.
 // They must share the active sweep rather than capture the same tab twice.
@@ -3293,6 +3823,172 @@ check(
 check(mem.tabActivity[206] !== undefined, "never-seen tab stamped, not archived (grace period)");
 check(mem.tabActivity[999] === undefined, "stale activity entry pruned");
 check(mem.tabActivity[201] === undefined, "archived tab dropped from activity map");
+
+// A tab left while the sweep is validating must receive its full new grace,
+// even though the planning snapshot still described it as old.
+mem.settings = { autoArchiveEnabled: true, autoDumpAfterMinutes: 60, archiveWhitelist: [] };
+mem.tabActivity = { 251: STALE, 252: NOW };
+mockWindows = [{ id: 25, focused: true, tabs: [
+  { id: 251, index: 0, url: "https://leave-race.example", title: "Leave", active: false, groupId: -1 },
+  { id: 252, index: 1, url: "https://reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+const archiveActivityRaceGet = chrome.tabs.get;
+chrome.tabs.get = async (tabId) => {
+  if (tabId === 251) mem.tabActivity[tabId] = NOW;
+  return archiveActivityRaceGet(tabId);
+};
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+check((await archiveSweep(NOW)) === 0 && removedTabIds.length === 0,
+  "a departure clock written during Auto-save planning prevents the stale close");
+chrome.tabs.get = archiveActivityRaceGet;
+
+// A protection change made while the queued age read is held must be visible
+// before Auto-save persists or closes the candidate.
+const { tabActivity: heldArchiveActivity } = await import("../js/lib/tab-activity.js");
+const ordinaryArchiveAge = heldArchiveActivity.isOlderThan;
+let releaseArchiveAge;
+let enterArchiveAge;
+const archiveAgeEntered = new Promise((resolve) => { enterArchiveAge = resolve; });
+const archiveAgeGate = new Promise((resolve) => { releaseArchiveAge = resolve; });
+heldArchiveActivity.isOlderThan = async () => {
+  enterArchiveAge();
+  await archiveAgeGate;
+  return true;
+};
+mem.tabActivity = { 253: STALE, 254: NOW };
+mockWindows = [{ id: 25, focused: true, tabs: [
+  { id: 253, index: 0, url: "https://held-archive-age.example", title: "Held", active: false, groupId: -1 },
+  { id: 254, index: 1, url: "https://archive-reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+const heldArchiveSweep = archiveSweep(NOW);
+await archiveAgeEntered;
+mockWindows[0].tabs[0].pinned = true;
+releaseArchiveAge();
+check((await heldArchiveSweep) === 0 && removedTabIds.length === 0 &&
+    (await listItems(STORE_KEYS.inbox)).length === 0,
+  "pinning while the Auto-save age guard is held prevents persistence and close");
+heldArchiveActivity.isOlderThan = ordinaryArchiveAge;
+
+// A popup protection added while the final activity read is pending must be
+// observed at commit time, just like a pin or permanent Settings-rule change.
+let releaseArchiveTemporaryAge;
+let enterArchiveTemporaryAge;
+const archiveTemporaryAgeEntered = new Promise((resolve) => { enterArchiveTemporaryAge = resolve; });
+const archiveTemporaryAgeGate = new Promise((resolve) => { releaseArchiveTemporaryAge = resolve; });
+heldArchiveActivity.isOlderThan = async () => {
+  enterArchiveTemporaryAge();
+  await archiveTemporaryAgeGate;
+  return true;
+};
+mem.settings = { autoArchiveEnabled: true, autoDumpAfterMinutes: 60, archiveWhitelist: [] };
+mem.tabActivity = { 265: STALE, 266: NOW };
+mockWindows = [{ id: 25, focused: true, tabs: [
+  { id: 265, index: 0, url: "https://held-temporary-protection.example", title: "Held", active: false, groupId: -1 },
+  { id: 266, index: 1, url: "https://temporary-reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+const heldArchiveTemporarySweep = archiveSweep(NOW);
+await archiveTemporaryAgeEntered;
+mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY] = {
+  "https://held-temporary-protection.example/": NOW + DAY
+};
+releaseArchiveTemporaryAge();
+check((await heldArchiveTemporarySweep) === 0 && removedTabIds.length === 0 &&
+    (await listItems(STORE_KEYS.inbox)).length === 0,
+  "adding 24-hour protection during Auto-save validation prevents persistence and close");
+delete mem[TEMPORARY_SUSPEND_EXEMPTIONS_KEY];
+heldArchiveActivity.isOlderThan = ordinaryArchiveAge;
+
+let releaseArchiveSettingAge;
+let enterArchiveSettingAge;
+const archiveSettingAgeEntered = new Promise((resolve) => { enterArchiveSettingAge = resolve; });
+const archiveSettingAgeGate = new Promise((resolve) => { releaseArchiveSettingAge = resolve; });
+heldArchiveActivity.isOlderThan = async () => {
+  enterArchiveSettingAge();
+  await archiveSettingAgeGate;
+  return true;
+};
+mem.settings = { autoArchiveEnabled: true, autoDumpAfterMinutes: 60, archiveWhitelist: [] };
+mem.tabActivity = { 255: STALE, 256: NOW };
+mockWindows = [{ id: 25, focused: true, tabs: [
+  { id: 255, index: 0, url: "https://held-archive-setting.example", title: "Held", active: false, groupId: -1 },
+  { id: 256, index: 1, url: "https://archive-setting-reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+const heldArchiveSettingSweep = archiveSweep(NOW);
+await archiveSettingAgeEntered;
+mem.settings.autoArchiveEnabled = false;
+releaseArchiveSettingAge();
+check((await heldArchiveSettingSweep) === 0 && removedTabIds.length === 0 &&
+    (await listItems(STORE_KEYS.inbox)).length === 0,
+  "turning Auto-save off while its age guard is held prevents persistence and close");
+heldArchiveActivity.isOlderThan = ordinaryArchiveAge;
+
+let archiveLooseAgeCalls = 0;
+let releaseSecondArchiveAge;
+let enterSecondArchiveAge;
+const secondArchiveAgeEntered = new Promise((resolve) => { enterSecondArchiveAge = resolve; });
+const secondArchiveAgeGate = new Promise((resolve) => { releaseSecondArchiveAge = resolve; });
+heldArchiveActivity.isOlderThan = async () => {
+  archiveLooseAgeCalls += 1;
+  if (archiveLooseAgeCalls === 2) {
+    enterSecondArchiveAge();
+    await secondArchiveAgeGate;
+  }
+  return true;
+};
+mem.settings = { autoArchiveEnabled: true, autoDumpAfterMinutes: 60, archiveWhitelist: [] };
+mem.tabActivity = { 257: STALE, 258: STALE, 259: NOW };
+mockWindows = [{ id: 25, focused: true, tabs: [
+  { id: 257, index: 0, url: "https://first-loose.example", title: "First", active: false, groupId: -1 },
+  { id: 258, index: 1, url: "https://second-loose.example", title: "Second", active: false, groupId: -1 },
+  { id: 259, index: 2, url: "https://loose-reader.example", title: "Reader", active: true, groupId: -1 }
+] }];
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+const heldLooseArchiveSweep = archiveSweep(NOW);
+await secondArchiveAgeEntered;
+mem.settings.autoArchiveEnabled = false;
+releaseSecondArchiveAge();
+check((await heldLooseArchiveSweep) === 0 && removedTabIds.length === 0 &&
+    (await listItems(STORE_KEYS.inbox)).length === 0,
+  "turning Auto-save off during a later age guard cancels every accepted tab in the timed plan");
+heldArchiveActivity.isOlderThan = ordinaryArchiveAge;
+mem.settings = { autoArchiveEnabled: true, autoArchiveDays: 7, archiveWhitelist: [] };
+
+// Arrival does not reset its old stored timestamp. The coherent foreground
+// context and final window check must still protect the window the user enters
+// while a bundle is being validated.
+mem.tabActivity = { 261: STALE, 262: STALE };
+delete mem.tabActivityContext;
+mockWindows = [{ id: 26, focused: false, tabs: [
+  { id: 261, index: 0, url: "https://bundle-reader.example", title: "Reader", active: true, groupId: -1 },
+  { id: 262, index: 1, url: "https://bundle-peer.example", title: "Peer", active: false, groupId: -1 }
+] }];
+const archiveFocusRaceGet = chrome.tabs.get;
+let enteredBundle = false;
+chrome.tabs.get = async (tabId) => {
+  if (!enteredBundle && tabId === 261) {
+    enteredBundle = true;
+    mockWindows[0].focused = true;
+    mem.tabActivityContext = {
+      focusedWindowId: 26,
+      activeByWindow: { 26: 261 }
+    };
+  }
+  return archiveFocusRaceGet(tabId);
+};
+removedTabIds = [];
+delete mem[STORE_KEYS.inbox];
+check((await archiveSweep(NOW)) === 0 && removedTabIds.length === 0,
+  "focusing an old-timestamp bundle during validation cannot close its foreground tab");
+chrome.tabs.get = archiveFocusRaceGet;
+delete mem.tabActivityContext;
 
 // window-level bundle: every tab past threshold, window unfocused
 mem.tabActivity = { 301: STALE, 302: STALE, 401: NOW };
@@ -3416,8 +4112,8 @@ mockWindows = [
   {
     id: 9,
     tabs: [
-      { id: 91, index: 0, url: SUSPEND_URL, title: "Asleep" },
-      { id: 92, index: 1, url: "https://other.com", title: "Other" }
+      { id: 91, windowId: 9, index: 0, pinned: false, url: SUSPEND_URL, title: "Asleep" },
+      { id: 92, windowId: 9, index: 1, pinned: false, url: "https://other.com", title: "Other" }
     ]
   }
 ];
@@ -3425,8 +4121,28 @@ removedTabIds = [];
 const dumpN = await dumpTab(91);
 const dumpInbox = await listItems(STORE_KEYS.inbox);
 check(
-  dumpN === 1 && dumpInbox.length === 1 && dumpInbox[0].tabs[0].url === "https://parked.com/doc",
+  dumpN.n === 1 && dumpN.undoId === mem.journal?.[0]?.id &&
+    dumpInbox.length === 1 && dumpInbox[0].tabs[0].url === "https://parked.com/doc",
   "S1 dump: dumping a suspended tab saves its underlying URL"
+);
+check(
+  mem.journal?.[0]?.forwardReceipt?.status === "complete" &&
+    mem.journal[0].forwardReceipt.tabs[0].windowId === 9 &&
+    mem.journal[0].forwardReceipt.tabs[0].index === 0,
+  "S1 dump: immediate Undo retains the original live window and tab-strip position"
+);
+mockWindows.push({
+  id: 10,
+  tabs: [
+    { id: 101, windowId: 10, index: 0, pinned: false, url: "https://third.com", title: "Third" },
+    { id: 102, windowId: 10, index: 1, pinned: false, url: "https://stay.com", title: "Stay" }
+  ]
+});
+await dumpTabs([92, 101]);
+check(
+  mem.journal?.[0]?.forwardReceipt?.tabs?.map(({ windowId, index }) => `${windowId}:${index}`)
+    .join("|") === "9:0|10:0",
+  "S1 selected save: immediate Undo retains every source window and tab-strip position"
 );
 
 // S1: suspend sweep still skips our own suspend page (never re-suspends it)
@@ -3620,6 +4336,7 @@ const oldItem = {
   source: "dump",
   labels: []
 };
+oldItem.createdAt = NOW - 31 * DAY;
 oldItem.modifiedAt = NOW - 31 * DAY;
 const freshItem = {
   ...(await newMeta()),
@@ -3628,14 +4345,35 @@ const freshItem = {
   source: "dump",
   labels: []
 };
-mem[STORE_KEYS.inbox] = { [oldItem.id]: oldItem, [freshItem.id]: freshItem };
+const legacyItem = {
+  ...(await newMeta()),
+  kind: "tab",
+  tabs: [{ url: "https://legacy-stale.com", title: "Legacy stale saved page" }],
+  source: "dump",
+  labels: []
+};
+legacyItem.createdAt = NOW - 50 * DAY;
+delete legacyItem.modifiedAt;
+mem[STORE_KEYS.inbox] = {
+  [oldItem.id]: oldItem,
+  [freshItem.id]: freshItem,
+  [legacyItem.id]: legacyItem
+};
 
 const moved = await sweepInboxExpiry(NOW);
-check(moved === 1, "expiry moves only items past the age");
+check(moved === 2, "expiry moves old current and legacy items past the age");
+const expiryActivity = mem.journal?.find((entry) => entry.actionKind === "auto-archived-items");
+check(
+  expiryActivity?.actionParams?.count === 2 &&
+    expiryActivity.actionParams.name === "Stale saved page",
+  "automatic Inbox expiry records a representative affected link for Activity"
+);
 const archiveItems = await listItems(STORE_KEYS.archive);
 check(
-  archiveItems.length === 1 && archiveItems[0].id === oldItem.id && archiveItems[0].archivedAt === NOW,
-  "expired item lands in Archive with archivedAt, same id"
+  archiveItems.length === 2 && archiveItems.some((item) => item.id === oldItem.id) &&
+    archiveItems.some((item) => item.id === legacyItem.id) &&
+    archiveItems.every((item) => item.archivedAt === NOW),
+  "expired current and legacy items land in Archive with archivedAt and the same ids"
 );
 const inboxLeft = await listItems(STORE_KEYS.inbox);
 check(
@@ -3643,9 +4381,24 @@ check(
   "expired item tombstoned in Inbox, fresh one stays"
 );
 check((await sweepInboxExpiry(NOW)) === 0, "expiry sweep is idempotent");
+
+const relabeledOldItem = {
+  ...(await newMeta()),
+  kind: "tab",
+  tabs: [{ url: "https://relabeled-old.test", title: "Old Inbox item labeled recently" }],
+  source: "dump",
+  labels: ["recently-labelled"],
+  createdAt: NOW - 57 * DAY,
+  modifiedAt: NOW - DAY
+};
+mem[STORE_KEYS.inbox] = { [relabeledOldItem.id]: relabeledOldItem };
+mem.settings = { inboxExpiryDays: 55 };
+check((await sweepInboxExpiry(NOW)) === 1,
+  "Inbox expiry follows the saved age even when a later label edit refreshed modifiedAt");
+check((await listItems(STORE_KEYS.archive)).some((item) => item.id === relabeledOldItem.id),
+  "a 57-day-old item moves to Archive at a 55-day threshold");
 mem.settings = { inboxExpiryDays: 0 };
-inboxLeft[0].modifiedAt = NOW - 400 * DAY;
-mem[STORE_KEYS.inbox][freshItem.id] = inboxLeft[0];
+mem[STORE_KEYS.inbox] = { [freshItem.id]: { ...inboxLeft[0], modifiedAt: NOW - 400 * DAY } };
 check((await sweepInboxExpiry(NOW)) === 0, "expiry 0 = never");
 
 // search covers the archive, ranked after inbox
@@ -3683,70 +4436,6 @@ await runSmokeSavedDataWorkflows({
   local: mem,
   browserEffects: smokeBrowserEffects
 });
-
-/* --- M6: onboarding history suggestions --- */
-const { suggestSmartViews } = await import("../js/lib/suggest.js");
-
-// existing smart views: builtins were wiped mid-suite; seed a "GitHub" domain view
-delete mem[STORE_KEYS.smartviews];
-await upsertItem(STORE_KEYS.smartviews, {
-  ...(await newMeta()), name: "GitHub", field: "domain", pattern: "github\\.com$", scope: "all"
-});
-const hist = [];
-for (let i = 0; i < 60; i++) hist.push({ url: "https://news.ycombinator.com/item?id=" + i, visitCount: 1 });
-for (let i = 0; i < 40; i++) hist.push({ url: "https://www.github.com/acme/repo/" + i, visitCount: 1 });
-for (let i = 0; i < 25; i++) hist.push({ url: "https://linear.app/team/issue-" + i, visitCount: 1 });
-for (let i = 0; i < 5; i++) hist.push({ url: "https://rare.example.org/" + i, visitCount: 1 });
-hist.push({ url: "not a url", visitCount: 1 });
-chrome.history = { search: async () => hist };
-
-const suggestions = await suggestSmartViews({ minVisits: 20, maxSuggestions: 5 });
-check(
-  suggestions[0]?.pattern === "news\\.ycombinator\\.com$" && suggestions[0].count === 60,
-  "suggest: top domain proposed first with escaped pattern"
-);
-check(!suggestions.some((s) => s.pattern.includes("github")), "suggest: covered domains excluded");
-check(!suggestions.some((s) => s.pattern.includes("rare")), "suggest: below-threshold domains excluded");
-check(suggestions.some((s) => s.name === "Linear"), "suggest: pretty names from hostnames");
-
-// O1: noise sources filtered — extension pages, webmail, search results, AI chats
-delete mem[STORE_KEYS.smartviews];
-const noisy = [];
-for (let i = 0; i < 12; i++) noisy.push({ url: "https://shop.example.com/product/" + i, visitCount: 1 });
-for (let i = 0; i < 20; i++) noisy.push({ url: "chrome-extension://abcd/suspend.html?originalUrl=https://x.com/" + i, visitCount: 1 });
-for (let i = 0; i < 20; i++) noisy.push({ url: "https://mail.google.com/mail/u/0/#inbox/msg-" + i, visitCount: 1 });
-for (let i = 0; i < 20; i++) noisy.push({ url: "https://www.google.com/search?q=query+" + i, visitCount: 1 });
-for (let i = 0; i < 20; i++) noisy.push({ url: "https://chatgpt.com/c/chat-" + i, visitCount: 1 });
-for (let i = 0; i < 20; i++) noisy.push({ url: "https://claude.ai/chat/" + i, visitCount: 1 });
-chrome.history = { search: async () => noisy };
-const filtered = await suggestSmartViews({ minVisits: 3, maxSuggestions: 10 });
-check(filtered.some((s) => s.pattern === "shop\\.example\\.com$"), "O1: a real many-page site is proposed");
-check(!filtered.some((s) => /extension|suspend|abcd/i.test(s.pattern + s.name)),
-  "O1: extension suspend pages (chrome-extension://) never suggested");
-check(!filtered.some((s) => s.pattern.includes("mail\\.google")), "O1: webmail message URLs excluded");
-check(!filtered.some((s) => s.pattern.includes("google\\.com")), "O1: search-result pages excluded");
-check(!filtered.some((s) => s.pattern.includes("chatgpt") || s.pattern.includes("claude")), "O1: AI chats excluded");
-
-// O1: fragment-only variants of one page collapse (not "many tabs")
-delete mem[STORE_KEYS.smartviews];
-const collapse = [];
-for (let i = 0; i < 30; i++) collapse.push({ url: "https://app.example.com/board#card-" + i, visitCount: 1 });
-for (let i = 0; i < 10; i++) collapse.push({ url: "https://blog.example.net/post/" + i, visitCount: 1 });
-chrome.history = { search: async () => collapse };
-const coll = await suggestSmartViews({ minVisits: 3, maxSuggestions: 10 });
-check(!coll.some((s) => s.pattern.includes("app\\.example\\.com")),
-  "O1: 30 #hash variants of one page collapse to 1 → not proposed");
-check(coll.some((s) => s.pattern === "blog\\.example\\.net$" && s.count === 10),
-  "O1: a site with 10 distinct pages is proposed with count 10");
-
-// O1: proposes ≥10 candidates when history has them
-delete mem[STORE_KEYS.smartviews];
-const many = [];
-for (let d = 0; d < 14; d++) for (let p = 0; p < 5; p++) many.push({ url: `https://site${d}.example.com/page/${p}`, visitCount: 1 });
-chrome.history = { search: async () => many };
-const bulk = await suggestSmartViews();
-check(bulk.length >= 10, `O1: proposes ≥10 candidates from history (got ${bulk.length})`);
-delete chrome.history;
 
 /* --- N3: slider settings — migration, off-semantics, round-trip, sub-day sweep --- */
 {
@@ -3957,6 +4646,20 @@ delete chrome.history;
     check(out.cancelled === true && out.committed === null,
       "P2g-1: Esc cancels without committing");
   }
+  // Existing-only flavor never invents a new Session from unmatched text.
+  {
+    const { input, menu, out } = make({ allowCreate: false, emptyCreateLabel: null });
+    await input.dispatch("focus");
+    check(menu.children.length === 2 && menu.children[0].children[0] === "Research",
+      "P2g-1: existing-only picker opens with named Sessions and no Create row");
+    input.value = "Not a saved session";
+    await input.dispatch("input");
+    check(menu.classList.contains("hidden"),
+      "P2g-1: unmatched text cannot become a Session in existing-only mode");
+    await input.dispatch("keydown", { key: "Enter" });
+    check(out.cancelled === true && out.committed === null,
+      "P2g-1: Enter on unmatched text cancels the existing-only picker safely");
+  }
   // plain flavor (rename): no menu, Enter commits the text, empty Enter cancels
   {
     const { input, menu, out } = make({ loadOptions: null, emptyCreateLabel: null, value: "Old name" });
@@ -3983,8 +4686,9 @@ await runSmokeListWorkflows({
 /* --- L2b: competitive import formats (detectFormat + parseImport, pure) --- */
 {
   const {
-    detectFormat, parseImport, parseCsv, importCounts, FORMAT_LABELS, IMPORT_FORMATS
+    detectFormat, parseImport, parseCsv, importCounts, IMPORT_FORMAT_IDS
   } = await import("../js/lib/import-formats.js");
+  const { importFormatLabel, importFormatOptions } = await import("../js/lib/import-copy.js");
 
   // Session Buddy v4 — collection/folder → groups; collection+folder titles → labels
   const SB4 = '{"collections":[{"title":"Research","folders":[{"title":"Dogs","links":[{"title":"German Shepherd","url":"https://en.wikipedia.org/wiki/German_Shepherd","favIconUrl":"https://en.wikipedia.org/favicon.ico"},{"title":"Retriever search","url":"https://www.google.com/search?q=retriever","pinned":true}]},{"title":"Cats","links":[{"title":"Ragdoll","url":"https://www.youtube.com/results?search_query=ragdoll"}]}]}]}';
@@ -4104,10 +4808,10 @@ await runSmokeListWorkflows({
     "Markdown import: ordinary prose is not claimed and unsafe/internal links are rejected");
   const { readFileSync: readMarkdownImportUi } = await import("node:fs");
   const markdownImportUi = readMarkdownImportUi(new URL("../js/ui/data-surface.js", import.meta.url), "utf8");
-  check(FORMAT_LABELS["everytab-markdown"] === "EveryTab Markdown" &&
-    IMPORT_FORMATS[0]?.id === "everytab-markdown" &&
+  check(importFormatLabel("everytab-markdown") === "EveryTab Markdown" &&
+    importFormatOptions()[0]?.id === IMPORT_FORMAT_IDS[0] &&
     markdownImportUi.includes(".md,.markdown") &&
-    markdownImportUi.includes("Paste an EveryTab Markdown copy"),
+    markdownImportUi.includes("dataStatic.importDescription()"),
     "Markdown import: Data exposes paste, .md files, and an explicit EveryTab format");
 
   // OneTab still detected + parsed through the unified path (regression)
@@ -4160,7 +4864,7 @@ await runSmokeListWorkflows({
   check(ONBOARDING_PAGES.length === 6, `first run has six outcome steps (got ${ONBOARDING_PAGES.length})`);
   check(new Set(ids).size === ids.length, "onboarding page ids are unique");
   check(
-    JSON.stringify(ids) === JSON.stringify(["local", "newtab", "save", "find", "scheme", "data"]),
+    JSON.stringify(ids) === JSON.stringify(["local", "find", "save", "newtab", "scheme", "data"]),
     "first run follows the six approved outcomes in order"
   );
   check(
@@ -4176,14 +4880,15 @@ await runSmokeListWorkflows({
   // The quiet automation beat is part of Save now, sort later.
   const save = ONBOARDING_PAGES.find((p) => p.id === "save");
   check(
-    save?.special === "automation" && JSON.stringify(save.why).toLowerCase().includes("snapshot"),
-    "first run teaches snapshots beside the optional shared automation controls"
+    save?.special === "automation" && !JSON.stringify(save).toLowerCase().includes("snapshot"),
+    "first run focuses on optional auto-save and suspension, not Snapshot setup"
   );
   const overview = ONBOARDING_PAGES.find((p) => p.id === "local");
   const scheme = ONBOARDING_PAGES.find((p) => p.id === "scheme");
-  check(overview?.terms?.length === 3 && JSON.stringify(overview.terms).includes("Focus") &&
+  check(overview?.benefits?.length === 3 &&
+    ONBOARDING_PAGES.find((p) => p.id === "find")?.definitions?.length === 3 &&
     scheme?.special === "scheme",
-  "first run plants the complete feature map before an actual color-scheme choice");
+  "first run explains the purpose and saving choices before actual appearance controls");
   check(HELP_TOPICS.length === 14 && new Set(helpIds).size === helpIds.length &&
     ["open", "inbox", "sessions", "labels", "search", "snooze", "focus", "automation",
       "close-day", "appearance", "keyboard", "data", "history", "safety"]
@@ -4227,9 +4932,9 @@ await runSmokeListWorkflows({
     openHelp.how.some((item) => item.includes("Organize")),
   "Open Tabs Help leads with its outcome and covers the real daily tools");
   const introFind = ONBOARDING_PAGES.find((page) => page.id === "find");
-  check(introFind?.why.length === 2 && introFind.note?.includes("press Tab") &&
-    introFind.essence.startsWith("The Search bar") && !introFind.how,
-  "first run explains the Chrome address-bar search at point of use without a feature laundry list");
+  check(introFind?.definitions?.map(([name]) => name).join(",") === "inbox,sessions,labels" &&
+    introFind.note?.includes("Search") && !introFind.how,
+  "first run distinguishes the three saving tools and keeps Search guidance concise");
   const linkedHelp = Object.fromEntries(HELP_TOPICS.map((topic) => [topic.id, topic.settingsGroups ?? []]));
   check(linkedHelp.inbox.includes("autosave") && linkedHelp.sessions.includes("sessions") &&
     linkedHelp.focus.includes("focus") && linkedHelp.automation.length === 4 &&
@@ -4269,15 +4974,19 @@ runSmokeSearchContracts(check);
   check(DEFAULT_SETTINGS.newTabMode === "dashboard", "N25: default new-tab mode is still 'dashboard'");
   check(
     ["dashboard", "minimal", "blank"].includes(DEFAULT_SETTINGS.newTabMode),
-    "N25: newTabMode default is one of the three modes"
+    "N25: newTabMode default is one of the three current modes"
   );
   check(newtabCssSrc.includes(".minimal-deck") &&
     newtabCssSrc.includes("padding-bottom: env(safe-area-inset-bottom)") &&
+    newtabCssSrc.includes(".minimal-deck.is-search-expanded") &&
+    newtabCssSrc.includes("--minimal-search-expanded-block: min(clamp(560px, 76vh, 720px), calc(100vh - 84px))") &&
     newtabCssSrc.includes("env(safe-area-inset-bottom)") &&
     !newtabCssSrc.includes("margin-top: 112px") &&
     !newtabCssSrc.includes("@media (max-width: 520px) { .links") &&
     newtabJsSrc.includes('document.documentElement.clientHeight') &&
-    newtabJsSrc.includes('searchField.getBoundingClientRect().bottom - 24') &&
+    newtabJsSrc.includes("minimalSearchResultsRoom") &&
+    newtabJsSrc.includes('expanded: deck.classList.contains("is-search-expanded")') &&
+    newtabJsSrc.includes('deck.classList.toggle("is-search-expanded", expanded)') &&
     newtabJsSrc.includes('"--search-results-max-h"') &&
     primitivesSrc.includes("var(--search-results-max-h, 60vh)"),
     "N34/P11-24: Horizon keeps navigation in its safe-area command deck and measurably caps the Search overlay to the viewport");
@@ -4304,6 +5013,10 @@ runSmokeSearchContracts(check);
   check(plan("dashboard", "search").needsFocusNavigation &&
         !plan("dashboard", "search", "?focus=search").needsFocusNavigation,
     "N1 matrix: Dashboard + EveryTab search performs exactly one focus-transfer navigation");
+  check(!plan("terminal", "omnibox").needsFocusNavigation &&
+        plan("terminal", "omnibox").mode === "dashboard" &&
+        plan("terminal", "omnibox").module === "dashboard",
+    "N1 legacy: a retired Terminal preference safely falls back to Dashboard");
   check(!plan("blank", "search").needsFocusNavigation &&
         plan("blank", "search").module === "newtab",
     "N1: Blank never navigates or mounts dashboard regardless of the focus preference");
@@ -4333,10 +5046,17 @@ runSmokeSearchContracts(check);
   const dashboardHtml = readFileSync(new URL("../dashboard.html", import.meta.url), "utf8");
   const background = readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
   const singleton = readFileSync(new URL("../js/lib/newtab-singleton.js", import.meta.url), "utf8");
+  const tabLifecycle = readFileSync(
+    new URL("../js/background/tab-lifecycle-owner.js", import.meta.url), "utf8"
+  );
+  const runtimeLifecycle = readFileSync(
+    new URL("../js/background/runtime-lifecycle-owner.js", import.meta.url), "utf8"
+  );
   const settingsForm = readFileSync(new URL("../js/ui/settings-form.js", import.meta.url), "utf8");
   check(html.includes('src="./js/ui/newtab-entry.js"') &&
-        html.includes('href="css/dashboard.css"') && html.includes('href="css/newtab.css"'),
-    "N1 host: the one manifest override can mount either shared surface and stylesheet");
+        html.includes('href="css/dashboard.css"') && html.includes('href="css/newtab.css"') &&
+        !html.includes('href="css/terminal.css"'),
+    "N1 host: the one manifest override mounts Dashboard, Minimal, or Blank without a retired Terminal layer");
   check(entry.includes('await import("./dashboard.js")') &&
         entry.includes('await import("./newtab.js")') && !html.includes("<iframe"),
     "N1 host: New-tab Dashboard and regular Dashboard share one module, with no iframe/copy");
@@ -4355,16 +5075,16 @@ runSmokeSearchContracts(check);
   check(dashboard.includes('if (!isNewTabHost()) return;'),
     "N1: the one-time new-tab notice still recognizes Dashboard mounted in the host");
   check(
-    DEFAULT_SETTINGS.oneNewTabPerWindow === false &&
+    DEFAULT_SETTINGS.oneNewTabPerWindow === true &&
+      DEFAULT_SETTINGS.newTabWelcomeEnabled === true &&
       typeof getFreshSettings === "function" &&
       settingsForm.includes('check("oneNewTabPerWindow")') &&
+      settingsForm.includes('check("newTabWelcomeEnabled")') &&
       entry.includes('type: "everytab-new-tab-mounted"') &&
-      background.includes('handler(NEW_TAB_MOUNTED_MESSAGE, "async"') &&
-      background.includes("retireOlderEveryTabNewTabs(sender.tab)") &&
-      background.includes("resetNewTabCreationRanks()") &&
-      background.includes("shouldReconcileNewTabUpdate(changeInfo, tab") &&
+      runtimeLifecycle.includes("newTabs.resetCreationOrder()") &&
+      tabLifecycle.includes("shouldReconcileNewTabUpdate(changeInfo, tab") &&
       singleton.includes("const safeUntrackedReady = ready?.active === true"),
-    "One-New-Tab stays opt-in, runs in the worker, and lets only the active mounted startup page consolidate"
+    "One-New-Tab defaults on, runs in the worker, and lets only the active mounted startup page consolidate"
   );
   check(
     dashboard.includes("dashboardSearchIntent(location.hash)") &&

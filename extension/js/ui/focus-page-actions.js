@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { msg } from "../lib/i18n.js";
 
 const INVALID_REASONS = new Set(["invalid", "missing", "not-guard", "no-tab"]);

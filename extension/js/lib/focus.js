@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * F8 (Focus Mode) — pure domain helpers. DOM-free and Chrome-free so they run
  * in Node tests and can be shared by the future background coordinator (F8-3).

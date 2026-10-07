@@ -1,24 +1,42 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "./failure-diagnostic.js";
 /**
  * M4 — Auto-archive (PRD §3.3).
  * Idle tabs close and land in the Inbox (source "auto-archive"); old Inbox
  * items expire to the long-term Archive store. Both sweeps are alarm-driven
  * and run in the background worker only (hard rule: all tab mutations there).
  *
- * Idle tracking is activation-only in M4 (shared tabActivity map with
- * suspension). The PRD's scroll/input tracking and form-input exemption need
- * a content script — deferred, which is why the feature ships off by default.
+ * The shared device-local clock starts when a foreground tab is left. The
+ * PRD's scroll/input tracking and form-input exemption need a content script,
+ * which is why the feature ships off by default.
  */
 
 import { STORE_KEYS } from "./types.js";
-import { getSettings, newMeta, upsertItem, mutateStores } from "./store.js";
-import { canonicalRef, matchesWhitelist } from "./tabs.js";
-import { getActivityMap, saveActivityMap } from "./suspend.js";
-import { openDashboard, restoreTabsFromItems } from "./actions.js";
+import {
+  getSettings, getFreshSettings, newMeta, upsertItem, mutateStores,
+  readFreshStoreMap, readStoreValue, withStoreLock
+} from "./store.js";
+import {
+  canonicalRef, isTemporarilyAutomationProtected, matchesAutomationExclusion, matchesWhitelist,
+  TEMPORARY_AUTOMATION_EXEMPTIONS_KEY
+} from "./tabs.js";
+import {
+  protectionStatus, readTabProtections, withAutomationProtectionEffect
+} from "./automation-protection.js";
+import { tabActivity } from "./tab-activity.js";
+import { openDashboard, openTabsFromItems } from "./actions.js";
 import { bump, COUNTERS_KEY, bumpedCounters } from "./counters.js";
 import { JOURNAL_KEY, makeJournalEntry, appendedJournal } from "./journal.js";
+import {
+  closeReceiptTabs, closeUnchangedLiveTabs, finishPendingLiveClose
+} from "./live-close.js";
 import { msg as localeMessage } from "./i18n.js";
 
 const DAY_MS = 86_400_000;
+// Existing device-local reload recovery deadline, also owned by suspend.js.
+const RECOVERY_GRACE_KEY = "suspendRecoveryGraceUntil";
 
 // `matchesWhitelist` moved to tabs.js (shared with F9's never-suspend list); it
 // is re-exported here so existing importers (and tests) keep working unchanged.
@@ -30,13 +48,18 @@ export { matchesWhitelist };
  * it's a tab-level concern only; a fully idle unfocused window may archive
  * as a bundle including its active tab. No form-input exemption in M4.
  * @param {chrome.tabs.Tab} t @param {string[]} [whitelist]
+ * @param {Record<string, number>} [temporaryExemptions]
  */
-export function isArchiveExempt(t, whitelist) {
+export function isArchiveExempt(
+  t, whitelist, temporaryExemptions, now = Date.now(), tabProtections = {}
+) {
   if (t.pinned || t.audible || t.incognito) return true; // never auto-dump incognito
   if (t.groupId !== undefined && t.groupId !== -1) return true;
   const ref = canonicalRef(t);
   if (!ref) return true;
-  return matchesWhitelist(ref.url, whitelist);
+  if (protectionStatus(t, {}, {}, tabProtections, now).protected) return true;
+  return matchesAutomationExclusion(ref.url, whitelist) ||
+    isTemporarilyAutomationProtected(ref.url, temporaryExemptions, now);
 }
 
 /**
@@ -49,7 +72,7 @@ export function isArchiveExempt(t, whitelist) {
  */
 let registerUndoButton = null;
 
-/** Wire the worker's notification-button map (background.js owns the router). */
+/** Wire the background notification owner's receipt registry. */
 export function setArchiveUndoRegistrar(fn) {
   registerUndoButton = typeof fn === "function" ? fn : null;
 }
@@ -78,7 +101,7 @@ async function notifyArchived(count, undoId) {
     });
     if (undoId && registerUndoButton) registerUndoButton(id, undoId);
   } catch (e) {
-    console.warn("EveryTab: archive notification failed", e);
+    reportFailure("archive-notification", e);
   }
 }
 
@@ -117,9 +140,39 @@ export async function archiveSweep(now = Date.now()) {
 /** @type {Promise<number>|null} */
 let archiveSweepInFlight = null;
 
+async function bundleWindowIsCurrent(
+  plan, whitelist = [], temporaryExemptions = {}, now = Date.now(), tabProtections = {}
+) {
+  try {
+    const liveWindow = await chrome.windows.get(plan.windowId, { populate: true });
+    const plannedIds = plan.tabs.map((tab) => tab.id)
+      .filter(Number.isInteger).sort((a, b) => a - b);
+    const currentIds = (liveWindow.tabs ?? []).map((tab) => tab.id)
+      .filter(Number.isInteger).sort((a, b) => a - b);
+    if (liveWindow.focused || plannedIds.length !== currentIds.length ||
+        !plannedIds.every((tabId, index) => tabId === currentIds[index])) return false;
+    const plannedById = new Map(plan.tabs.map((tab) => [tab.id, tab]));
+    return (liveWindow.tabs ?? []).every((live) => {
+      const planned = plannedById.get(live.id);
+      const plannedRef = canonicalRef(planned);
+      const liveRef = canonicalRef(live);
+      return plannedRef && liveRef && plannedRef.url === liveRef.url &&
+        !isArchiveExempt(live, whitelist, temporaryExemptions, now, tabProtections);
+    });
+  } catch {
+    return false;
+  }
+}
+
 /** @param {number} now @returns {Promise<number>} */
 async function runArchiveSweep(now) {
-  const settings = await getSettings();
+  const [settings, temporaryExemptions, tabProtections, recoveryGraceUntil] = await Promise.all([
+    getSettings(),
+    readStoreValue(TEMPORARY_AUTOMATION_EXEMPTIONS_KEY),
+    readTabProtections(),
+    readStoreValue(RECOVERY_GRACE_KEY)
+  ]);
+  if (Date.now() < (recoveryGraceUntil ?? 0)) return 0;
   const timerEnabled = settings.autoArchiveEnabled === true;
   const maxTabs = Math.max(0, Math.floor(Number(settings.autoSaveMaxTabs) || 0));
   if (!timerEnabled && maxTabs <= 0) return 0;
@@ -129,12 +182,14 @@ async function runArchiveSweep(now) {
     (Math.max(1, Number(settings.autoArchiveDays) || 7) * 1440));
   const cutoff = now - mins * 60_000;
 
-  const map = await getActivityMap();
-  let mapChanged = false;
+  if (timerEnabled) await tabActivity.whenReady();
+  const map = await tabActivity.getMap({ waitForContext: timerEnabled });
+  const firstSeenIds = new Set();
+  const forgottenIds = new Set();
   const windows = await chrome.windows.getAll({ populate: true });
   const liveIds = new Set();
 
-  /** @type {{windowId: number, tabs: chrome.tabs.Tab[], bundle: boolean}[]} */
+  /** @type {{windowId: number, tabs: chrome.tabs.Tab[], bundle: boolean, idleIds:Set<number>}[]} */
   const plans = [];
   /** @type {{windowId: number, window: chrome.windows.Window, tab: chrome.tabs.Tab}[]} */
   const openTabs = [];
@@ -155,12 +210,15 @@ async function runArchiveSweep(now) {
     const loose = [];
 
     for (const t of tabs) {
-      const exempt = isArchiveExempt(t, settings.archiveWhitelist);
+      const exempt = isArchiveExempt(
+        t, settings.archiveWhitelist, temporaryExemptions, now, tabProtections);
       if (exempt) allArchivable = false;
       const last = map[t.id];
       if (last === undefined) {
-        map[t.id] = now; // first sighting: start the clock
-        mapChanged = true;
+        firstSeenIds.add(t.id);
+        // Preserve the cap's established within-run ordering without publishing
+        // this snapshot. Reconciliation still adds it only if no leave won.
+        map[t.id] = now;
         allIdle = false;
         continue;
       }
@@ -172,9 +230,19 @@ async function runArchiveSweep(now) {
     }
 
     if (allIdle && allArchivable && !win.focused) {
-      plans.push({ windowId: win.id, tabs, bundle: true }); // PRD: window archives as a unit
+      plans.push({
+        windowId: win.id,
+        tabs,
+        bundle: true,
+        idleIds: new Set(tabs.map((tab) => tab.id).filter(Number.isInteger))
+      }); // PRD: window archives as a unit
     } else if (loose.length > 0) {
-      plans.push({ windowId: win.id, tabs: loose, bundle: false });
+      plans.push({
+        windowId: win.id,
+        tabs: loose,
+        bundle: false,
+        idleIds: new Set(loose.map((tab) => tab.id).filter(Number.isInteger))
+      });
     }
   }
 
@@ -190,7 +258,8 @@ async function runArchiveSweep(now) {
       const lastUsed = (tab) => map[tab.id] ?? tab.lastAccessed ?? now;
       const candidates = openTabs
         .filter(({ tab }) => tab.id !== undefined && !plannedIds.has(tab.id) &&
-          !tab.active && !isArchiveExempt(tab, settings.archiveWhitelist))
+          !tab.active && !isArchiveExempt(
+            tab, settings.archiveWhitelist, temporaryExemptions, now, tabProtections))
         .sort((a, b) => lastUsed(a.tab) - lastUsed(b.tab) ||
           a.windowId - b.windowId || (a.tab.index ?? 0) - (b.tab.index ?? 0) ||
           a.tab.id - b.tab.id)
@@ -213,18 +282,11 @@ async function runArchiveSweep(now) {
           plans.push({
             windowId: win.id,
             tabs: extra.sort((a, b) => (a.index ?? 0) - (b.index ?? 0)),
-            bundle: extra.length === (win.tabs?.length ?? 0)
+            bundle: extra.length === (win.tabs?.length ?? 0),
+            idleIds: new Set()
           });
         }
       }
-    }
-  }
-
-  // Prune activity entries for tabs that no longer exist (restart leftovers).
-  for (const id of Object.keys(map)) {
-    if (!liveIds.has(Number(id))) {
-      delete map[id];
-      mapChanged = true;
     }
   }
 
@@ -232,6 +294,18 @@ async function runArchiveSweep(now) {
   /** The last sweep entry, so one notification can offer to undo it. */
   let lastEntryId = null;
   for (const plan of plans) {
+    const [freshSettings, freshTemporaryExemptions, freshTabProtections] = await Promise.all([
+      getFreshSettings(),
+      readFreshStoreMap(TEMPORARY_AUTOMATION_EXEMPTIONS_KEY),
+      readTabProtections()
+    ]);
+    const freshTimerEnabled = freshSettings.autoArchiveEnabled === true;
+    const freshMins = Math.max(1, Number(freshSettings.autoDumpAfterMinutes) ||
+      (Math.max(1, Number(freshSettings.autoArchiveDays) || 7) * 1440));
+    const freshCutoff = now - freshMins * 60_000;
+    if (plan.bundle && !await bundleWindowIsCurrent(
+      plan, freshSettings.archiveWhitelist, freshTemporaryExemptions, now,
+      freshTabProtections)) continue;
     const liveTabs = [];
     for (const planned of plan.tabs) {
       if (planned.id === undefined) continue;
@@ -241,63 +315,188 @@ async function runArchiveSweep(now) {
         const liveRef = canonicalRef(live);
         const sameTab = live.windowId === plan.windowId && plannedRef && liveRef &&
           plannedRef.url === liveRef.url;
+        const requiresIdle = plan.idleIds.has(planned.id);
         if (!sameTab || (!plan.bundle && live.active) ||
-            isArchiveExempt(live, settings.archiveWhitelist)) continue;
+            isArchiveExempt(
+              live, freshSettings.archiveWhitelist, freshTemporaryExemptions, now,
+              freshTabProtections) ||
+            (requiresIdle && (!freshTimerEnabled ||
+              !await tabActivity.isOlderThan(planned.id, freshCutoff)))) continue;
+
         liveTabs.push(live);
       } catch {
         /* closed between planning and commit */
       }
     }
+
+    // Every queued age read finishes before one final plan-level decision.
+    // A later tab's wait can overlap a Settings or Chrome protection change
+    // for an earlier accepted tab, so refresh both here before persistence.
+    if (plan.idleIds.size > 0) {
+      const [currentSettings, currentTemporaryExemptions, currentTabProtections] = await Promise.all([
+        getFreshSettings(),
+        readFreshStoreMap(TEMPORARY_AUTOMATION_EXEMPTIONS_KEY),
+        readTabProtections()
+      ]);
+      const currentMins = Math.max(1, Number(currentSettings.autoDumpAfterMinutes) ||
+        (Math.max(1, Number(currentSettings.autoArchiveDays) || 7) * 1440));
+      if (currentSettings.autoArchiveEnabled !== true || currentMins !== freshMins) continue;
+      const currentTabs = [];
+      let planIsCurrent = true;
+      for (const accepted of liveTabs) {
+        try {
+          const current = await chrome.tabs.get(accepted.id);
+          const acceptedRef = canonicalRef(accepted);
+          const currentRef = canonicalRef(current);
+          if (current.windowId !== plan.windowId || !acceptedRef || !currentRef ||
+              acceptedRef.url !== currentRef.url || (!plan.bundle && current.active) ||
+              isArchiveExempt(
+                current, currentSettings.archiveWhitelist, currentTemporaryExemptions, now,
+                currentTabProtections)) {
+            planIsCurrent = false;
+            break;
+          }
+          currentTabs.push(current);
+        } catch {
+          planIsCurrent = false;
+          break;
+        }
+      }
+      if (!planIsCurrent) continue;
+      liveTabs.splice(0, liveTabs.length, ...currentTabs);
+      if (plan.bundle &&
+          !await bundleWindowIsCurrent(
+            plan, currentSettings.archiveWhitelist, currentTemporaryExemptions, now,
+            currentTabProtections)) continue;
+    }
     // A whole-window plan is one indivisible bundle. If any tab moved, changed,
     // or became protected, leave the entire window alone and reconsider it on
     // a later sweep instead of silently turning it into a partial capture.
     if (plan.bundle && liveTabs.length !== plan.tabs.length) continue;
-    const refs = liveTabs.map(canonicalRef).filter(Boolean);
-    if (refs.length === 0) continue;
+    if (plan.bundle && plan.idleIds.size === 0 &&
+        !await bundleWindowIsCurrent(
+          plan, freshSettings.archiveWhitelist, freshTemporaryExemptions, now,
+          freshTabProtections)) continue;
+    const committedCount = await withAutomationProtectionEffect(async () => {
+      // Own the final live/protection decision through both durable capture and
+      // Chrome close. A protection write either commits before this fresh read
+      // and cancels the effect, or starts after the completed close.
+      const [commitSettings, commitTemporaryExemptions, commitTabProtections] =
+        await Promise.all([
+          getFreshSettings(),
+          readFreshStoreMap(TEMPORARY_AUTOMATION_EXEMPTIONS_KEY),
+          readTabProtections()
+        ]);
+      const commitTabs = [];
+      for (const accepted of liveTabs) {
+        try {
+          const current = await chrome.tabs.get(accepted.id);
+          const acceptedRef = canonicalRef(accepted);
+          const currentRef = canonicalRef(current);
+          if (current.windowId !== plan.windowId || !acceptedRef || !currentRef ||
+              acceptedRef.url !== currentRef.url || (!plan.bundle && current.active) ||
+              isArchiveExempt(
+                current, commitSettings.archiveWhitelist,
+                commitTemporaryExemptions, Date.now(), commitTabProtections)) return 0;
+          commitTabs.push(current);
+        } catch { return 0; }
+      }
+      if (plan.bundle && commitTabs.length !== plan.tabs.length) return 0;
+      const refs = commitTabs.map(canonicalRef).filter(Boolean);
+      if (refs.length === 0) return 0;
 
-    /** @type {import("./types.js").InboxItem} */
-    const item = {
-      ...(await newMeta()),
-      kind: plan.bundle || refs.length > 1 ? "window" : "tab",
-      tabs: refs,
-      source: "auto-archive",
-      labels: []
-    };
+      /** @type {import("./types.js").InboxItem} */
+      const item = {
+        ...(await newMeta()),
+        kind: plan.bundle || refs.length > 1 ? "window" : "tab",
+        tabs: refs,
+        source: "auto-archive",
+        labels: []
+      };
     /* F46: the sweep CLOSES tabs on its own, and it was the one operation with
      * no record and no way back. It now journals exactly what the manual save
      * does — remove the item it created, reopen the tabs it closed — in the
      * SAME atomic commit as the item, still before any tab closes, and marked
      * `auto` so Activity can separate what EveryTab did by itself. */
-    const entry = makeJournalEntry(
+      const entry = makeJournalEntry(
       `Auto-saved ${refs.length} tab${refs.length === 1 ? "" : "s"} to the Inbox`,
       { dels: [{ store: STORE_KEYS.inbox, id: item.id }], reopen: [refs] },
-      { auto: true }
+      {
+        auto: true,
+        forwardReceipt: {
+          kind: "close-tabs", status: "pending", tabs: closeReceiptTabs(commitTabs)
+        },
+        actionKind: "auto-saved-tabs",
+        actionParams: {
+          count: refs.length,
+          ...(refs[0]?.title || refs[0]?.url
+            ? { name: refs[0].title || refs[0].url }
+            : {})
+        }
+      }
     );
-    lastEntryId = entry?.id ?? lastEntryId;
-    const stamp = Date.now();
-    await mutateStores([STORE_KEYS.inbox, JOURNAL_KEY], (maps) => ({
-      [STORE_KEYS.inbox]: { ...(maps[STORE_KEYS.inbox] ?? {}), [item.id]: { ...item, modifiedAt: stamp } },
-      [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
-    }));
+      const stamp = Date.now();
+      const committed = await mutateStores([STORE_KEYS.inbox, JOURNAL_KEY, RECOVERY_GRACE_KEY], (maps) => {
+        // Reload grace can begin while the sweep awaits Chrome/activity reads
+        // or this lock. Its fresh deadline must veto the entire saved effect.
+        if (Date.now() < (maps[RECOVERY_GRACE_KEY] ?? 0)) return null;
+        return {
+          [STORE_KEYS.inbox]: { ...(maps[STORE_KEYS.inbox] ?? {}), [item.id]: { ...item, modifiedAt: stamp } },
+          [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
+        };
+      });
+      if (!committed) return 0;
+      lastEntryId = entry?.id ?? lastEntryId;
 
     // A whole-window bundle can kill the last window — open the dashboard
     // first so the browser (and this operation) survives. (M0 lesson.)
-    if (plan.bundle) {
-      const remaining = await chrome.windows.getAll({});
-      if (remaining.length <= 1) await openDashboard();
-    }
-    const ids = liveTabs.map((t) => t.id).filter((id) => id !== undefined);
-    try {
-      await chrome.tabs.remove(ids);
-    } catch {
-      /* a tab may already be gone — the Inbox item stays, nothing is lost */
-    }
-    for (const id of ids) delete map[id];
-    mapChanged = true;
-    archived += refs.length;
+      if (plan.bundle) {
+        const remaining = await chrome.windows.getAll({});
+        if (remaining.length <= 1) await openDashboard();
+      }
+      let close = { closed: [] };
+      await finishPendingLiveClose(entry.id, commitTabs, async () => {
+        close = await closeUnchangedLiveTabs(
+          commitTabs,
+          {
+            get: (id) => chrome.tabs.get(id),
+            remove: (ids) => withStoreLock(async () => {
+              // The grace writer uses the same Store lock. Recheck after all
+              // close-identity awaits, then order grace against the browser
+              // effect. Receipt settlement stays outside this non-reentrant
+              // lock; a veto keeps the prior capture with zero confirmed closes.
+              if (Date.now() < (await readStoreValue(RECOVERY_GRACE_KEY) ?? 0)) return;
+              await chrome.tabs.remove(ids);
+            })
+          },
+          {
+            allOrNothing: plan.bundle,
+            accept: (current) => (plan.bundle || !current.active) &&
+              !isArchiveExempt(
+                current,
+                commitSettings.archiveWhitelist,
+                commitTemporaryExemptions,
+                Date.now(),
+                commitTabProtections
+              )
+          }
+        );
+        return close;
+      });
+      for (const tab of close.closed) forgottenIds.add(tab.id);
+      return refs.length;
+    });
+    archived += committedCount;
   }
 
-  if (mapChanged) await saveActivityMap(map);
+  await tabActivity.reconcileSweep({
+    snapshot: map,
+    liveIds,
+    firstSeenIds,
+    forgetIds: forgottenIds,
+    at: now,
+    waitForContext: timerEnabled
+  });
   if (archived > 0) {
     bump("tabsAutoArchived", archived);
     await notifyArchived(archived, lastEntryId);
@@ -334,14 +533,15 @@ async function notifyExpired(count, undoId) {
     });
     if (undoId && registerUndoButton) registerUndoButton(id, undoId);
   } catch (e) {
-    console.warn("EveryTab: expiry notification failed", e);
+    reportFailure("archive-expiry-notification", e);
   }
 }
 
 /**
- * Inbox expiry (PRD §3.3): items untouched for settings.inboxExpiryDays move
+ * Inbox expiry (PRD §3.3): items this old in Inbox move
  * to the Archive store — same record, same id, archivedAt stamped; tombstoned
- * in the Inbox. Any triage activity resets modifiedAt and keeps the item.
+ * in the Inbox. Labeling or other triage must not silently restart an expiry
+ * clock the interface describes as time since the item was saved.
  * Runs regardless of autoArchiveEnabled (0 = never disables it).
  * @param {number} [now] injectable for tests
  * @returns {Promise<number>} items moved
@@ -363,11 +563,23 @@ export async function sweepInboxExpiry(now = Date.now()) {
   await mutateStores([STORE_KEYS.inbox, STORE_KEYS.archive, COUNTERS_KEY, JOURNAL_KEY], (maps) => {
     const inbox = maps[STORE_KEYS.inbox] ?? {};
     /** @type {import("./types.js").InboxItem[]} */
-    const expired = Object.values(inbox).filter((i) => !i.deletedAt && i.modifiedAt < cutoff);
+    const expired = Object.values(inbox).filter((i) => {
+      if (i.deletedAt) return false;
+      // createdAt is when this record entered Inbox and does not change when a
+      // label is added. Early records may lack it, so modifiedAt remains the
+      // conservative legacy fallback rather than making them immortal.
+      const savedAt = Number.isFinite(i.createdAt) ? i.createdAt : i.modifiedAt;
+      return Number.isFinite(savedAt) && savedAt < cutoff;
+    });
     if (expired.length === 0) return null; // validated no-op — nothing past the age
     const newInbox = { ...inbox };
     const newArchive = { ...(maps[STORE_KEYS.archive] ?? {}) };
+    let representativeName = "";
     for (const item of expired) {
+      if (!representativeName) {
+        const tab = item.tabs?.find((candidate) => candidate?.title || candidate?.url);
+        representativeName = tab?.title || tab?.url || "";
+      }
       newArchive[item.id] = { ...item, archivedAt: now, modifiedAt: now };
       newInbox[item.id] = { ...item, deletedAt: now, modifiedAt: now };
     }
@@ -378,7 +590,14 @@ export async function sweepInboxExpiry(now = Date.now()) {
     const entry = makeJournalEntry(
       `Auto-archived ${expired.length} Inbox item${expired.length === 1 ? "" : "s"}`,
       { puts: expired.map((item) => ({ store: STORE_KEYS.inbox, item })) },
-      { auto: true }
+      {
+        auto: true,
+        actionKind: "auto-archived-items",
+        actionParams: {
+          count: expired.length,
+          ...(representativeName ? { name: representativeName } : {})
+        }
+      }
     );
     entryId = entry?.id ?? null;
     return {
@@ -393,12 +612,12 @@ export async function sweepInboxExpiry(now = Date.now()) {
 }
 
 /**
- * Restore an Archive item: window bundle → new window; tab(s) → current
- * window. Removes it from the Archive (tombstone).
+ * Open an Archive item: window bundle → new window; tab(s) → current window.
+ * The durable Archive occurrence stays byte-for-byte unchanged.
  * @param {import("./types.js").InboxItem} item
  */
-export async function restoreArchiveItem(item) {
-  return restoreTabsFromItems([
+export async function openArchiveItem(item) {
+  return openTabsFromItems([
     { item, indexes: item.tabs.map((_, index) => index) }
-  ], STORE_KEYS.archive);
+  ]);
 }

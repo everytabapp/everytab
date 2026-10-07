@@ -1,4 +1,4 @@
-await import("../tools/scheme-editor-harness.js");
+await import("../../tools/scheme-editor-harness.js");
 
 const result = document.getElementById("result");
 const checks = [];
@@ -50,7 +50,7 @@ try {
   )).position === "static",
   "preview window headers scroll with the atlas instead of floating mid-canvas");
   check(!document.querySelector('optgroup[label="Candidate schemes"]'),
-    "the completed candidate campaign leaves no empty trial group in the editor");
+    "the accepted Aladdin scheme closes the temporary candidate group");
   check(button("Save custom copy").classList.contains("scheme-editor-primary") &&
     !button("Save custom copy").disabled &&
     document.querySelector(".scheme-editor-save-state").textContent.includes("Not yet in Yours"),
@@ -60,11 +60,15 @@ try {
     !document.querySelector(".scheme-preview-results > button"),
   "navigation and Search reuse the real production class and lane anatomy");
   const activeNav = document.querySelector(".scheme-preview-navigation .navitem.active");
+  const previewRoot = document.querySelector(".scheme-editor-preview");
+  // This assertion checks token ownership, not animation timing. Chrome can
+  // pause CSS transitions in a backgrounded compact test page.
+  activeNav.style.transition = "none";
   const colorProbe = document.createElement("span");
-  colorProbe.style.color = getComputedStyle(document.querySelector(".scheme-editor-preview"))
-    .getPropertyValue("--accent");
-  document.body.append(colorProbe);
-  check(getComputedStyle(activeNav).backgroundColor === getComputedStyle(colorProbe).color,
+  colorProbe.style.color = "var(--accent)";
+  previewRoot.append(colorProbe);
+  const previewAccent = getComputedStyle(colorProbe).color;
+  check(getComputedStyle(activeNav).backgroundColor === previewAccent,
     "the selected section uses the production accent treatment");
   colorProbe.remove();
 
@@ -75,6 +79,17 @@ try {
   "the accepted Oblivion composition loads as a protected built-in source");
   startFrom("builtin:cream");
   await waitFor(() => field("Page")?.value === "#F5EFE3", "Cream did not reload after Oblivion");
+
+  startFrom("builtin:aladdin");
+  await waitFor(() => field("Page")?.value === "#EFA36F", "Aladdin built-in did not load");
+  check(document.querySelector("#scheme-editor-source-note").textContent.includes("Built-ins are protected") &&
+    document.querySelector('[aria-label="Scheme name"]').value === "Aladdin custom",
+  "Aladdin loads as the protected built-in promoted from Crimson Peach");
+  button("Dark").click();
+  check(field("Page").value === "#101B42",
+    "the promoted Aladdin scheme switches to its complete Dark map");
+  startFrom("builtin:cream");
+  await waitFor(() => field("Page")?.value === "#F5EFE3", "Cream did not reload after Aladdin");
 
   const liveRootBefore = document.documentElement.dataset.scheme;
   setText(field("Page"), "0af");
@@ -127,10 +142,13 @@ try {
     .some((record) => record.name === "Mounted Ink Copy"), "built-in copy did not save");
   const saved = Object.values(globalThis.__schemeEditorHarnessState.customSchemes)
     .find((record) => record.name === "Mounted Ink Copy");
-  check(Boolean(saved) && document.documentElement.dataset.scheme === "cream" &&
-    button("Saved").disabled &&
-    document.querySelector(".scheme-editor-save-state").textContent.includes("All changes saved"),
-    "saving a protected built-in creates a custom record without applying it");
+  const savedButton = button("Saved");
+  const savedState = document.querySelector(".scheme-editor-save-state")?.textContent ?? "";
+  check(Boolean(saved) && document.documentElement.dataset.scheme === liveRootBefore &&
+    savedButton?.disabled && savedState.includes("All changes saved"),
+    "saving a protected built-in creates a custom record without applying it: " +
+      JSON.stringify({ found: Boolean(saved), scheme: document.documentElement.dataset.scheme,
+        savedButton: Boolean(savedButton), disabled: savedButton?.disabled, savedState }));
   button("Apply").click();
   await waitFor(() => globalThis.__schemeEditorHarnessState.settings?.uiScheme?.startsWith("custom:"),
     "save and apply did not update Settings");

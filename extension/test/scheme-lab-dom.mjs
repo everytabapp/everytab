@@ -1,8 +1,8 @@
 /** Real-Chrome Scheme Lab production-CSS contract at its three capture widths. */
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { runOwnedChrome } from "./chrome-test-process.mjs";
 
 const candidates = [
   process.env.CHROME_BIN,
@@ -26,28 +26,44 @@ const results = [];
 
 for (const specimen of cases) {
   const profile = await mkdtemp(`${tmpdir()}/everytab-scheme-lab-dom-`);
-  const page = new URL("../tools/scheme-lab.html", import.meta.url);
+  const page = new URL("../../tools/scheme-lab.html", import.meta.url);
   page.searchParams.set("contact", specimen.kind);
   page.searchParams.set("page", "1");
   try {
-    const output = await new Promise((resolve, reject) => {
-      execFile(chromeBin, [
+    let output;
+    try {
+      ({ stdout: output } = await runOwnedChrome(chromeBin, [
         "--headless=new", "--disable-gpu", "--disable-background-networking",
         "--disable-component-update", "--disable-default-apps", "--no-first-run",
         "--allow-file-access-from-files", `--user-data-dir=${profile}`,
         "--virtual-time-budget=5000", "--dump-dom", page.href
-      ], { maxBuffer: 12 * 1024 * 1024, timeout: 15_000 }, (error, stdout, stderr) => {
-        if (error) reject(new Error(`${error.message}\n${stderr}`));
-        else resolve(stdout);
-      });
-    });
+      ], {
+        maxBuffer: 12 * 1024 * 1024,
+        timeoutMs: 15_000,
+        completeWhen: (dump) => dump.includes(`data-contact-kind="${specimen.kind}"`) &&
+          (dump.match(/data-lab-shell-contract="(?:pass|fail|pending-mount)"/g)?.length ?? 0) >=
+            specimen.expected
+      }));
+    } catch (error) {
+      // Chrome 150 on macOS can leave --dump-dom alive after emitting its one
+      // complete document. Validate that captured document instead of turning
+      // a browser teardown defect into a product failure.
+      if (!error.stdout) throw error;
+      output = error.stdout;
+    }
     const entries = output.match(/class="lab-contact-entry"/g)?.length ?? 0;
     const passes = output.match(/data-lab-shell-contract="pass"/g)?.length ?? 0;
     const failures = output.match(/data-lab-shell-contract="(?:fail|pending-mount)"/g)?.length ?? 0;
     const kind = output.match(/data-contact-kind="([^"]+)"/)?.[1] ?? null;
     if (entries !== specimen.expected || passes !== specimen.expected || failures || kind !== specimen.kind) {
+      const runtimeError = output.match(
+        /<pre id="lab-runtime-error"[^>]*>([\s\S]*?)<\/pre>/
+      )?.[1]?.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
       throw new Error(`${specimen.kind} contract failed: ` +
-        JSON.stringify({ entries, passes, failures, kind, expected: specimen.expected }));
+        JSON.stringify({
+          entries, passes, failures, kind, expected: specimen.expected,
+          runtimeError: runtimeError || null
+        }));
     }
     results.push(`${specimen.kind}=${passes}/${entries}`);
   } finally {

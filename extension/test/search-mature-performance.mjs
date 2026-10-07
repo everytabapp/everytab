@@ -31,7 +31,18 @@ globalThis.chrome = {
   tabs: { query: async () => structuredClone(openTabs) }
 };
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
 const { STORE_KEYS } = await import("../js/lib/types.js");
+const authority = installBrowserMapStorageAuthority();
+const readMaps = authority.readMaps.bind(authority);
+let sessionFamilyReadCount = 0;
+authority.readMaps = async (keys) => {
+  if (keys.includes(STORE_KEYS.sessions)) sessionFamilyReadCount += 1;
+  return readMaps(keys);
+};
+
 const {
   buildPrimarySearchSnapshot, buildSearchSnapshot, createSearchSession,
   SEARCH_DEBOUNCE_MS
@@ -103,6 +114,8 @@ const session = createSearchSession({
     return snapshot;
   }
 });
+const completeDomains = await session.scopeNames("domain");
+assert.ok(completeDomains.includes("snapshots.example"));
 const startedAt = performance.now();
 const progressive = await session.searchProgressively("immediate primary needle");
 const elapsedMs = performance.now() - startedAt;
@@ -124,12 +137,15 @@ assert.equal(completedResults?.[1]?.snapshot, true);
 assert.equal(cachedProgressive.results.length, 0);
 assert.equal(cachedCompletedResults?.[0]?.snapshot, true);
 assert.equal(completionBuildCount, 1);
+assert.equal(sessionFamilyReadCount, 1,
+  "one Search generation should share its complete Session/Snapshot read between facets and results");
 console.log(JSON.stringify({
   elapsedMs: Math.round(elapsedMs * 100) / 100,
   primaryBuildMs: Math.round(primaryBuildMs * 100) / 100,
   primaryMatchMs: Math.round((elapsedMs - primaryBuildMs) * 100) / 100,
   completionBuildMs: Math.round(completionBuildMs * 100) / 100,
   completionBuildCount,
+  sessionFamilyReadCount,
   completionMs: Math.round(completionMs * 100) / 100,
   estimatedInputToPrimaryMs: Math.round((SEARCH_DEBOUNCE_MS + elapsedMs) * 100) / 100,
   retainedHeapMb: Math.round(retainedHeapMb * 100) / 100,

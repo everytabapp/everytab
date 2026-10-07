@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Shared Loading feedback for a genuinely blank wait (P11-16).
  *
@@ -7,6 +10,7 @@
  * directly testable without a browser DOM.
  */
 import { el } from "./dom.js";
+import { msg as localeMessage } from "../lib/i18n.js";
 
 export const LOADING_FEEDBACK_DELAY_MS = 180;
 
@@ -72,7 +76,7 @@ const activeByHost = new WeakMap();
  * @returns {{element: HTMLElement, stop: () => void}}
  */
 export function showLoadingFeedback(host, {
-  label = "Loading…",
+  label = localeMessage("shell_loading_default"),
   delayMs = LOADING_FEEDBACK_DELAY_MS
 } = {}) {
   activeByHost.get(host)?.stop();

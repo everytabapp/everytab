@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * P11-14 organization domain.
  *
@@ -7,7 +10,9 @@
  * projected Ungrouped bucket.
  */
 import { SCHEMA_VERSION, STORE_KEYS } from "./types.js";
-import { getDeviceId, mutateStores, newMeta, readStoreMap } from "./store.js";
+import {
+  getDeviceId, mutateStores, mutateNamedSessionStores, newMeta, readStoreMap
+} from "./store.js";
 import { JOURNAL_KEY, appendedJournal, makeJournalEntry } from "./journal.js";
 
 export const ORGANIZATION_KINDS = Object.freeze(["label", "session"]);
@@ -260,6 +265,23 @@ function replaceMemberEdges(map, kind, memberKey, desiredGroupIds, deviceId, now
   return { map: next, changes, inverse: inverseFromChanges(changes) };
 }
 
+function addMemberEdges(map, kind, memberKeys, groupIds, deviceId, now) {
+  const next = { ...(map ?? {}) };
+  const changes = [];
+  for (const memberKey of memberKeys) {
+    for (const groupId of groupIds) {
+      const id = organizationMembershipId(kind, memberKey, groupId);
+      const before = next[id];
+      if (live(before) && before.organizationKind === kind &&
+          before.memberKey === memberKey && before.groupId === groupId) continue;
+      const after = edgeFor(before, kind, memberKey, groupId, deviceId, now);
+      next[id] = after;
+      changes.push({ before: before ?? null, after });
+    }
+  }
+  return { map: next, changes, inverse: inverseFromChanges(changes) };
+}
+
 /**
  * Pure label-identity migration used in the same commit as carrier rename.
  * Zero-to-many membership means rename-onto-existing takes the set union.
@@ -430,7 +452,8 @@ export async function createOrganizationGroup(kind, name, memberKeys = []) {
   let out = failure("not-committed");
   const keys = [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships, JOURNAL_KEY];
   if (kind === "session") keys.push(STORE_KEYS.sessions);
-  await mutateStores(keys, (maps) => {
+  const commit = kind === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
     const groups = maps[STORE_KEYS.organizationGroups] ?? {};
     if (kind === "session" && desiredMembers.some((id) => {
       const session = maps[STORE_KEYS.sessions]?.[id];
@@ -462,6 +485,282 @@ export async function createOrganizationGroup(kind, name, memberKeys = []) {
     return {
       [STORE_KEYS.organizationGroups]: { ...groups, [createdGroup.id]: createdGroup },
       [STORE_KEYS.organizationMemberships]: memberships,
+      [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
+    };
+  });
+  return out;
+}
+
+/**
+ * Add one or more newly created Labels or Sessions to existing and/or newly
+ * named groups. This is deliberately additive: a concurrent membership that
+ * arrived while the primary Label/Session was being created is preserved.
+ * The complete organization change and its Undo entry share one transaction.
+ *
+ * The primary member creation is owned by its native domain module. Calling
+ * this only after that succeeds keeps an optional organization failure from
+ * rolling back or hiding the user's newly saved data.
+ *
+ * @param {import("./types.js").OrganizationKind} kind
+ * @param {string[]} memberKeys
+ * @param {{groupIds?: string[], createNames?: string[]}|null} [assignment]
+ */
+export async function assignNewOrganizationMembers(kind, memberKeys, assignment = null) {
+  if (!isOrganizationKind(kind)) return failure("invalid-kind");
+  const members = uniqueMemberKeys(kind, Array.isArray(memberKeys) ? memberKeys : []);
+  if (members.length === 0) return failure("invalid-members");
+  const requestedIds = assignment?.groupIds ?? [];
+  const requestedNames = assignment?.createNames ?? [];
+  if (!validDesiredIds(requestedIds) || !Array.isArray(requestedNames)) {
+    return failure("invalid-groups");
+  }
+  const groupIds = uniqueStrings(requestedIds);
+  const createNames = requestedNames.map(cleanName);
+  if (createNames.some((name) => !name)) return failure("invalid-name");
+  if (createNames.some((name) => RESERVED_GROUP_NAMES.has(normalizedName(name)))) {
+    return failure("reserved-name");
+  }
+  if (new Set(createNames.map(normalizedName)).size !== createNames.length) {
+    return failure("duplicate-name");
+  }
+  if (groupIds.length === 0 && createNames.length === 0) {
+    return success("unchanged", { memberKeys: members, groupIds: [], createdGroups: [] });
+  }
+
+  const deviceId = await getDeviceId();
+  const createMetas = await Promise.all(createNames.map(() => newMeta()));
+  let out = failure("not-committed");
+  const keys = [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships, JOURNAL_KEY];
+  if (kind === "session") keys.push(STORE_KEYS.sessions);
+  const commit = kind === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
+    if (kind === "session" && members.some((id) => {
+      const session = maps[STORE_KEYS.sessions]?.[id];
+      return !live(session) || session.auto;
+    })) {
+      out = failure("invalid-members");
+      return null;
+    }
+    const groups = maps[STORE_KEYS.organizationGroups] ?? {};
+    if (createNames.some((name) => findDuplicateGroup(groups, kind, name))) {
+      out = failure("duplicate-name");
+      return null;
+    }
+    const valid = validGroupIds(groups, kind);
+    if (groupIds.some((id) => !valid.has(id))) {
+      out = failure("invalid-groups");
+      return null;
+    }
+    const memberships = maps[STORE_KEYS.organizationMemberships] ?? {};
+    const now = nextTime([...Object.values(groups), ...Object.values(memberships)]);
+    const createdGroups = createMetas.map((meta, index) => ({
+      ...meta,
+      organizationKind: kind,
+      name: createNames[index],
+      createdAt: now + index,
+      modifiedAt: now + index
+    }));
+    const desiredIds = [...groupIds, ...createdGroups.map((group) => group.id)];
+    const changed = addMemberEdges(memberships, kind, members, desiredIds, deviceId,
+      now + createdGroups.length);
+    const inverse = changed.inverse;
+    inverse.dels = [
+      ...(inverse.dels ?? []),
+      ...createdGroups.map((group) => ({ store: STORE_KEYS.organizationGroups, id: group.id }))
+    ];
+    const nextGroups = createdGroups.length === 0 ? groups : {
+      ...groups,
+      ...Object.fromEntries(createdGroups.map((group) => [group.id, group]))
+    };
+    const entry = makeJournalEntry(
+      `Organized ${members.length} new ${kind}${members.length === 1 ? "" : "s"}`,
+      inverse
+    );
+    out = success("updated", {
+      memberKeys: members, groupIds: desiredIds, createdGroups
+    }, { journalEntry: entry });
+    return {
+      ...(createdGroups.length > 0 ? { [STORE_KEYS.organizationGroups]: nextGroups } : {}),
+      [STORE_KEYS.organizationMemberships]: changed.map,
+      [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
+    };
+  });
+  return out;
+}
+
+/**
+ * Apply the inline picker’s complete organization plan in one transaction.
+ *
+ * `add` is the safe multi-member default: it adds the same Groups to every
+ * member and preserves every existing membership. `replace` is used only after
+ * the user asks for separate choices (and for the single-member editor); every
+ * entry carries the opaque revision read when the editor opened.
+ *
+ * A new Group name used by several member entries is created once and shared.
+ * If another context created that name after the editor opened, the fresh
+ * locked read reuses it instead of producing a duplicate or a partial write.
+ *
+ * @param {import("./types.js").OrganizationKind} kind
+ * @param {{mode:"add", memberKeys:string[], groupIds?:string[], createNames?:string[]}|
+ *   {mode:"replace", members:Array<{memberKey:string, groupIds?:string[],
+ *     createNames?:string[], revision:string}>}} plan
+ */
+export async function applyOrganizationMemberPlan(kind, plan) {
+  if (!isOrganizationKind(kind)) return failure("invalid-kind");
+  if (!plan || (plan.mode !== "add" && plan.mode !== "replace")) {
+    return failure("invalid-plan");
+  }
+
+  const rawEntries = plan.mode === "add"
+    ? [{
+        memberKeys: uniqueMemberKeys(kind, Array.isArray(plan.memberKeys) ? plan.memberKeys : []),
+        groupIds: plan.groupIds ?? [],
+        createNames: plan.createNames ?? []
+      }]
+    : (Array.isArray(plan.members) ? plan.members : []).map((entry) => ({
+        memberKey: cleanMemberKey(kind, entry?.memberKey),
+        groupIds: entry?.groupIds ?? [],
+        createNames: entry?.createNames ?? [],
+        revision: entry?.revision
+      }));
+  if (plan.mode === "add" && rawEntries[0].memberKeys.length === 0) {
+    return failure("invalid-members");
+  }
+  if (plan.mode === "replace" && (rawEntries.length === 0 ||
+      rawEntries.some((entry) => !entry.memberKey || !validRevisionToken(entry.revision)) ||
+      new Set(rawEntries.map((entry) => entry.memberKey)).size !== rawEntries.length)) {
+    return failure("invalid-members");
+  }
+  if (rawEntries.some((entry) => !validDesiredIds(entry.groupIds) ||
+      !Array.isArray(entry.createNames))) return failure("invalid-groups");
+
+  const requestedNames = [];
+  const requestedNameByNormalized = new Map();
+  for (const entry of rawEntries) {
+    entry.groupIds = uniqueStrings(entry.groupIds);
+    entry.createNames = entry.createNames.map(cleanName);
+    if (entry.createNames.some((name) => !name ||
+        RESERVED_GROUP_NAMES.has(normalizedName(name)))) return failure("invalid-name");
+    for (const name of entry.createNames) {
+      const normalized = normalizedName(name);
+      if (!requestedNameByNormalized.has(normalized)) {
+        requestedNameByNormalized.set(normalized, name);
+        requestedNames.push(name);
+      }
+    }
+  }
+  if (rawEntries.every((entry) => entry.groupIds.length === 0 && entry.createNames.length === 0) &&
+      plan.mode === "add") {
+    return success("unchanged", { mode: plan.mode, members: rawEntries[0].memberKeys,
+      groupIds: [], createdGroups: [] });
+  }
+
+  const deviceId = await getDeviceId();
+  const createMetas = new Map(await Promise.all(requestedNames.map(async (name) => [
+    normalizedName(name), await newMeta()
+  ])));
+  let out = failure("not-committed");
+  const keys = [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships, JOURNAL_KEY];
+  if (kind === "session") keys.push(STORE_KEYS.sessions);
+  const commit = kind === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
+    const memberKeys = plan.mode === "add"
+      ? rawEntries[0].memberKeys
+      : rawEntries.map((entry) => entry.memberKey);
+    if (kind === "session" && memberKeys.some((id) => {
+      const session = maps[STORE_KEYS.sessions]?.[id];
+      return !live(session) || session.auto;
+    })) {
+      out = failure("invalid-members");
+      return null;
+    }
+
+    const groups = maps[STORE_KEYS.organizationGroups] ?? {};
+    const valid = validGroupIds(groups, kind);
+    if (rawEntries.some((entry) => entry.groupIds.some((id) => !valid.has(id)))) {
+      out = failure("invalid-groups");
+      return null;
+    }
+    const memberships = maps[STORE_KEYS.organizationMemberships] ?? {};
+    if (plan.mode === "replace") {
+      const stale = rawEntries.find((entry) =>
+        memberRevision(memberships, kind, entry.memberKey) !== entry.revision);
+      if (stale) {
+        out = failure("stale", { memberKey: stale.memberKey,
+          revision: memberRevision(memberships, kind, stale.memberKey) });
+        return null;
+      }
+    }
+
+    const now = nextTime([...Object.values(groups), ...Object.values(memberships)]);
+    const nextGroups = { ...groups };
+    const groupIdByName = new Map();
+    const createdGroups = [];
+    for (const name of requestedNames) {
+      const normalized = normalizedName(name);
+      const existing = findDuplicateGroup(groups, kind, name);
+      if (existing) {
+        groupIdByName.set(normalized, existing.id);
+        continue;
+      }
+      const meta = createMetas.get(normalized);
+      const group = {
+        ...meta,
+        organizationKind: kind,
+        name,
+        createdAt: now + createdGroups.length,
+        modifiedAt: now + createdGroups.length
+      };
+      nextGroups[group.id] = group;
+      groupIdByName.set(normalized, group.id);
+      createdGroups.push(group);
+    }
+
+    let nextMemberships = memberships;
+    const changes = [];
+    const desiredFor = (entry) => uniqueStrings([
+      ...entry.groupIds,
+      ...entry.createNames.map((name) => groupIdByName.get(normalizedName(name)))
+    ]);
+    if (plan.mode === "add") {
+      const changed = addMemberEdges(nextMemberships, kind, rawEntries[0].memberKeys,
+        desiredFor(rawEntries[0]), deviceId, now + createdGroups.length);
+      nextMemberships = changed.map;
+      changes.push(...changed.changes);
+    } else {
+      for (const entry of rawEntries) {
+        const changed = replaceMemberEdges(nextMemberships, kind, entry.memberKey,
+          desiredFor(entry), deviceId, now + createdGroups.length);
+        nextMemberships = changed.map;
+        changes.push(...changed.changes);
+      }
+    }
+
+    if (changes.length === 0 && createdGroups.length === 0) {
+      out = success("unchanged", { mode: plan.mode, members: memberKeys,
+        createdGroups: [] });
+      return null;
+    }
+    const inverse = inverseFromChanges(changes);
+    inverse.dels = [
+      ...(inverse.dels ?? []),
+      ...createdGroups.map((group) => ({ store: STORE_KEYS.organizationGroups, id: group.id }))
+    ];
+    const entry = makeJournalEntry(
+      `Organized ${memberKeys.length} ${kind}${memberKeys.length === 1 ? "" : "s"}`,
+      inverse
+    );
+    out = success("updated", {
+      mode: plan.mode,
+      members: memberKeys,
+      createdGroups,
+      groupIdsByMember: Object.fromEntries((plan.mode === "add"
+        ? rawEntries[0].memberKeys.map((memberKey) => [memberKey, desiredFor(rawEntries[0])])
+        : rawEntries.map((member) => [member.memberKey, desiredFor(member)])))
+    }, { journalEntry: entry });
+    return {
+      ...(createdGroups.length > 0 ? { [STORE_KEYS.organizationGroups]: nextGroups } : {}),
+      [STORE_KEYS.organizationMemberships]: nextMemberships,
       [JOURNAL_KEY]: appendedJournal(maps[JOURNAL_KEY], entry)
     };
   });
@@ -591,7 +890,8 @@ export async function replaceMemberGroups(kind, memberKey, desiredGroupIds, expe
   let out = failure("not-committed");
   const keys = [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships, JOURNAL_KEY];
   if (kind === "session") keys.push(STORE_KEYS.sessions);
-  await mutateStores(keys, (maps) => {
+  const commit = kind === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
     if (kind === "session") {
       const session = maps[STORE_KEYS.sessions]?.[key];
       if (!live(session) || session.auto) {
@@ -663,7 +963,8 @@ export async function replaceGroupMembers(kind, groupId, desiredMemberKeys, expe
   let out = failure("not-found");
   const keys = [STORE_KEYS.organizationGroups, STORE_KEYS.organizationMemberships, JOURNAL_KEY];
   if (kind === "session") keys.push(STORE_KEYS.sessions);
-  await mutateStores(keys, (maps) => {
+  const commit = kind === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
     const groups = maps[STORE_KEYS.organizationGroups] ?? {};
     const group = groups[groupId];
     if (!live(group) || group.organizationKind !== kind) return null;
@@ -735,7 +1036,7 @@ export async function deleteNamedSession(sessionId, expectedModifiedAt) {
     return failure("invalid-revision");
   }
   let out = failure("not-found");
-  await mutateStores([
+  await mutateNamedSessionStores([
     STORE_KEYS.sessions, STORE_KEYS.organizationMemberships, JOURNAL_KEY
   ], (maps) => {
     const sessions = maps[STORE_KEYS.sessions] ?? {};

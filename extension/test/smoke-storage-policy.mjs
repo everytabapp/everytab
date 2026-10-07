@@ -4,12 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const SANCTIONED_STORAGE_WRITERS = new Set([
   "js/lib/store.js",
+  "js/lib/storage/authority-runtime.js",
   "js/lib/journal.js",
   "js/lib/counters.js",
   "js/lib/label-meta.js",
   "js/vault/sync.js",
   "js/lib/focus-guard.js",
-  "js/lib/focus-retirement.js",
   "js/lib/suspend.js",
   "js/lib/actions.js",
   "js/lib/export.js",
@@ -46,7 +46,7 @@ export function runSmokeStoragePolicy(check) {
     `E2-0 §5.4 guardrail (ENFORCING): every chrome.storage.local.set is in a sanctioned module — ${violations.length} violation(s)`
   );
   check(
-    !writers.includes("js/lib/sessions.js") && !writers.includes("js/lib/smartviews.js"),
-    "E2-0e: sessions.js + smartviews.js hold no raw chrome.storage.local.set (bindings/seed route through mutateStores)"
+    !writers.includes("js/lib/sessions.js"),
+    "E2-0e: sessions.js holds no raw chrome.storage.local.set"
   );
 }

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 export const SCHEMA_VERSION = 1;
 
 /**
@@ -63,11 +66,12 @@ export const SCHEMA_VERSION = 1;
  */
 
 /**
- * @typedef {Meta & {url: string, title: string, dueAt: number, tabs?: TabRef[], recurrence?: string, claimedBy?: string, firedAt?: number, sessionId?: string}} Snooze
+ * @typedef {Meta & {url: string, title: string, favIconUrl?: string, dueAt: number, tabs?: TabRef[], recurrence?: string, claimedBy?: string, firedAt?: number, sessionId?: string}} Snooze
  * claimedBy is a reserved legacy field for the deferred any-device mode.
- * tabs (P2b-1): a whole-window snooze. When present it holds the window's saveable
- * tabs and `title`="Window (N tabs)", `url`="". Additive — legacy single-tab items
- * (url/title, no tabs) keep working everywhere.
+ * tabs (P2b-1): full saved TabRefs for a whole-window snooze or a saved single-tab
+ * transfer. A window has `title`="Window (N tabs)" and `url`=""; a metadata-carrying
+ * single also retains its scalar url/title projection. Scalar single-tab Snoozes
+ * (url/title, no tabs) remain a supported record shape.
  * sessionId (P2g-5): a SESSION snooze — a scheduled "Restore all" referencing the
  * session by id (the session is a template: never mutated or consumed; it is read
  * live at fire time). `title` carries the session name at creation for display
@@ -83,10 +87,22 @@ export const SCHEMA_VERSION = 1;
  * @property {string} snoozeId @property {string} claimId
  * @property {string} ownerDeviceId @property {string} ownerInstanceId
  * @property {number} occurrenceDueAt @property {number} sourceModifiedAt
+ * @property {number[]} [selectionIndexes] claimed tab occurrences for bulk Wake
  * @property {number} claimedAt
  * @property {"effects"|"complete"|"incomplete"} phase
  * @property {number} [completedAt] @property {number} [opened]
- * @property {"worker-stopped"|"partial-browser-effect"} [reason]
+ * @property {"worker-stopped"|"partial-browser-effect"|"ambiguous-browser-effect"|"source-changed"} [reason]
+ */
+
+/**
+ * Device-local source placement for a single-tab Snooze (key
+ * `snoozePlacements`). Excluded from Export and Vault. `peerUrls` identify a
+ * restored source window after Chrome replaces numeric window ids.
+ * @typedef {Object} SnoozePlacement
+ * @property {string} snoozeId @property {number} occurrenceDueAt
+ * @property {number} sourceWindowId @property {number} index
+ * @property {boolean} pinned @property {string[]} peerUrls
+ * @property {string} [browserSessionId] @property {number} capturedAt
  */
 
 /**
@@ -133,65 +149,30 @@ export const SCHEMA_VERSION = 1;
  */
 
 /**
- * F8-R1 LEGACY (retirement only) — the device-local operational state of the
- * retired Workspace Focus run. Stored under its OWN `chrome.storage.local` key
- * (`focusState`), never inside `settings`, and excluded from vault serialization.
- * Focus v0.2 NEVER creates this key; it survives only so `js/lib/focus-retirement.js`
- * can drain a pre-v0.2 install (restore the recorded windows, then remove it). The
- * `minimized` recovery ledger is what the drain reads. Do not rename or migrate it.
- * @typedef {Object} FocusState
- * @property {string} id
- * @property {number} startedAt
- * @property {number|null} endsAt null = open-ended (no end alarm)
- * @property {string} label window ordinal ("Window N") or session name, shown in the UI
- * @property {("active"|"ending")} [phase] F8-2r operational phase. "ending" is
- *   persisted before End touches the alarm or any window, so a worker stop
- *   mid-End is resumed by recovery even if `endsAt` is still future. Absent =
- *   "active" (old F8-2 states inherit active safely). Never a setting, never synced.
- * @property {FocusTarget} target
- * @property {Array<{windowId: number, priorState: ("normal"|"maximized"|"fullscreen"), pendingMinimize?: boolean}>} minimized
- *   A RECOVERY LEDGER, not merely windows already minimized: every unrelated window this
- *   run acted on, each with `priorState` (the state to restore it to). F8-2r6/F8-2r7:
- *   `pendingMinimize` marks a candidate whose minimize was ACCEPTED but not yet confirmed
- *   quiescent — a timed-out or in-flight native transition that may still land. Such a
- *   record is persisted BEFORE the native minimize and is never dropped until End proves
- *   it quiescent (a currently-visible pending record is neutralized with a stability
- *   window), so a late commit can never leave an untracked hidden window. Live minimized
- *   status is always derived from actual window state, so a pending record never falsely
- *   claims a window is hidden. Additive and inherited: a record with no `pendingMinimize`
- *   field keeps the old confirmed-record semantics (restore on End, count when minimized).
- *   Never a setting, never synced, never serialized through the vault.
- */
-
-/**
- * @typedef {Object} FocusTarget
- * @property {("window"|"session")} kind
- * @property {string} [sessionId] present when kind is "session"
- * @property {number[]} windowIds the live target window IDs (empty = paused after restart)
- */
-
-/**
  * @typedef {Object} Settings
  * @property {boolean} autoArchiveEnabled off by default until the form-input exemption exists (PRD risk)
  * @property {number} autoArchiveDays legacy day-granular threshold; kept written (rounded up from autoDumpAfterMinutes) for back-compat
  * @property {number} [autoDumpAfterMinutes] N3: minute-granular auto-dump threshold; the archive sweep reads this. Derived from autoArchiveDays×1440 when absent (getSettings migration)
  * @property {number} [autoSaveMaxTabs] hard cap: keep at most this many tabs open by saving the longest-idle eligible surplus tabs to Inbox (0 = no cap; additive; works even with the idle timer Off)
- * @property {number} inboxExpiryDays Inbox items untouched this long move to the Archive; 0 = never
- * @property {string[]} archiveWhitelist domains/URL substrings never auto-archived
- * @property {string[]} [suspendWhitelist] F9: domains/URL substrings the auto-suspend sweep never touches (additive; absent = empty)
- * @property {number} [suspendMinTabs] only auto-suspend when more than this many tabs are open (0 = always; additive)
+ * @property {number} inboxExpiryDays Inbox items this old move to the Archive; 0 = never
+ * @property {string[]} archiveWhitelist compatibility alias for the shared automation-protection rules; runtime reads expose the preserved union through both aliases
+ * @property {string[]} [suspendWhitelist] compatibility alias for shared automation-protection rules (domain/URL substring or page:-prefixed exact URL; additive; absent = empty)
+ * @property {number} [suspendMinTabs] keep this many most-recent awake web tabs outside time-based suspension (0 = no recent floor; additive)
  * @property {number} [suspendMaxTabs] hard cap: keep at most this many tabs awake, suspending the longest-idled beyond it (0 = no cap; additive; works even with the slider Off)
  * @property {number} suspendAfterMinutes
  * @property {boolean} dedupAutoClose
  * @property {number} snapshotEveryMinutes
- * @property {number} snapshotKeep 0 = keep all; N>0 = prune beyond newest N
+ * @property {number} snapshotKeep automatic Snapshots retained, newest first. Stored 0 (formerly keep all) and values above SNAPSHOT_KEEP_MAX read as SNAPSHOT_KEEP_MAX; see effectiveSnapshotKeep
  * @property {boolean} suspendEnabled
  * @property {boolean} suspendLazyReload true (default) = custom suspend page, click to reload; false = chrome.tabs.discard, reloads on tab switch
  * @property {boolean} snoozeWakeQuiet RETIRED preference, accepted for settings/Vault back-compat and ignored; snoozes always reopen
  * @property {boolean} dedupIgnoreQuery RETIRED preference, accepted for settings/Vault back-compat and ignored; duplicate matching preserves query strings
- * @property {("dashboard"|"minimal"|"blank")} newTabMode M6/N25: new-tab page shows the full dashboard, a minimal Horizon clock/search/Starred deck, or a nearly-blank page (the closest opt-out of the MV3 new-tab override)
+ * @property {("dashboard"|"minimal"|"blank")} newTabMode M6/N25: new-tab page shows the full dashboard, a minimal Horizon clock/search/Starred deck, or a nearly-blank page (the closest opt-out of the MV3 new-tab override). The retired "terminal" value remains accepted only by portable validation and normalizes to Dashboard on read.
  * @property {("omnibox"|"search")} newTabFocus F2: on a new tab, leave focus in Chrome's address bar ("omnibox") or autofocus our search ("search")
  * @property {boolean} oneNewTabPerWindow close older unpinned EveryTab New Tabs in the same normal window after a newly created override page mounts
+ * @property {boolean} newTabWelcomeEnabled show a personal clock note on Minimal without deleting the saved phrase library
+ * @property {string[]} newTabWelcomePhrases up to 100 personal Minimal-only clock notes, each at most 96 Unicode characters; empty keeps the surface unchanged
+ * @property {("clock"|"accent")} newTabWelcomeTone Minimal clock-note tone: clock uses the quiet clock color treatment; accent uses the scheme accent at full strength
  * @property {string} uiScheme color scheme id (see js/lib/schemes.js)
  * @property {("system"|"scheme"|"light"|"dark")} uiMode
  * @property {("off"|"open"|"hourly"|"daily")} schemeRotate D3: optional no-repeat color-scheme rotation cadence
@@ -200,8 +181,10 @@ export const SCHEMA_VERSION = 1;
  * @property {boolean} uiQuickTheme RETIRED preference, accepted for settings/Vault back-compat and ignored; quick theme controls are always visible
  * @property {boolean} uiSectionIntros N15: one-line "what is this section" intro under each dashboard section title
  * @property {("bold"|"muted")} uiEmphasis RETIRED D4 preference, accepted for settings/Vault back-compat and ignored; active and selected states always use Bold
- * @property {("round"|"square")} uiCheckboxShape D4: tab-list checkbox geometry
- * @property {("crisp"|"soft")} uiCornerStyle D4: shared component corner profile
+ * @property {("round"|"square")} uiCheckboxShape RETIRED preference, accepted for Settings/Vault back-compat and ignored; Interface style owns selection geometry
+ * @property {("crisp"|"soft")} uiCornerStyle RETIRED preference, accepted for Settings/Vault back-compat and used only to derive uiInterfaceStyle for profiles created before that setting existed
+ * @property {("system"|"en"|"fr")} uiLanguage interface language: "system" follows Chrome's UI language; "en"/"fr" install that packaged catalogue on the next page load. Unknown values read as "system" without rewriting the stored value
+ * @property {("soft"|"crisp"|"terminal")} uiInterfaceStyle shared shape, type, shadow, and selection-control presentation; color schemes and behavior stay independent
  * @property {("clean"|"useful"|"detailed")} uiRowInfo D4: amount of secondary information in tab rows
  * @property {("shelf"|"rail"|"compact")} uiUtilityLayout RETIRED F35 preference, accepted for settings/vault back-compat and ignored by F36.
  * @property {("space"|"divider"|"accent-cap")} uiWindowGrouping RETIRED display preference, accepted for vault/settings back-compat and ignored
@@ -221,7 +204,30 @@ export const SCHEMA_VERSION = 1;
  * @property {("next-navigation"|"save-close")} focusTemporaryEndAction F8-R1 RETIRED: stored for back-compat, hidden from the Settings UI, and ignored by v0.2. Never delete, rename, or migrate this key.
  * @property {boolean} [perfHud] E3-0 (MH-settled §8 Q4): HIDDEN dev-only switch — no UI anywhere. Activates the js/lib/perf.js instrumentation on surfaces that can't take `?perf=1` (the real toolbar popup). Set/cleared from the console only; additive, absent = off.
  * @property {boolean} [preserveTabGroups] F18: preference to save/restore Chrome tab groups with sessions and snapshots. Default ON (absent = on). Functionally gated on the optional `tabGroups` permission — group names/colors are only read/recreated when it is granted. Additive.
+ * @property {{hostname:string,mode:("include-fragment"|"skip")}[]} [duplicateDomainRules] exact-host duplicate matching exceptions; portable through the existing Settings record so older clients preserve them during rolling updates
  */
+
+/** Settings control bounds for automatic Snapshot retention. */
+/** Accepted stored values for Settings.uiLanguage; the first is the default. */
+export const UI_LANGUAGE_VALUES = Object.freeze(["system", "en", "fr"]);
+
+export const SNAPSHOT_KEEP_MIN = 1;
+export const SNAPSHOT_KEEP_MAX = 1000;
+
+/**
+ * Effective automatic-Snapshot retention for a stored `snapshotKeep`. Older
+ * profiles may hold 0 (once "keep all") or values above the current maximum;
+ * both read as the maximum without rewriting the stored setting. A missing
+ * or malformed value reads as the default.
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function effectiveSnapshotKeep(value) {
+  const keep = Number(value);
+  if (!Number.isFinite(keep)) return DEFAULT_SETTINGS.snapshotKeep;
+  if (keep <= 0 || keep > SNAPSHOT_KEEP_MAX) return SNAPSHOT_KEEP_MAX;
+  return Math.max(SNAPSHOT_KEEP_MIN, Math.floor(keep));
+}
 
 /** @type {Settings} */
 export const DEFAULT_SETTINGS = {
@@ -243,7 +249,10 @@ export const DEFAULT_SETTINGS = {
   dedupIgnoreQuery: false,
   newTabMode: "dashboard",
   newTabFocus: "omnibox",
-  oneNewTabPerWindow: false,
+  oneNewTabPerWindow: true,
+  newTabWelcomeEnabled: true,
+  newTabWelcomePhrases: [],
+  newTabWelcomeTone: "clock",
   uiScheme: "ink",
   uiMode: "scheme",
   schemeRotate: "off",
@@ -256,6 +265,11 @@ export const DEFAULT_SETTINGS = {
   uiEmphasis: "bold",
   uiCheckboxShape: "round",
   uiCornerStyle: "soft",
+  uiInterfaceStyle: "soft",
+  // Interface language. Travels with the other appearance keys through Vault
+  // sync and portable backups (normalizePortableSettings), so a profile keeps
+  // its language choice on every device, like its color scheme and style.
+  uiLanguage: "system",
   uiRowInfo: "detailed",
   uiUtilityLayout: "compact",
   uiWindowGrouping: "space",
@@ -275,7 +289,8 @@ export const DEFAULT_SETTINGS = {
   focusExceptionStyle: "immediate",
   focusTemporaryEndAction: "next-navigation",  // F8-R1 RETIRED: kept byte-compatible; hidden + ignored by v0.2
   perfHud: false,  // E3-0: hidden dev-only perf instrumentation switch (no UI; see js/lib/perf.js)
-  preserveTabGroups: true   // F18: save/restore Chrome tab groups (gated on the optional tabGroups permission)
+  preserveTabGroups: true,  // F18: save/restore Chrome tab groups (gated on the optional tabGroups permission)
+  duplicateDomainRules: []
 };
 
 /**
@@ -351,7 +366,7 @@ export const STORE_KEYS = {
  * @property {string[]} [undoStaleStores]
  * @property {{id:string,at:number,phase:"effects"}} [undoClaim]
  * @property {{reopened:number,moved:number,failed:number}} [undoEffectResult]
- * @property {{kind:"close-tabs",status:"pending"|"complete",tabs:{tabId:number,ref:TabRef,windowId?:number,index?:number,pinned?:boolean}[],closedCount?:number}} [forwardReceipt]
+ * @property {{kind:"close-tabs",status:"pending"|"complete",tabs:{tabId:number,ref:TabRef,windowId?:number,index?:number,pinned?:boolean}[],confirmedTabs?:{tabId:number,ref:TabRef,windowId?:number,index?:number,pinned?:boolean}[],confirmedAt?:number,closedCount?:number}} [forwardReceipt]
  */
 
 /** @typedef {Record<string, Record<string, object>>} PortableRecordFamilies */
@@ -473,7 +488,7 @@ export const STORE_KEYS = {
 /**
  * One persisted record change. Archive uses the physical base/overlay fields;
  * other families use beforePresent/before/expected.
- * @typedef {Object} RestoreCheckpointRecordChangeV2
+ * @typedef {Object} RestoreCheckpointRecordChange
  * @property {boolean} [beforePresent]
  * @property {object|null} [before]
  * @property {RestorePostDescriptor} [expected]
@@ -487,13 +502,13 @@ export const STORE_KEYS = {
 
 /**
  * Persisted singleton selective checkpoint under `restoreCheckpoint`.
- * @typedef {Object} RestoreCheckpointV2
+ * @typedef {Object} RestoreCheckpoint
  * @property {2} version
  * @property {string} id
  * @property {number} createdAt
  * @property {PortableRestoreSource} source
  * @property {string[]} affected
- * @property {{records: Record<string, Record<string, RestoreCheckpointRecordChangeV2>>,
+ * @property {{records: Record<string, Record<string, RestoreCheckpointRecordChange>>,
  *   settings?: {before: Record<string, unknown>, beforeModifiedAt:number,
  *     expected:{modifiedAt:number, hash:string}},
  *   labelMeta?: Record<string, {beforePresent:boolean, before:number|null, expected:number}>}} changes

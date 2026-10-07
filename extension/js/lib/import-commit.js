@@ -1,9 +1,13 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Atomic commit boundary for parsed third-party imports. */
 import { ARCHIVE_OVERLAY_KEY, STORE_KEYS } from "./types.js";
-import { newMeta, mutateStores } from "./store.js";
+import { newMeta, mutateNamedSessionStores, mutateStores } from "./store.js";
 import { LABEL_META_KEY, touchedLabelMeta } from "./label-meta.js";
 import { JOURNAL_KEY, makeJournalEntry, appendedJournal } from "./journal.js";
-import { FORMAT_LABELS, importCounts } from "./import-formats.js";
+import { importCounts } from "./import-formats.js";
+import { importDefaultSessionName, importJournalDescription } from "./import-copy.js";
 
 const DESTINATIONS = new Set(["inbox", "archive", "session"]);
 
@@ -45,7 +49,7 @@ export async function commitParsedImport(parsed, {
   if (destination === "session") {
     records.push({
       ...(await newMeta()),
-      name: String(parsed?.name ?? "").trim() || "Imported session",
+      name: String(parsed?.name ?? "").trim() || importDefaultSessionName(),
       auto: false,
       windows: groups.map((group) => group.tabs),
       labels: []
@@ -72,9 +76,8 @@ export async function commitParsedImport(parsed, {
     for (const record of records) record.archivedAt = now;
   }
   const created = records.map((record) => ({ store, id: record.id }));
-  const sourceName = FORMAT_LABELS[parsed?.source] ?? String(parsed?.source ?? "an export");
   const entry = makeJournalEntry(
-    `Imported ${counts.tabs} tab${counts.tabs === 1 ? "" : "s"} from ${sourceName}`,
+    importJournalDescription(counts.tabs, parsed?.source),
     { dels: created }
   );
   let result = {
@@ -82,7 +85,8 @@ export async function commitParsedImport(parsed, {
   };
   const keys = [store, JOURNAL_KEY, ...(labels.length ? [LABEL_META_KEY] : []),
     ...(destination === "archive" ? [ARCHIVE_OVERLAY_KEY] : [])];
-  await mutateStores(keys, (maps) => {
+  const commit = destination === "session" ? mutateNamedSessionStores : mutateStores;
+  await commit(keys, (maps) => {
     const current = maps[store] ?? {};
     if (records.some((record) => Object.hasOwn(current, record.id))) return null;
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Tiny DOM helper: el("div", {class: "x", onclick: fn}, child1, child2)
  * @param {string} tag
@@ -17,6 +20,35 @@ const BOOLEAN_ATTRS = new Set([
   "disabled", "checked", "hidden", "readonly", "required",
   "selected", "multiple", "open", "autofocus", "novalidate"
 ]);
+
+/** IME conversion owns these keys, including Chromium's legacy final-key signal.
+ * @param {{isComposing?:boolean,keyCode?:number}|null|undefined} event
+ */
+export function isComposingKey(event) {
+  return event?.isComposing === true || event?.keyCode === 229;
+}
+
+/**
+ * True when a keyboard event belongs to text entry. Document-level shortcut
+ * handlers must consider both the event path and the currently focused field:
+ * a native/custom picker can retarget a bubbling key event after focus has
+ * already returned to its input.
+ * @param {KeyboardEvent|{target?: any, composedPath?: () => any[]}|null} event
+ * @param {Element|null} [activeElement]
+ */
+export function eventOwnsTextEntry(event, activeElement = null) {
+  if (isComposingKey(event)) return true;
+  const candidates = [event?.target, activeElement];
+  try {
+    const path = event?.composedPath?.();
+    if (Array.isArray(path)) candidates.push(...path);
+  } catch { /* malformed synthetic events are not text entry */ }
+  return candidates.some((node) => {
+    const tag = String(node?.tagName ?? "").toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      node?.isContentEditable === true;
+  });
+}
 
 export function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -64,6 +96,39 @@ export function coalesce(fn) {
       }
     });
     return inflight;
+  };
+}
+
+/**
+ * Serialize renders that carry a display snapshot. Requests arriving during a
+ * render share one follow-up using the latest argument, including undefined for
+ * a fresh explicit read. Each caller waits for the render serving its request.
+ */
+export function coalesceLatest(fn) {
+  let running = false;
+  let pending = [];
+  let latest;
+  const drain = async () => {
+    running = true;
+    while (pending.length) {
+      const waiters = pending;
+      const value = latest;
+      pending = [];
+      latest = undefined;
+      try {
+        const result = await fn(value);
+        for (const waiter of waiters) waiter.resolve(result);
+      } catch (error) {
+        for (const waiter of waiters) waiter.reject(error);
+      }
+    }
+    running = false;
+  };
+  return (value) => {
+    latest = value;
+    const result = new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    if (!running) void drain();
+    return result;
   };
 }
 

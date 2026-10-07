@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Dedicated three-pane colour-scheme editor. Draft tokens never escape its preview root. */
 import { getSettings, listItems, newMeta, patchSettings, upsertItem } from "../lib/store.js";
 import { STORE_KEYS } from "../lib/types.js";
@@ -43,6 +46,7 @@ import {
   highlightPreviewDependencies
 } from "./scheme-editor-preview.js";
 import { initTheme } from "./theme.js";
+import { applyDocumentLocale, applyUiLanguage } from "../lib/i18n.js";
 
 const clone = (value) => structuredClone(value);
 const params = new URLSearchParams(location.search);
@@ -571,11 +575,16 @@ function mount() {
 }
 
 async function boot() {
+  // Settings arrive before the first mount so the chosen interface language is
+  // installed before any text renders; the later reads start after that.
+  const settings = await getSettings();
+  await applyUiLanguage(settings.uiLanguage);
+  applyDocumentLocale();
   initTheme();
   mount();
   wireControls();
-  const [settings, records, tokenCss, stored] = await Promise.all([
-    getSettings(), listItems(STORE_KEYS.customSchemes),
+  const [records, tokenCss, stored] = await Promise.all([
+    listItems(STORE_KEYS.customSchemes),
     fetch(new URL("../../css/tokens.css", import.meta.url)).then((response) => response.text()),
     loadCustomSchemeDraft()
   ]);

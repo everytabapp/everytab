@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Localized presentation for Search results across the shared Search box and
  * Chrome omnibox. Search matching remains language-free; this module owns the
@@ -68,7 +71,7 @@ export function searchResultMeta(result, opts = {}) {
   if (result.type === "session-entity") {
     const windows = Number(result.windowCount ?? result.windowsCount) || 0;
     const tabs = Number(result.tabCount ?? result.tabsCount) || 0;
-    return msg("search_session_counts", [
+    return msg(context === "results" ? "search_session_result_counts" : "search_session_counts", [
       windowsCount(windows),
       tabsCount(tabs)
     ]);

@@ -47,16 +47,16 @@ export async function runSmokeSearchPopup({ check, session }) {
     ] }
   ], { activeTabId: 10, currentWindowId: 1 });
   check(
-    RECENT_TAB_LIMIT === 6 &&
+    RECENT_TAB_LIMIT === 10 &&
       JSON.stringify(recent.map((result) => result.tabId)) === JSON.stringify([12, 20, 21, 11]),
-    "P11-05: recents are capped at six, ordered by lastAccessed, and exclude current/incognito/non-normal tabs"
+    "Search recents allow ten, stay ordered by lastAccessed, and exclude current/incognito/non-normal tabs"
   );
 
   const capped = recentOpenTabResults([{
     id: 9,
     type: "normal",
     incognito: false,
-    tabs: Array.from({ length: 8 }, (_, index) => ({
+    tabs: Array.from({ length: 12 }, (_, index) => ({
       id: 100 + index,
       windowId: 9,
       title: `Tab ${index}`,
@@ -65,8 +65,8 @@ export async function runSmokeSearchPopup({ check, session }) {
     }))
   }]);
   check(
-    capped.length === 6 && capped[0]?.tabId === 107 && capped[5]?.tabId === 102,
-    "P11-05: the default recent state renders exactly the six newest eligible tabs"
+    capped.length === 10 && capped[0]?.tabId === 111 && capped[9]?.tabId === 102,
+    "Search renders the ten newest eligible tabs when enough results exist"
   );
   check(
     recent[0]?.title === "Sleeping article" && recent[0]?.url === "https://sleep.example/read" &&

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Shared controls for EveryTab's eight automatic-behaviour thresholds.
  *
@@ -11,6 +14,7 @@ import {
   suspendPatch, autoDumpPatch
 } from "./slider.js";
 import { settingsDurationLabel, settingsRowCopy, settingsStatic } from "./settings-copy.js";
+import { SNAPSHOT_KEEP_MAX, SNAPSHOT_KEEP_MIN, effectiveSnapshotKeep } from "../lib/types.js";
 
 /**
  * @param {{
@@ -25,13 +29,13 @@ export function createAutomationThresholdControls({ readSettings, update, regist
     localSyncers.push(sync);
     registerSync(sync);
   };
-  const number = (key, min, max) => {
+  const number = (key, min, max, normalize = (value) => value) => {
     const input = el("input", {
       type: "number", min, max, style: "width:82px",
       "aria-label": settingsRowCopy(({ autoSaveMaxTabs: "maxTabsOpen", inboxExpiryDays: "inboxExpiry",
         suspendMinTabs: "suspendMinTabs", suspendMaxTabs: "suspendMaxTabs",
         snapshotEveryMinutes: "snapshotEvery", snapshotKeep: "snapshotsKeep" })[key]).title,
-      onchange: (event) => void update({ [key]: Number(event.currentTarget.value) })
+      onchange: (event) => void update({ [key]: normalize(Number(event.currentTarget.value)) })
     });
     const sync = () => {
       if (document.activeElement !== input) input.value = String(readSettings()[key] ?? 0);
@@ -46,7 +50,7 @@ export function createAutomationThresholdControls({ readSettings, update, regist
     value: readSettings().suspendEnabled ? readSettings().suspendAfterMinutes : 0,
     format: (minutes) => settingsDurationLabel(minutes),
     ariaLabel: settingsRowCopy("suspendAfter").title,
-    ticks: [settingsStatic.durationOffShort(), settingsStatic.oneHourShort(), settingsStatic.twoHoursShort()],
+    ticks: [settingsStatic.durationOffShort(), settingsDurationLabel(SUSPEND_STOPS.at(-1))],
     onChange: (minutes) => void update(suspendPatch(minutes))
   });
   const syncSuspend = () => {
@@ -82,7 +86,9 @@ export function createAutomationThresholdControls({ readSettings, update, regist
     suspendMinTabs: number("suspendMinTabs", 0, 999),
     suspendMaxTabs: number("suspendMaxTabs", 0, 999),
     snapshotEvery: number("snapshotEveryMinutes", 5, 240),
-    snapshotsKeep: number("snapshotKeep", 0, 10000),
+    // Typed values outside the bounds are saved as the effective retention,
+    // the same value the Recovery database and getSettings apply.
+    snapshotsKeep: number("snapshotKeep", SNAPSHOT_KEEP_MIN, SNAPSHOT_KEEP_MAX, effectiveSnapshotKeep),
     sync() { for (const sync of localSyncers) sync(); }
   });
 }

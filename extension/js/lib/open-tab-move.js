@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Set-based live-tab movement for the Open Tabs surface.
  *
@@ -76,7 +79,13 @@ export async function moveSelectedOpenTabs(tabIds, destination) {
       await chrome.tabs.move(ids.slice(1), { windowId: targetWindowId, index: -1 });
     }
   } else {
-    await chrome.tabs.move(ids, { windowId: targetWindowId, index: targetIndex });
+    const sourceTabsBeforeTarget = targetIndex < 0
+      ? 0
+      : tabs.filter((tab) => tab.windowId === targetWindowId && tab.index < targetIndex).length;
+    const insertionIndex = targetIndex < 0
+      ? -1
+      : Math.max(0, targetIndex - sourceTabsBeforeTarget);
+    await chrome.tabs.move(ids, { windowId: targetWindowId, index: insertionIndex });
   }
 
   return { ok: true, moved: ids.length, windowId: targetWindowId, undoId: entry?.id ?? null };

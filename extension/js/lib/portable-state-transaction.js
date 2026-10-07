@@ -1,8 +1,13 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Locked portable Export/Restore transactions and the one selective checkpoint. */
 import { ARCHIVE_OVERLAY_KEY, STORE_KEYS } from "./types.js";
 import {
-  archiveBaseFromMutationMaps, mergeArchiveMaps, mutateStores, withStoreLock
+  archiveBaseFromMutationMaps, mergeArchiveMaps, mergeSessionMaps, mutateStores,
+  readFreshStoreMaps, withStoreLock
 } from "./store.js";
+import { NAMED_SESSION_RECORDS_KEY } from "./session-identity-index.js";
 import { LABEL_META_KEY } from "./label-meta.js";
 import {
   JOURNAL_CAP, JOURNAL_KEY, appendedJournal, makeJournalEntry
@@ -22,7 +27,7 @@ function portableStorageKeys() {
   return [...new Set([
     ...portableRecordEntries().map((entry) => entry.key),
     SETTINGS_KEY, SETTINGS_MODIFIED_AT_KEY, LABEL_META_KEY, ARCHIVE_OVERLAY_KEY,
-    JOURNAL_KEY, RESTORE_CHECKPOINT_KEY
+    NAMED_SESSION_RECORDS_KEY, JOURNAL_KEY, RESTORE_CHECKPOINT_KEY
   ])];
 }
 
@@ -38,6 +43,9 @@ function stateFromRawMaps(raw) {
     ...raw,
     [STORE_KEYS.archive]: mergeArchiveMaps(
       raw[STORE_KEYS.archive], raw[ARCHIVE_OVERLAY_KEY]
+    ),
+    [STORE_KEYS.sessions]: mergeSessionMaps(
+      raw[STORE_KEYS.sessions], raw[NAMED_SESSION_RECORDS_KEY]
     )
   }, {
     archiveBase: raw[STORE_KEYS.archive] ?? {},
@@ -46,8 +54,28 @@ function stateFromRawMaps(raw) {
 }
 
 async function readPortableLocalState({ locked = false } = {}) {
-  const read = async () => stateFromRawMaps(await chrome.storage.local.get(portableStorageKeys()));
+  const read = async () => stateFromRawMaps(await readFreshStoreMaps(portableStorageKeys()));
   return locked ? withStoreLock(read) : read();
+}
+
+/**
+ * Coherent read-only logical snapshot for the explicit storage converter.
+ * Archive and Session physical overlays have already been merged here; callers
+ * never learn or depend on those implementation details.
+ */
+export async function readPortableLogicalState() {
+  return readPortableLocalState({ locked: true });
+}
+
+/**
+ * Hold the one store lock while a caller examines one coherent logical state
+ * and completes a related authority decision. This is intentionally narrower
+ * than exposing an unlocked reader: no caller can accidentally separate its
+ * decision from the snapshot it verified.
+ */
+export async function withPortableLogicalState(work) {
+  if (typeof work !== "function") throw new Error("A portable-state operation is required");
+  return withStoreLock(async () => work(await readPortableLocalState()));
 }
 
 /**
@@ -126,7 +154,7 @@ function sameDescriptor(map, id, expected) {
   return !present || sameValue(postDescriptor(map[id]), expected);
 }
 
-/** @returns {import("./types.js").RestoreCheckpointV2} */
+/** @returns {import("./types.js").RestoreCheckpoint} */
 function makeCheckpoint(id, createdAt, source, local, plan) {
   const records = {};
   for (const key of plan.changedRecordKeys) {
@@ -420,7 +448,7 @@ export async function undoPortableRestore(checkpointId) {
  * @returns {Promise<import("./types.js").PortableRestoreCheckpointSummary|null>}
  */
 export async function readPortableRestoreCheckpoint() {
-  const result = await chrome.storage.local.get([RESTORE_CHECKPOINT_KEY, JOURNAL_KEY]);
+  const result = await readFreshStoreMaps([RESTORE_CHECKPOINT_KEY, JOURNAL_KEY]);
   const checkpoint = result[RESTORE_CHECKPOINT_KEY];
   if (!checkpoint || checkpoint.undoneAt) return null;
   const entry = (result[JOURNAL_KEY] ?? []).find((candidate) =>
@@ -452,7 +480,7 @@ function beforeArchiveRecord(change) {
  */
 export async function buildRestoreCheckpointExport(checkpointId) {
   return withStoreLock(async () => {
-    const raw = await chrome.storage.local.get(portableStorageKeys());
+    const raw = await readFreshStoreMaps(portableStorageKeys());
     const checkpoint = raw[RESTORE_CHECKPOINT_KEY];
     if (!checkpoint || checkpoint.id !== checkpointId) return null;
     const current = stateFromRawMaps(raw);

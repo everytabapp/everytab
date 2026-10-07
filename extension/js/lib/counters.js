@@ -1,10 +1,13 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * M6 — lifetime counters for the Stats page. Honest numbers only: we count
  * events we actually perform. Stored in chrome.storage.local under
  * "counters" (per-device; deliberately NOT synced — they describe this
  * device's activity).
  */
-import { withStoreLock } from "./store.js";
+import { mutateStores, readStoreMap } from "./store.js";
 
 const KEY = "counters";
 
@@ -32,18 +35,12 @@ export function bumpedCounters(c, name, n = 1) {
 /** @param {keyof Counters} name @param {number} [n] */
 export async function bump(name, n = 1) {
   if (!n) return;
-  // E2-0b: lock-guarded RMW (e2-0-storage-concurrency.md §2.2 — low risk, but
-  // uniform: every RMW writer goes through the one store lock).
-  await withStoreLock(async () => {
-    const r = await chrome.storage.local.get(KEY);
-    const c = r[KEY] ?? {};
-    c[name] = (c[name] ?? 0) + n;
-    await chrome.storage.local.set({ [KEY]: c });
-  });
+  await mutateStores([KEY], (maps) => ({
+    [KEY]: bumpedCounters(maps[KEY], name, n)
+  }));
 }
 
 /** @returns {Promise<Counters>} */
 export async function getCounters() {
-  const r = await chrome.storage.local.get(KEY);
-  return r[KEY] ?? {};
+  return await readStoreMap(KEY) ?? {};
 }

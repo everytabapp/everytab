@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { shouldDismissAnchoredPanelOnScroll } from "../js/ui/tablist.js";
+import { shouldRepositionAnchoredPanelOnScroll } from "../js/ui/tablist.js";
 import {
   ALL_ORGANIZATION_LENS,
   organizationMembershipFocusTarget,
@@ -10,10 +10,10 @@ import {
 } from "../js/ui/organization-controls.js";
 import { installDomFixture } from "./dom-fixture.mjs";
 
-assert.equal(shouldDismissAnchoredPanelOnScroll(true), false,
-  "scrolling inside the anchored palette must keep it open");
-assert.equal(shouldDismissAnchoredPanelOnScroll(false), true,
-  "scrolling the underlying page still dismisses the anchored palette");
+assert.equal(shouldRepositionAnchoredPanelOnScroll(true), false,
+  "scrolling inside the anchored palette needs no anchor work");
+assert.equal(shouldRepositionAnchoredPanelOnScroll(false), true,
+  "scrolling the underlying page repositions the anchored palette without dismissing it");
 
 const createdId = "10000000-0000-4000-8000-000000000001";
 assert.equal(organizationLensAfterRootCreate(ALL_ORGANIZATION_LENS, createdId),

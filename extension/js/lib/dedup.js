@@ -1,9 +1,35 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { canonicalUrlOf, isSaveableTab, isOwnSuspendPage } from "./tabs.js";
 import { bump } from "./counters.js";
-import { closeTabsWithReceipt } from "./live-close.js";
+import {
+  closeTabsWithReceipt, closeUnchangedLiveTabsInBatches
+} from "./live-close.js";
 import { normalizeUrl } from "./url-key.js";
+import {
+  duplicateDomainRuleMap, duplicateUrlKey, readDuplicateDomainRules
+} from "./duplicate-domain-rules.js";
 
 export { normalizeUrl } from "./url-key.js";
+
+/**
+ * A Chrome tab can expose its previous committed `url` and a different
+ * `pendingUrl` while navigation is in flight. Neither page is a stable
+ * duplicate candidate in that state: acting on the old URL can close the tab
+ * that is becoming the new page. Blank committed URLs are safe because their
+ * pending URL is already the only identity available.
+ * @param {chrome.tabs.Tab} tab
+ * @returns {string|null}
+ */
+function stableDuplicateKey(tab, rules) {
+  const current = canonicalUrlOf(tab);
+  const currentKey = duplicateUrlKey(current, rules);
+  if (!tab.pendingUrl) return currentKey;
+  const pending = canonicalUrlOf({ ...tab, url: "" });
+  const pendingKey = duplicateUrlKey(pending, rules);
+  return currentKey && currentKey === pendingKey ? currentKey : null;
+}
 
 /**
  * @typedef {Object} DupGroup
@@ -19,13 +45,16 @@ export { normalizeUrl } from "./url-key.js";
  * pinned tabs.
  * @returns {Promise<DupGroup[]>}
  */
-export function findDuplicateGroupsFromTabs(tabs) {
+export function findDuplicateGroupsFromTabs(tabs, rules = []) {
+  const ruleMap = duplicateDomainRuleMap(rules);
   /** @type {Map<string, chrome.tabs.Tab[]>} */
   const byKey = new Map();
   for (const t of tabs) {
     if (!isSaveableTab(t)) continue;
-    // Canonicalize so a suspended tab dedupes against its awake twin.
-    const key = normalizeUrl(canonicalUrlOf(t));
+    // Canonicalize so a suspended tab dedupes against its awake twin, while
+    // exact-domain exceptions can retain fragments or skip comparison.
+    const key = stableDuplicateKey(t, ruleMap);
+    if (key === null) continue;
     const arr = byKey.get(key) ?? [];
     arr.push(t);
     byKey.set(key, arr);
@@ -47,7 +76,10 @@ export function findDuplicateGroupsFromTabs(tabs) {
 }
 
 export async function findDuplicateGroups() {
-  return findDuplicateGroupsFromTabs(await chrome.tabs.query({}));
+  const [tabs, rules] = await Promise.all([
+    chrome.tabs.query({}), readDuplicateDomainRules()
+  ]);
+  return findDuplicateGroupsFromTabs(tabs, rules);
 }
 
 /** Total number of closable duplicate tabs. */
@@ -75,14 +107,25 @@ export async function closeDuplicates(opts = {}) {
   const closing = targets.flatMap((group) => group.close);
   if (closing.length === 0) return 0;
   const result = await closeTabsWithReceipt(closing, async () => {
-    await chrome.tabs.remove(closing.map((tab) => tab.id));
+    // The receipt write can yield long enough for the survivor to navigate or
+    // disappear. Re-scan the duplicate relation, then exact-match the original
+    // close identities at the final Chrome boundary.
+    const currentClosingIds = new Set((await findDuplicateGroups())
+      .flatMap((group) => group.close).map((tab) => tab.id));
+    const stillDuplicate = closing.filter((tab) => currentClosingIds.has(tab.id));
+    const close = await closeUnchangedLiveTabsInBatches(stillDuplicate);
+    const closedIds = new Set(close.closed.map((tab) => tab.id));
     for (const group of targets) {
-      if (!group.close.some((tab) => tab.active) || group.keep.id === undefined) continue;
-      await chrome.tabs.update(group.keep.id, { active: true });
-      if (group.keep.windowId !== undefined) {
-        await chrome.windows.update(group.keep.windowId, { focused: true });
-      }
+      if (!group.close.some((tab) => tab.active && closedIds.has(tab.id)) ||
+          group.keep.id === undefined) continue;
+      try {
+        await chrome.tabs.update(group.keep.id, { active: true });
+        if (group.keep.windowId !== undefined) {
+          await chrome.windows.update(group.keep.windowId, { focused: true });
+        }
+      } catch { /* the close ledger remains authoritative if focus changed */ }
     }
+    return close;
   }, {
     label: `Closed ${closing.length} duplicate${closing.length === 1 ? "" : "s"}`,
     auto: opts.auto === true,

@@ -67,4 +67,11 @@ export function runSmokeBrandContracts(check) {
     name.length <= 75 && shortName.length <= 12,
     "L6: primary and compact EveryTab names respect Chrome's length limits"
   );
+  const description = english.manifest_description?.message ?? "";
+  check(
+    description.length <= 132 &&
+      description.includes("no account required") &&
+      !description.includes("Plain JSON files you own"),
+    "L5: manifest description fits Chrome and states the account-free product boundary"
+  );
 }

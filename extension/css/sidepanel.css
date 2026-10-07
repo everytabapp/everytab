@@ -1,3 +1,6 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
 /* F14 side panel — compact chrome. Role tokens only (from css/tokens.css); the
    panel keeps its own stylesheet because the dashboard's component CSS lives
    inline in dashboard.html. tokens.css already themes <body> (bg/ink/font).
@@ -463,7 +466,8 @@ body.gradient[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-h
   border-bottom: var(--bw) solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 0;
   background: var(--workbench-row);
-  color: var(--workbench-tertiary);
+  color: var(--accent-strong-ink);
+  font-weight: 650;
 }
 [data-surface="sidepanel"] .tablist[data-compact] .disclosure-row:hover,
 [data-surface="sidepanel"] .tablist[data-compact] .disclosure-row:focus-visible {
@@ -513,15 +517,17 @@ body.gradient[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-h
 [data-compact] .trow.drop-target { box-shadow: inset 0 2.5px 0 var(--accent); }
 [data-compact] .item-head.drop-target { box-shadow: inset 0 -2.5px 0 var(--accent); }
 [data-compact] .trow[draggable="true"] { cursor: grab; }
-[data-compact] .move-handle { cursor: grab; }
-[data-compact] .kbd-slot { outline: 2px solid var(--focus-accent); outline-offset: 1px;
-  border-radius: var(--shape-focus); }
 [data-compact] .drop-zone-window-end { --drop-end-inset: 8px; min-height: 18px; padding-block: 0; }
 
 /* chips (row + card), each an AA dark-ink-on-tint pill */
 [data-compact] .chip { border-radius: var(--shape-pill); padding: 1px 8px; font-size: 10.5px; }
 [data-compact] .rowchips { flex: none; margin-left: 2px; }
 [data-compact] .rowchips .chip { font-size: 10px; padding: 0 6px; }
+/* A Labels card already supplies the active label context. Its per-row label
+   pills add a nested-chip silhouette and collide with the compact action tray. */
+[data-surface="sidepanel"] .tablist[data-tablist="labels"][data-compact] .row-chip-slot {
+  display: none;
+}
 [data-compact] .chip .x { cursor: pointer; margin-left: 3px; border: none; background: none;
   color: inherit; font: inherit; line-height: 1; padding: 0 2px; border-radius: var(--shape-control); }
 [data-compact] .chip .x:hover { color: var(--ink); background: var(--danger-bg); }
@@ -534,6 +540,18 @@ body.gradient[data-surface="sidepanel"] .tablist[data-compact] > .item > .item-h
   z-index: 9;
   background: var(--bg-solid);
   background-attachment: fixed;
+}
+
+/* Open uses the same measured second row as the Sessions and Labels filters.
+   The heading keeps only its route action, while the filter gets the complete
+   panel axis and enough air below the navigation divider. */
+[data-surface="sidepanel"] .open-filter-strip {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+[data-surface="sidepanel"] .open-filter-strip .open-filter-control {
+  width: 100%;
 }
 body.gradient[data-surface="sidepanel"] .section-local-sticky,
 [data-gradient="true"] body[data-surface="sidepanel"] .section-local-sticky {
@@ -554,7 +572,7 @@ body.gradient[data-surface="sidepanel"] .section-local-sticky,
   border-radius: var(--shape-control); background: var(--surface); color: var(--ink);
   font: inherit; font-size: 12px; outline: none; }
 [data-surface="sidepanel"] .label-filter:focus { border-color: var(--focus-accent);
-  box-shadow: 0 0 0 3px var(--focus-ring); }
+  box-shadow: var(--field-focus-shadow); }
 [data-surface="sidepanel"] .label-filter::placeholder { color: var(--ink-3); opacity: 1; }
 [data-surface="sidepanel"] .label-sort { display: inline-flex; max-width: 100%;
   border: var(--bw) solid var(--border); border-radius: var(--shape-control); overflow: hidden; }
@@ -619,16 +637,27 @@ body.gradient[data-surface="sidepanel"] .section-local-sticky,
 [data-compact] .group-nudge { display: flex; gap: 8px; align-items: center;
   flex-wrap: wrap; margin: 6px 0 4px; padding: 6px 10px; font-size: 12px;
   color: var(--accent-soft-ink); background: var(--accent-soft); border-radius: 0; }
-[data-compact] .idle-nudge { color: var(--ink); background: var(--warn-bg);
-  border-radius: var(--shape-control); font-size: 11px; padding: 0 7px; }
+[data-compact] .idle-nudge { display: inline-flex; align-items: center; gap: 3px;
+  color: var(--ink-3); background: transparent; font-size: 11px; padding: 0 2px;
+  white-space: nowrap; }
+[data-compact] .idle-nudge svg { flex: 0 0 auto; opacity: .8; }
 [data-compact] .snoozebar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 4px 6px 8px; }
 [data-compact] .organizebar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 6px 8px; }
 [data-compact] .snoozebar .host, [data-compact] .organizebar .host { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
-[data-compact] .drop-zone-new { display: none; margin: 6px 0; padding: 6px 10px;
+[data-compact] .drop-zone-new { display: none; position: absolute; z-index: 4; box-sizing: border-box;
+  top: 0; left: 6px; right: 6px; height: 28px; margin: 0; padding: 3px 10px;
+  transform: translateY(calc(-50% - 1px));
   border: 1.5px dashed var(--border); border-radius: var(--shape-card);
-  color: var(--ink-3); font-size: 11px; text-align: center; }
-[data-compact] .drop-zone-new.kbd-slot,
-body.tab-dragging [data-tablist="open"][data-compact] .drop-zone-new { display: block; }
+  color: var(--ink-3); background: var(--surface); box-shadow: var(--shadow-1);
+  font-size: 11px; text-align: center; }
+body.tab-dragging [data-tablist="open"][data-compact] .drop-zone-new,
+body.inbox-dragging [data-tablist="inbox"][data-compact] .drop-zone-new,
+body.session-dragging [data-tablist="sessions"][data-compact] .item.drag-home .drop-zone-new {
+  display: block;
+}
+body.session-dragging [data-tablist="sessions"][data-compact] .item.drag-home .drop-zone-new {
+  transform: translateY(0);
+}
 [data-compact] .drop-zone-new.on { border-color: var(--accent); color: var(--accent-soft-ink);
   background: var(--accent-soft); }
 
@@ -639,6 +668,7 @@ body.tab-dragging [data-tablist="open"][data-compact] .drop-zone-new { display: 
   max-height: 200px; overflow-y: auto; padding: 4px; }
 [data-compact] .tagopt { padding: 5px 9px; border-radius: var(--shape-control); font-size: 12px; color: var(--ink-2); cursor: pointer; }
 [data-compact] .tagopt:hover, [data-compact] .tagopt.on { background: var(--accent-soft); color: var(--accent-soft-ink); }
+[data-compact] .tagopt.create { font-weight: 650; }
 
 /* empty state (compacted by layout only, dashboard copy) */
 [data-compact] .empty { color: var(--ink-3); font-style: italic; padding: 16px 4px; }

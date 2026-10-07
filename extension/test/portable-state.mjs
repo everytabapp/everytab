@@ -8,6 +8,10 @@ globalThis.chrome = {
 Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }, writable: true, configurable: true
 });
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
 
 const {
   PORTABLE_EXPORT_MAX_BYTES, PORTABLE_EXPORT_VERSION, RESTORE_CHECKPOINT_KEY,
@@ -17,7 +21,9 @@ const {
   readPortableRestoreFile, restorePortableState, undoPortableRestore
 } = await import("../js/lib/portable-state.js");
 const { STORE_KEYS, ARCHIVE_OVERLAY_KEY, DEFAULT_SETTINGS } = await import("../js/lib/types.js");
-const { SESSION_IDENTITY_INDEX_KEY } = await import("../js/lib/session-identity-index.js");
+const {
+  SESSION_IDENTITY_INDEX_KEY, NAMED_SESSION_RECORDS_KEY
+} = await import("../js/lib/session-identity-index.js");
 const { listActions, recordAction, undoAction } = await import("../js/lib/journal.js");
 const { upsertItem } = await import("../js/lib/store.js");
 const {
@@ -91,7 +97,10 @@ await chrome.storage.local.set({
   labelMeta: { work: T0 + 5 },
   sessionWindows: { 12: { sessionId: ID(9), windowIndex: 0 } },
   journal: [{ id: "operational" }], counters: { tabsSaved: 4 },
-  snoozeDeliveryReceipts: { [ID(12)]: { phase: "effects" } }
+  tabActivity: { 42: T0 },
+  tabActivityContext: { focusedWindowId: 12, activeByWindow: { 12: 42 } },
+  snoozeDeliveryReceipts: { [ID(12)]: { phase: "effects" } },
+  snoozePlacements: { [ID(13)]: { sourceWindowId: 42, peerUrls: ["https://local.example"] } }
 });
 const exported = JSON.parse(await buildPortableExport());
 check(
@@ -108,9 +117,51 @@ check(
   exported.settings.uiScheme === "matcha" && !("perfHud" in exported.settings) &&
     !("unknownOperational" in exported.settings) && exported.settingsModifiedAt === T0 + 4 &&
     exported.labelMeta.work === T0 + 5 && !("journal" in exported) && !("counters" in exported) &&
-    !("snoozeDeliveryReceipts" in exported),
+    !("snoozeDeliveryReceipts" in exported) && !("snoozePlacements" in exported),
   "N44 export normalizes settings and excludes operational receipts, Activity, and counters"
 );
+check(
+  !JSON.stringify(exported).includes('"tabActivity"') &&
+    !JSON.stringify(exported).includes('"tabActivityContext"') &&
+    !portableStateEntries().some((entry) =>
+      entry.key === "tabActivity" || entry.key === "tabActivityContext"),
+  "Time-away clocks and foreground identities stay device-local, outside Export and Vault"
+);
+check(!portableStateEntries().some((entry) => entry.key === "automationTabProtections") &&
+  !JSON.stringify(exported).includes('"automationTabProtections"'),
+"Temporary tab protection identities stay device-local, outside Export and Vault");
+
+/* A named Session edit is physically stored in the compact projection while
+ * automatic Snapshots remain in the legacy combined base. Portable Export
+ * must consume the same logical Session view as the product UI. */
+const splitSessionId = ID(90);
+const projectedOnlySessionId = ID(91);
+const staleSession = session(splitSessionId, T0 + 10, "Before rename");
+const renamedSession = {
+  ...staleSession,
+  name: "After rename",
+  modifiedAt: T0 + 20
+};
+const projectedOnlySession = session(
+  projectedOnlySessionId, T0 + 30, "Projection only"
+);
+await chrome.storage.local.set({
+  [STORE_KEYS.sessions]: { [splitSessionId]: staleSession },
+  [NAMED_SESSION_RECORDS_KEY]: {
+    [splitSessionId]: renamedSession,
+    [projectedOnlySessionId]: projectedOnlySession
+  }
+});
+const splitSessionExport = JSON.parse(await buildPortableExport());
+check(
+  splitSessionExport.data.sessions[splitSessionId]?.name === "After rename" &&
+    splitSessionExport.data.sessions[projectedOnlySessionId]?.name === "Projection only",
+  "N44 Export reads the complete logical Session view, including compact named edits"
+);
+await chrome.storage.local.set({
+  [STORE_KEYS.sessions]: {},
+  [NAMED_SESSION_RECORDS_KEY]: {}
+});
 
 /* ---------- whole-file validation: every failure is before a write ---------- */
 
@@ -605,12 +656,14 @@ const familyData = {
 const familyCustomRef = customSchemeRef(familyIds[7]);
 await chrome.storage.local.set({
   ...familyData,
+  [NAMED_SESSION_RECORDS_KEY]: familyData[STORE_KEYS.sessions],
   [ARCHIVE_OVERLAY_KEY]: {},
   settings: {
     ...DEFAULT_SETTINGS, uiScheme: familyCustomRef,
     schemeFavorites: ["tide", familyCustomRef],
     uiQuickTheme: false, uiEmphasis: "muted", dedupIgnoreQuery: true,
-    snoozeWakeQuiet: true, popupDupHint: false
+    snoozeWakeQuiet: true, popupDupHint: false,
+    duplicateDomainRules: [{ hostname: "tickets.example", mode: "include-fragment" }]
   },
   settingsModifiedAt: T0 + 20,
   labelMeta: { family: T0 + 21 }
@@ -618,7 +671,8 @@ await chrome.storage.local.set({
 const roundTripSource = await buildPortableExport();
 await chrome.storage.local.set({
   ...Object.fromEntries(Object.values(STORE_KEYS).map((key) => [key, {}])),
-  [ARCHIVE_OVERLAY_KEY]: {}, settings: {}, settingsModifiedAt: 0, labelMeta: {}
+  [ARCHIVE_OVERLAY_KEY]: {}, [NAMED_SESSION_RECORDS_KEY]: {},
+  settings: {}, settingsModifiedAt: 0, labelMeta: {}
 });
 const roundTripPlan = await previewPortableRestore(roundTripSource);
 const roundTripResult = await restorePortableState(roundTripSource, {
@@ -632,6 +686,8 @@ check(
     JSON.stringify(roundTripExport.settings) === JSON.stringify(sourceEnvelope.settings) &&
     JSON.stringify(roundTripExport.labelMeta) === JSON.stringify(sourceEnvelope.labelMeta) &&
     roundTripExport.data.customSchemes[familyIds[7]].name === "Round-trip Harbor" &&
+    roundTripExport.settings.duplicateDomainRules[0].hostname === "tickets.example" &&
+    roundTripExport.settings.duplicateDomainRules[0].mode === "include-fragment" &&
     roundTripExport.settings.uiScheme === familyCustomRef &&
     roundTripExport.settings.uiQuickTheme === false &&
     roundTripExport.settings.uiEmphasis === "muted" &&
@@ -656,7 +712,7 @@ check(
 );
 check(
   /restoreUndoStatus/.test(activitySource) && /buildRestoreCheckpointExport/.test(activitySource) &&
-    /focusEntry/.test(activitySource) && /could not be prepared/.test(activitySource) &&
+    /focusEntry/.test(activitySource) && /activity_restore_recovery_failed/.test(activitySource) &&
     /showNotice/.test(activitySource),
   "N44 Activity reports terminal Restore Undo state, handles recovery failure, and preserves focus"
 );

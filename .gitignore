@@ -1,0 +1,36 @@
+# Dependencies (the project has none; keep accidental installs out)
+node_modules/
+
+# Operating system and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local build and release artifacts
+dist/
+*.zip
+
+# Evidence, archives and local agent tooling are not part of the public tree
+review-evidence/
+archive/
+.claude/
+.agents/
+.codex/
+.impeccable/
+.recovery-backups/
+campaign-assets/
+screenshots/
+perf-seed/
+EveryTab V2 speed test/
+
+# Media and large binaries
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.m4a
+
+# Secrets and local environment
+.env
+.env.*
+*.env

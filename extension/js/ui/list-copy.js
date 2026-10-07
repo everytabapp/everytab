@@ -1,8 +1,11 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Localized presentation shared by every tab list. Store enums, list state,
  * and action ids stay language-free; this module turns them into visible copy.
  */
-import { formatNumber, msg, pluralCategory } from "../lib/i18n.js";
+import { formatDate, formatNumber, msg, pluralCategory } from "../lib/i18n.js";
 import { compactRelativeAge } from "../lib/relative-time.js";
 
 const count = (kind, value) => {
@@ -84,6 +87,8 @@ const PANEL_COPY = Object.freeze({
   label: () => ({ title: msg("list_panel_labels_title"), description: msg("list_panel_labels_description"), icon: "labels" }),
   session: () => ({ title: msg("list_panel_session_title"), description: msg("list_panel_session_description"), icon: "sessions" }),
   snooze: () => ({ title: msg("list_panel_snooze_title"), description: msg("list_panel_snooze_description"), icon: "snooze" }),
+  "keep-awake": () => ({ title: msg("list_panel_keep_awake_title"), description: msg("list_panel_keep_awake_description"), icon: "shield" }),
+  protection: () => ({ title: msg("protection_title"), description: msg("protection_description"), icon: "shield" }),
   "bulk-snooze": () => ({ title: msg("list_panel_bulk_snooze_title"), description: msg("list_panel_snooze_description"), icon: "snooze" }),
   "bulk-label": () => ({ title: msg("list_panel_bulk_label_title"), description: msg("list_panel_labels_description"), icon: "labels" }),
   "bulk-move": () => ({ title: msg("list_panel_bulk_move_title"), description: msg("list_panel_bulk_move_description"), icon: "move" }),
@@ -118,11 +123,20 @@ export function listSnoozePresetLabel(preset) {
 }
 
 export function listRecurrenceOptionLabel(value, fallback = "") {
-  return ({
+  const fixed = ({
     daily: () => msg("list_repeat_daily"),
     weekly: () => msg("list_repeat_weekly"),
     monthly: () => msg("list_repeat_monthly")
-  })[value]?.() ?? (value ? fallback : msg("list_repeat_never"));
+  })[value]?.();
+  if (fixed) return fixed;
+  const weeks = /^weeks:(\d+)$/.exec(String(value ?? ""));
+  if (weeks) return msg("list_repeat_every_weeks", [formatNumber(Number(weeks[1]))]);
+  const weekday = /^weekday:([0-6])$/.exec(String(value ?? ""));
+  // 4 January 2026 is a Sunday, so day + offset names weekday 0..6 in any locale.
+  if (weekday) {
+    return msg("list_repeat_weekday", [formatDate(new Date(2026, 0, 4 + Number(weekday[1])), { weekday: "long" })]);
+  }
+  return value ? fallback : msg("list_repeat_never");
 }
 
 export function listSortLabel(mode) {

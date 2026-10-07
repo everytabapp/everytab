@@ -1,18 +1,18 @@
-/** Real-Chrome computed-style matrix for Crisp/Soft across EveryTab surfaces. */
-import { spawn } from "node:child_process";
+/** Real-Chrome computed-style matrix for Soft/Crisp/Terminal across EveryTab surfaces. */
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"
 ].filter(Boolean).find((candidate) => existsSync(candidate));
-if (!chromeBin) throw new Error("Chrome is required for the Corner style DOM test");
+if (!chromeBin) throw new Error("Chrome is required for the Interface style DOM test");
 
 const extensionRoot = path.dirname(fileURLToPath(new URL("../manifest.json", import.meta.url)));
 const mime = { ".css": "text/css", ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript" };
@@ -36,10 +36,11 @@ await new Promise((resolve, reject) => {
   server.listen(0, "127.0.0.1", resolve);
 });
 const port = server.address().port;
-const profile = await mkdtemp(`${tmpdir()}/everytab-corner-style-`);
-const chrome = spawn(chromeBin, [
+const profile = await mkdtemp(`${tmpdir()}/everytab-interface-style-`);
+const chrome = spawnOwnedChrome(chromeBin, [
   "--headless=new", "--disable-gpu", "--disable-background-networking",
   "--disable-component-update", "--disable-default-apps", "--no-first-run",
+  ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
   "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"
 ], { stdio: ["ignore", "ignore", "pipe"] });
 
@@ -97,13 +98,13 @@ try {
   client = new CdpClient(target.webSocketDebuggerUrl);
   await client.send("Page.enable");
   await client.send("Runtime.enable");
-  for (const corner of ["crisp", "soft"]) {
+  for (const style of ["soft", "crisp", "terminal"]) {
     for (const width of [320, 800, 1280]) {
       await client.send("Emulation.setDeviceMetricsOverride", {
         width, height: 900, deviceScaleFactor: 1, mobile: false
       });
       await client.send("Page.navigate", {
-        url: `http://127.0.0.1:${port}/test/corner-style-dom.html?corner=${corner}`
+        url: `http://127.0.0.1:${port}/test/corner-style-dom.html?style=${style}`
       });
       const observed = await client.send("Runtime.evaluate", {
         awaitPromise: true,
@@ -113,7 +114,7 @@ try {
           const inspect = () => {
             const node = document.querySelector('#result');
             if (node?.dataset.status) resolve({ status: node.dataset.status, text: node.textContent });
-            else if (Date.now() >= deadline) reject(new Error('Corner style page timed out'));
+            else if (Date.now() >= deadline) reject(new Error('Interface style page timed out'));
             else setTimeout(inspect, 20);
           };
           inspect();
@@ -122,24 +123,17 @@ try {
       if (observed.exceptionDetails) {
         throw new Error(observed.exceptionDetails.exception?.description ??
           observed.exceptionDetails.text ?? observed.result?.description ??
-          "Corner style evaluation failed");
+          "Interface style evaluation failed");
       }
       const result = observed.result.value;
       if (result.status !== "pass") throw new Error(result.text || "No result");
-      passed.push(`${corner}@${width}`);
+      passed.push(`${style}@${width}`);
     }
   }
-  console.log(`PASS: Corner style DOM matrix ${passed.join(", ")}`);
+  console.log(`PASS: Interface style DOM matrix ${passed.join(", ")}`);
 } finally {
   client?.close();
-  if (chrome.exitCode == null) {
-    chrome.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 1500);
-      chrome.once("exit", () => { clearTimeout(timeout); resolve(); });
-    });
-  }
+  await terminateOwnedChrome(chrome);
   server.close();
   await rm(profile, { recursive: true, force: true });
 }
-

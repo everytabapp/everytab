@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Compact custom colour-scheme library and routes into the dedicated editor. */
 import { STORE_KEYS } from "../lib/types.js";
 import { newMeta, upsertItem } from "../lib/store.js";

@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Shared tab-URL helpers. EVERY place that reads a tab's URL goes through
  * here — covers asleep/discarded tabs and legacy suspender extensions.
@@ -64,12 +67,14 @@ export function ownSuspendedRef(t) {
     const params = new URL(raw).searchParams;
     const url = params.get("originalUrl") || "";
     if (!/^https?:/.test(url)) return null;
-    return {
+    const ref = {
       url,
       title: params.get("title") || url,
-      favIconUrl: params.get("favIconUrl") || undefined,
-      pinned: t.pinned
+      pinned: !!t.pinned
     };
+    const favIconUrl = params.get("favIconUrl");
+    if (favIconUrl) ref.favIconUrl = favIconUrl;
+    return ref;
   } catch {
     return null;
   }
@@ -97,12 +102,13 @@ export function organizeTabOf(t) {
 
 /** @param {chrome.tabs.Tab} t @returns {import("./types.js").TabRef} */
 export function toRef(t) {
-  return {
+  const ref = {
     url: urlOf(t),
     title: t.title || urlOf(t) || "untitled",
-    favIconUrl: t.favIconUrl,
-    pinned: t.pinned
+    pinned: !!t.pinned
   };
+  if (typeof t.favIconUrl === "string" && t.favIconUrl) ref.favIconUrl = t.favIconUrl;
+  return ref;
 }
 
 /**
@@ -161,11 +167,35 @@ export function saveableTabRef(t) {
 }
 
 /**
+ * Capture a tab for automatic crash recovery. Normal local-file pages are
+ * intentionally included here even though the ordinary Library capture seam
+ * remains web-only: a local page cannot be rediscovered from browser history,
+ * so omitting it from every Snapshot makes that loss irreversible.
+ * Incognito provenance still wins, and internal/extension/data URLs remain out.
+ * @param {chrome.tabs.Tab} t
+ * @returns {import("./types.js").TabRef|null}
+ */
+export function recoverableTabRef(t) {
+  const ordinary = saveableTabRef(t);
+  if (ordinary || !t || t.incognito) return ordinary;
+  const url = urlOf(t);
+  try {
+    if (new URL(url).protocol !== "file:") return null;
+  } catch {
+    return null;
+  }
+  return {
+    url,
+    title: t.title || url || "untitled",
+    pinned: !!t.pinned
+  };
+}
+
+/**
  * Whitelist match (case-insensitive): a pattern equals or suffix-matches the
  * hostname ("github.com" matches "gist.github.com"), or is a substring of the
- * full URL. Shared by the auto-save "Keep these tabs open" list (archive.js) and
- * the "Never suspend these" list (suspend.js, F9). Lives here (the lowest-level tab
- * module) so both can use it without an import cycle.
+ * full URL. Retained for legacy broad rules in the single shared automation
+ * protection list. Exact page rules are handled by matchesAutomationExclusion.
  * @param {string} url @param {string[]} [patterns]
  */
 export function matchesWhitelist(url, patterns) {
@@ -181,5 +211,111 @@ export function matchesWhitelist(url, patterns) {
     const p = String(raw).trim().toLowerCase();
     if (!p) return false;
     return host === p || host.endsWith("." + p) || u.includes(p);
+  });
+}
+
+/** Portable marker for an exact page in the shared automation-protection list. */
+export const EXACT_AUTOMATION_PAGE_PREFIX = "page:";
+/** Portable marker for one explicit hostname and its subdomains. */
+export const EXACT_AUTOMATION_SITE_PREFIX = "site:";
+export const TEMPORARY_AUTOMATION_EXEMPTIONS_KEY = "suspendTemporaryExemptions";
+
+/**
+ * Merge the two historical exclusion lists without narrowing either one.
+ * Archive rules come first so a pre-unification profile keeps its visible
+ * order; exact-page markers retain their explicit representation.
+ */
+export function unifiedAutomationExclusions(settings = {}) {
+  const values = [settings.archiveWhitelist, settings.suspendWhitelist]
+    .flatMap((list) => Array.isArray(list) ? list : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  return [...new Set(values)];
+}
+
+/** Match one shared automation rule, preserving legacy broad-rule semantics. */
+export function matchesAutomationExclusion(url, patterns) {
+  const target = String(url || "");
+  if (!Array.isArray(patterns)) return false;
+  return patterns.some((raw) => {
+    const rule = String(raw ?? "").trim();
+    if (!rule) return false;
+    if (rule.startsWith(EXACT_AUTOMATION_PAGE_PREFIX)) {
+      try {
+        const exactUrl = rule.slice(EXACT_AUTOMATION_PAGE_PREFIX.length);
+        return new URL(exactUrl).href === new URL(target).href;
+      } catch {
+        return false;
+      }
+    }
+    if (rule.startsWith(EXACT_AUTOMATION_SITE_PREFIX)) {
+      try {
+        const hostname = rule.slice(EXACT_AUTOMATION_SITE_PREFIX.length)
+          .trim().toLowerCase();
+        const targetHostname = new URL(target).hostname.toLowerCase();
+        return Boolean(hostname) &&
+          (targetHostname === hostname || targetHostname.endsWith(`.${hostname}`));
+      } catch {
+        return false;
+      }
+    }
+    return matchesWhitelist(target, [rule]);
+  });
+}
+
+/** @returns {string} portable representation of one exact-page exemption */
+export function exactAutomationPageRule(url) {
+  return `${EXACT_AUTOMATION_PAGE_PREFIX}${new URL(url).href}`;
+}
+
+/** Return the canonical page URL encoded by an exact automation rule. */
+export function exactAutomationPageUrl(rule) {
+  const value = String(rule ?? "").trim();
+  if (!value.startsWith(EXACT_AUTOMATION_PAGE_PREFIX)) return null;
+  try {
+    const url = new URL(value.slice(EXACT_AUTOMATION_PAGE_PREFIX.length));
+    return /^https?:$/.test(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** @returns {string} portable representation of one explicit website rule */
+export function exactAutomationSiteRule(hostname) {
+  const parsed = new URL(`https://${String(hostname || "").trim()}`);
+  if (!parsed.hostname || parsed.username || parsed.password || parsed.port ||
+      parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new TypeError("Invalid hostname");
+  }
+  return `${EXACT_AUTOMATION_SITE_PREFIX}${parsed.hostname.toLowerCase()}`;
+}
+
+/** Return the normalized hostname encoded by one explicit website rule. */
+export function exactAutomationSiteHostname(rule) {
+  const value = String(rule ?? "").trim();
+  if (!value.startsWith(EXACT_AUTOMATION_SITE_PREFIX)) return null;
+  try {
+    const encoded = value.slice(EXACT_AUTOMATION_SITE_PREFIX.length);
+    const marker = exactAutomationSiteRule(encoded);
+    return marker.slice(EXACT_AUTOMATION_SITE_PREFIX.length);
+  } catch {
+    return null;
+  }
+}
+
+/** Match device-local page protection using the same URL normalization as writes. */
+export function isTemporarilyAutomationProtected(
+  url, temporaryExemptions, now = Date.now()
+) {
+  let page;
+  try { page = new URL(String(url || "")); } catch { return false; }
+  const pageExpiry = Number(temporaryExemptions?.[page.href]);
+  if (Number.isFinite(pageExpiry) && pageExpiry > now) return true;
+  const hostname = page.hostname.toLowerCase();
+  return Object.entries(temporaryExemptions ?? {}).some(([rule, rawExpiry]) => {
+    const expiry = Number(rawExpiry);
+    if (!Number.isFinite(expiry) || expiry <= now) return false;
+    const site = exactAutomationSiteHostname(rule);
+    return site && (hostname === site || hostname.endsWith(`.${site}`));
   });
 }

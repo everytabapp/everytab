@@ -1,5 +1,8 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Coordinated persistence operations for custom colour schemes and their one local draft. */
-import { mutateStores, readStoreMap } from "./store.js";
+import { mutateStores, readStoreValue } from "./store.js";
 import { DEFAULT_SETTINGS, STORE_KEYS } from "./types.js";
 import {
   CUSTOM_SCHEME_DRAFT_KEY,
@@ -13,7 +16,7 @@ import {
 const ROTATION_STATE_KEY = "schemeRotationState";
 
 export async function loadCustomSchemeDraft() {
-  const stored = await readStoreMap(CUSTOM_SCHEME_DRAFT_KEY);
+  const stored = await readStoreValue(CUSTOM_SCHEME_DRAFT_KEY);
   return stored && typeof stored === "object" && !Array.isArray(stored)
     ? stored : null;
 }

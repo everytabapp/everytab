@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "./failure-diagnostic.js";
 /**
  * F8-R2/P11-17 — distraction-site Focus coordinator (focus-mode.md v0.3 §6-§9). Owns the
  * site-only run and all reactive guarding: device-local operational state, the run-end
@@ -9,11 +13,8 @@
  * webNavigation, or page-content access. This is a REACTIVE guard (Chrome may begin a
  * load before EveryTab observes the URL); it never claims network prevention. Only
  * normal, non-incognito HTTP(S) tabs are ever recorded, redirected, saved, or closed.
- *
- * This is entirely separate from the retired Workspace Focus (`focus-retirement.js`):
- * it never creates or reads legacy `focusState`, and its alarm/message names never
- * collide with the retirement `focus-end` alarm. `background.js` is a thin event/message
- * layer over this module; UI surfaces only render status and send messages.
+ * `background.js` is a thin event/message layer over this module; UI surfaces
+ * only render status and send messages.
  */
 import {
   resolveEndChoice, siteFocusStatus, matchingRule, hostMatchesDomain, hostnameOfUrl,
@@ -22,6 +23,7 @@ import {
 } from "./focus.js";
 import { getSettings } from "./store.js";
 import { saveRefToInbox } from "./actions.js";
+import { sameLiveTabCloseIdentity } from "./live-close.js";
 import { dashboardHref } from "./newtab-focus.js";
 import { formatNumber, msg } from "./i18n.js";
 
@@ -48,7 +50,7 @@ export const GUARD_REGISTRY_KEY = "focusGuardRegistry";
 /** Grace deadline during which a guard-tab close is treated as reload fallout. */
 export const GUARD_GRACE_KEY = "focusGuardGraceUntil";
 
-/** Run-end alarm — distinct from the retirement `focus-end` alarm. */
+/** Current Focus run-end alarm. */
 export const GUARD_END_ALARM = "focus-guard-end";
 /** Single earliest-access warning, expiry, or retry alarm. */
 export const ACCESS_ALARM = "focus-guard-expiry";
@@ -167,7 +169,7 @@ async function notifyAccessWarning(rec, displayDomain, now) {
       buttons: [{ title: msg("focus_notification_add_five") }]
     });
   } catch (e) {
-    console.warn("EveryTab: Focus access warning failed", e);
+    reportFailure("focus-access-warning", e);
   }
 }
 async function notifyAccessEnded(rec) {
@@ -180,7 +182,7 @@ async function notifyAccessEnded(rec) {
       message: msg("focus_notification_access_ended_body")
     });
   } catch (e) {
-    console.warn("EveryTab: Focus access expiry notification failed", e);
+    reportFailure("focus-access-expiry-notification", e);
   }
 }
 
@@ -192,12 +194,15 @@ async function notifyAccessEnded(rec) {
  * incognito tab, or a wrong hash is rejected — a stolen id cannot act on someone's attempt.
  * @param {number} senderTabId @param {string} attemptId
  */
-async function senderIsGuardTab(senderTabId, attemptId) {
-  if (senderTabId == null || !attemptId) return false;
+async function liveGuardTab(senderTabId, attemptId) {
+  if (senderTabId == null || !attemptId) return null;
   const tab = await getTab(senderTabId);
-  if (!(await normalWindowForTab(tab))) return false;
+  if (!(await normalWindowForTab(tab))) return null;
   const want = guardHashUrl(attemptId);
-  return tab.url === want || tab.pendingUrl === want;
+  // A still-visible guard already navigating elsewhere cannot authorize a
+  // destructive action on its pending destination.
+  if (tab.pendingUrl && tab.pendingUrl !== want) return null;
+  return tab.url === want || tab.pendingUrl === want ? tab : null;
 }
 
 async function runIsActive(state) {
@@ -211,8 +216,23 @@ async function armEndAlarm(state) {
   await chrome.alarms.clear(GUARD_END_ALARM);
   if (state?.endsAt != null) await chrome.alarms.create(GUARD_END_ALARM, { when: state.endsAt });
 }
+/* Packed extensions cannot create an alarm under 30 s. Access expiry and its
+   warning are often due sooner than that, so near-term work runs on a retained
+   timer in this worker and the alarm remains the fallback for a worker that
+   stops first. The timer calls the same expiry pass the alarm would. */
+let accessTimer = 0;
+const PROMPT_WINDOW_MS = 30_000;
+function armAccessTimer(delayMs) {
+  clearTimeout(accessTimer);
+  accessTimer = setTimeout(() => {
+    accessTimer = 0;
+    void handleAccessAlarm().catch(() => {});
+  }, Math.max(0, delayMs));
+}
 async function rearmAccessAlarm(access) {
   await chrome.alarms.clear(ACCESS_ALARM);
+  clearTimeout(accessTimer);
+  accessTimer = 0;
   const now = Date.now();
   const times = Object.values(access ?? {}).map((r) => {
     if (r.retryAt != null) return r.retryAt;
@@ -225,10 +245,14 @@ async function rearmAccessAlarm(access) {
     return r.expiresAt;
   }).filter(Number.isFinite);
   if (times.length) {
-    await chrome.alarms.create(ACCESS_ALARM, { when: Math.max(now + 250, Math.min(...times)) });
+    const due = Math.max(now + 250, Math.min(...times));
+    if (due - now < PROMPT_WINDOW_MS) armAccessTimer(due - now);
+    // alarm-fallback: the retained timer above owns prompt expiry; the alarm
+    // only matters if this worker stops before it fires.
+    await chrome.alarms.create(ACCESS_ALARM, { when: due });
   }
 }
-/** True for either site-guard alarm (never the retirement `focus-end`). */
+/** True for either current site-guard alarm. */
 export function isGuardAlarm(name) {
   return name === GUARD_END_ALARM || name === ACCESS_ALARM;
 }
@@ -513,7 +537,7 @@ export function guardContext(senderTabId, attemptId) {
   return serialize(async () => {
     // C10: only a live, normal, non-incognito `focus.html#<attemptId>` sender may resolve
     // or rebind an attempt. A dashboard/options/other page cannot read someone's context.
-    if (!(await senderIsGuardTab(senderTabId, attemptId))) return { kind: "not-guard" };
+    if (!(await liveGuardTab(senderTabId, attemptId))) return { kind: "not-guard" };
     const attempts = await readAttempts();
     let a = attempts[senderTabId];
     if (!a || a.id !== attemptId) {
@@ -573,10 +597,11 @@ async function attemptFor(senderTabId, attemptId) {
  * tab AND own the attempt. Returns `{attempts, a}` or a stable failure reason.
  */
 async function resolveAction(senderTabId, attemptId) {
-  if (!(await senderIsGuardTab(senderTabId, attemptId))) return { fail: "not-guard" };
+  const tab = await liveGuardTab(senderTabId, attemptId);
+  if (!tab) return { fail: "not-guard" };
   const found = await attemptFor(senderTabId, attemptId);
   if (!found) return { fail: "invalid" };
-  return found;
+  return { ...found, tab };
 }
 async function dropAttempt(attempts, senderTabId) {
   delete attempts[senderTabId];
@@ -827,12 +852,16 @@ export function continueToSite(senderTabId, attemptId) {
 
 /** Close the guard tab; if it is the last tab in its window, replace it with the
  *  dashboard so the window never disappears. */
-async function closeOrReplace(tabId) {
-  const tab = await getTab(tabId);
-  if (!tab) return true; // already gone
-  const wtabs = await chrome.tabs.query({ windowId: tab.windowId });
-  if (wtabs.length <= 1) return navigateTab(tabId, dashboardUrl());
-  try { await chrome.tabs.remove(tabId); return true; } catch { return false; }
+async function closeOrReplace(expectedTab) {
+  const wtabs = await chrome.tabs.query({ windowId: expectedTab.windowId });
+  if (!(await normalWindowForTab(expectedTab))) return false;
+  // Saving and querying the window both yield to navigation. Check the exact
+  // sender snapshot after those awaits, for removal and last-tab replacement.
+  const current = await getTab(expectedTab.id);
+  if (!current) return true; // already gone
+  if (!sameLiveTabCloseIdentity(expectedTab, current)) return false;
+  if (wtabs.length <= 1) return navigateTab(current.id, dashboardUrl());
+  try { await chrome.tabs.remove(current.id); return true; } catch { return false; }
 }
 
 /** After a domain's guard tab leaves, drop its access record if no matching tab remains.
@@ -880,7 +909,7 @@ export function returnAndClose(senderTabId, attemptId, save) {
         return { ok: false, reason: "save-failed" }; // keep the guard open, never close after a failed save
       }
     }
-    const closed = await closeOrReplace(senderTabId);
+    const closed = await closeOrReplace(found.tab);
     if (!closed) return { ok: false, reason: "close-failed", saved: !!save };
     await consumeAttempt(senderTabId);
     await cleanupAccessIfNoTabs(a.domain);
@@ -1096,7 +1125,7 @@ export function onTabRemoved(tabId) {
  * F8-R2r C5: lifecycle arbitration. `onInstalled` (reload/install) and `onStartup` (full
  * browser start) claim recovery SYNCHRONOUSLY so the deferred generic worker-spin recovery
  * yields and can never prune an attempt that reload/full-start recovery can still rebind or
- * recreate. Mirrors the coordinator's `claimFullStart` pattern.
+ * recreate.
  */
 let lifecycleClaimUntil = 0;
 function hasLifecycleClaim() { return Date.now() < lifecycleClaimUntil; }

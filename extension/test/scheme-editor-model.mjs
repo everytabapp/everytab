@@ -75,9 +75,18 @@ check(properties["--bg-solid"] === "#f5efe3" &&
 "isolated preview projects every authored role and gradient");
 
 check(SCHEME_CANDIDATES.length === 0 && Object.keys(SCHEME_CANDIDATE_META).length === 0,
-  "the completed candidate campaign leaves no trial palettes in the editor");
+  "the accepted Aladdin scheme closes the temporary candidate shelf");
+check(parsed.maps.aladdin.light.bgSolid === "#efa36f" &&
+  parsed.maps.aladdin.light.surface === "#f5c487" &&
+  parsed.maps.aladdin.light.surface2 === "#ed956f" &&
+  parsed.maps.aladdin.dark.bgSolid === "#101b42" &&
+  parsed.maps.aladdin.dark.accent === "#f57a45" &&
+  SCHEME_META.aladdin.defaultMode === "light",
+"Aladdin promotes the accepted Crimson Peach colors and Light default exactly");
+check(!createCandidateSchemeDraft("aladdin-crimson-peach").ok,
+  "the promoted Aladdin candidate id no longer shadows its built-in identity");
 check(!createCandidateSchemeDraft("good-night").ok && !createCandidateSchemeDraft("oblivion").ok,
-  "retired candidate ids fail closed instead of shadowing their promoted built-ins");
+  "retired candidate ids still fail closed instead of shadowing promoted built-ins");
 check(parsed.maps.goodnight.light.bgSolid === "#f2f1ea" &&
   parsed.maps.goodnight.light.accent === "#e0bd5d" &&
   parsed.maps.goodnight.light.accentStrong === "#356f6c",

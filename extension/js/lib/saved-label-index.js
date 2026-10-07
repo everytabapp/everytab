@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { tabLabels } from "./labels.js";
 import { normalizeUrl } from "./dedup.js";
 

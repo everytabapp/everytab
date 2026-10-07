@@ -1,11 +1,17 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Pure portable-state registry, whole-file validation, and merge planning. */
-import { DEFAULT_SETTINGS, SCHEMA_VERSION, STORE_KEYS } from "./types.js";
+import { DEFAULT_SETTINGS, SCHEMA_VERSION, STORE_KEYS, UI_LANGUAGE_VALUES } from "./types.js";
 import { LABEL_META_KEY } from "./label-meta.js";
 import { SCHEMES } from "./schemes.js";
 import {
   assertCustomSchemeRecord, customSchemeIdFromRef, normalizeSchemeSelection
 } from "./custom-schemes.js";
 import { isOrganizationKind, organizationMembershipId } from "./organization.js";
+import { normalizeWelcomePhrases } from "./welcome-phrases.js";
+import { unifiedAutomationExclusions } from "./tabs.js";
+import { normalizeDuplicateDomainRules } from "./duplicate-domain-rules.js";
 
 export const PORTABLE_EXPORT_VERSION = 2;
 export const PORTABLE_EXPORT_MAX_BYTES = 128 * 1024 * 1024;
@@ -345,7 +351,8 @@ const BOOLEAN_SETTINGS = new Set([
   "autoArchiveEnabled", "dedupAutoClose", "suspendEnabled", "suspendLazyReload",
   "snoozeWakeQuiet", "dedupIgnoreQuery", "uiGradient", "uiQuickTheme",
   "uiSectionIntros", "uiSidebarCollapsed", "popupDupHint",
-  "focusMinimizeOtherWindows", "preserveTabGroups", "oneNewTabPerWindow"
+  "focusMinimizeOtherWindows", "preserveTabGroups", "oneNewTabPerWindow",
+  "newTabWelcomeEnabled"
 ]);
 const NUMBER_SETTINGS = {
   autoArchiveDays: [1, 36500], autoSaveMaxTabs: [0, 100000],
@@ -356,10 +363,13 @@ const NUMBER_SETTINGS = {
   focusDayEndMinutes: [0, 1439]
 };
 const ENUM_SETTINGS = {
-  newTabMode: ["dashboard", "minimal", "blank"], newTabFocus: ["omnibox", "search"],
+  newTabMode: ["dashboard", "terminal", "minimal", "blank"], newTabFocus: ["omnibox", "search"],
+  newTabWelcomeTone: ["clock", "accent"],
   uiMode: ["system", "scheme", "light", "dark"], schemeRotate: ["off", "open", "hourly", "daily"],
   uiEmphasis: ["bold", "muted"], uiCheckboxShape: ["round", "square"],
-  uiCornerStyle: ["crisp", "soft"], uiRowInfo: ["clean", "useful", "detailed"],
+  uiCornerStyle: ["crisp", "soft"], uiInterfaceStyle: ["soft", "crisp", "terminal"],
+  uiLanguage: [...UI_LANGUAGE_VALUES],
+  uiRowInfo: ["clean", "useful", "detailed"],
   uiUtilityLayout: ["shelf", "rail", "compact"],
   uiWindowGrouping: ["space", "divider", "accent-cap"],
   uiAccentCapStrength: ["fine", "bold"], uiActionLabels: ["named", "icons"],
@@ -402,8 +412,13 @@ export function normalizePortableSettings(value) {
     if (allowed.includes(source[key])) settings[key] = source[key];
   }
 
-  settings.archiveWhitelist = cleanStrings(source.archiveWhitelist);
-  settings.suspendWhitelist = cleanStrings(source.suspendWhitelist);
+  const automationExclusions = unifiedAutomationExclusions({
+    archiveWhitelist: cleanStrings(source.archiveWhitelist),
+    suspendWhitelist: cleanStrings(source.suspendWhitelist)
+  });
+  settings.archiveWhitelist = automationExclusions;
+  settings.suspendWhitelist = automationExclusions;
+  settings.newTabWelcomePhrases = normalizeWelcomePhrases(source.newTabWelcomePhrases);
   settings.schemeFavorites = cleanStrings(source.schemeFavorites).map(normalizeSchemeSelection)
     .filter((id, index, values) =>
       (SCHEMES.includes(id) || customSchemeIdFromRef(id)) && values.indexOf(id) === index);
@@ -414,6 +429,9 @@ export function normalizePortableSettings(value) {
         ["focus", "always"].includes(rule.scope))
       .map((rule) => ({ domain: rule.domain, displayDomain: rule.displayDomain, scope: rule.scope }))
     : [];
+  settings.duplicateDomainRules = normalizeDuplicateDomainRules(
+    source.duplicateDomainRules
+  );
 
   const legacyDays = Number(settings.autoArchiveDays) || DEFAULT_SETTINGS.autoArchiveDays;
   settings.autoDumpAfterMinutes = Number.isFinite(source.autoDumpAfterMinutes)

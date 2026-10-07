@@ -4,31 +4,29 @@ export async function runSmokeSavedDataWorkflows({ check, local, browserEffects 
   const { listItems, newMeta, upsertItem } = await import("../js/lib/store.js");
   const { deleteSavedItem } = await import("../js/lib/saved-item-actions.js");
 
-  /* --- M6: labels (collections merged away) --- */
-  const { collectLabels, labelAndArchive, addLabel, removeLabel, migrateCollectionsToLabels } =
+  /* --- Labels and Archive workflows --- */
+  const { collectLabels, labelAndArchive, addLabel, removeLabel } =
     await import("../js/lib/labels.js");
   
   delete mem[STORE_KEYS.inbox];
   delete mem[STORE_KEYS.archive];
-  delete mem[STORE_KEYS.collections];
   
-  // migration: collection → labeled archive bundle
-  await upsertItem(STORE_KEYS.collections, {
+  // A direct archive fixture preserves the downstream label aggregation tests.
+  await upsertItem(STORE_KEYS.archive, {
     ...(await newMeta()),
-    name: "Research",
+    kind: "window",
     tabs: [{ url: "https://p1.com", title: "P1" }, { url: "https://p2.com", title: "P2" }],
-    labels: ["old"]
+    source: "manual",
+    labels: ["Research", "old"],
+    archivedAt: Date.now()
   });
-  check((await migrateCollectionsToLabels()) === 1, "migration converts the collection");
   let archv = await listItems(STORE_KEYS.archive);
   check(
     archv.length === 1 && archv[0].kind === "window" &&
       archv[0].labels.includes("Research") && archv[0].labels.includes("old") &&
       Number.isFinite(archv[0].archivedAt),
-    "collection became a labeled archive bundle"
+    "direct labeled archive fixture is available to downstream workflows"
   );
-  check((await listItems(STORE_KEYS.collections)).length === 0, "collection tombstoned after migration");
-  check((await migrateCollectionsToLabels()) === 0, "migration is idempotent");
   
   // label & archive from inbox (the new triage action)
   const inbItem = {
@@ -362,7 +360,8 @@ export async function runSmokeSavedDataWorkflows({ check, local, browserEffects 
     tabs: [{ url: "https://victim.com", title: "V" }], source: "dump", labels: []
   };
   await upsertItem(STORE_KEYS.inbox, victim);
-  await deleteSavedItem(STORE_KEYS.inbox, victim, "Deleted an Inbox item");
+  const currentVictim = (await listItems(STORE_KEYS.inbox)).find((item) => item.id === victim.id);
+  await deleteSavedItem(STORE_KEYS.inbox, currentVictim, "Deleted an Inbox item");
   check((await listItems(STORE_KEYS.inbox)).length === 0, "journal: item gone before undo");
   const undone1 = await undoAction();
   check(undone1?.undone === true, "undoAction returns the entry, marked undone");
@@ -517,8 +516,8 @@ export async function runSmokeSavedDataWorkflows({ check, local, browserEffects 
     check(n === 3 && snz.length === 2, "P2d-1 snooze: one snooze per source item (2 items → 2 snoozes)");
     check(
       snz.some((s) => Array.isArray(s.tabs) && s.tabs.length === 2) &&
-        snz.some((s) => !s.tabs && s.url === "https://loose.com"),
-      "P2d-1 snooze: window subset → one window snooze (tabs[]), loose → single snooze"
+        snz.some((s) => s.tabs?.length === 1 && s.url === "https://loose.com"),
+      "P2d-1 snooze: window subset → bundle, loose → full-ref single snooze"
     );
     const inboxAfterSnooze = await listItems(STORE_KEYS.inbox);
     check(

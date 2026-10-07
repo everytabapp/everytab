@@ -1,9 +1,12 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { STORE_KEYS } from "../lib/types.js";
 import { formatNumber, msg as localeMessage } from "../lib/i18n.js";
 import { listItems } from "../lib/store.js";
-import { restoreTabsFromItems, deleteTabsFromItems } from "../lib/actions.js";
+import { openTabsFromItems, deleteTabsFromItems } from "../lib/actions.js";
 import { deleteSavedItem } from "../lib/saved-item-actions.js";
-import { restoreArchiveItem } from "../lib/archive.js";
+import { openArchiveItem } from "../lib/archive.js";
 import {
   applyLabels, labelTabsFromItems, removeLabel, removeLabelFromTab
 } from "../lib/labels.js";
@@ -14,6 +17,9 @@ import {
   cardLabelPanel, confirmDelete, flashNote, selectionRefs
 } from "./list-helpers.js";
 import { starredRowAction } from "./starred-button.js";
+import { buildSessionMembershipsByUrl } from "../lib/session-identity-index.js";
+import { readSessionIdentities } from "../lib/session-identity-store.js";
+import { normalizeUrl } from "../lib/dedup.js";
 
 const ARCHIVE_KEY = STORE_KEYS.archive;
 
@@ -23,7 +29,7 @@ const ARCHIVE_KEY = STORE_KEYS.archive;
  * cross-section navigation effects Archive legitimately needs.
  */
 export function createArchiveSurface({
-  getBody, setHeading, renderLabels, goToLabel, copyRefs
+  getBody, setHeading, renderLabels, goToLabel, goToSession, copyRefs
 }) {
   const toSources = (selection) => selection.map((selected) => ({
     item: selected.group.data,
@@ -56,13 +62,20 @@ export function createArchiveSurface({
 
   async function renderInner() {
     /** @type {import("../lib/types.js").InboxItem[]} */
-    const items = await listItems(ARCHIVE_KEY);
+    const [items, identities] = await Promise.all([
+      listItems(ARCHIVE_KEY), readSessionIdentities()
+    ]);
+    const sessionMembershipsByUrl = buildSessionMembershipsByUrl(identities);
     setHeading(localeMessage("list_archive_heading", [formatNumber(items.length)]));
 
     getBody().replaceChildren(createTabList({
       section: "archive",
       foldable: true,
-      groups: fromArchiveItems(items),
+      // Without named-Session memberships no saved address can match, so the
+      // per-address normalization of a large Archive is skipped entirely.
+      groups: fromArchiveItems(items, sessionMembershipsByUrl.size
+        ? (url) => sessionMembershipsByUrl.get(normalizeUrl(url))
+        : null),
       selectable: "tab",
       onChange: render,
       empty: localeMessage("list_archive_empty"),
@@ -77,15 +90,13 @@ export function createArchiveSurface({
         renderLabels();
       },
       onChipOpen: goToLabel,
+      onSessionOpen: goToSession,
       rowActions: [
         starredRowAction(),
         {
-          id: "restore", label: localeMessage("search_action_restore"), icon: "switch", key: "r",
+          id: "restore", label: localeMessage("search_action_open"), icon: "switch", key: "r",
           run: async (ctx) => {
-            await restoreTabsFromItems(
-              [{ item: ctx.group.data, indexes: [ctx.index] }],
-              ARCHIVE_KEY
-            );
+            await openTabsFromItems([{ item: ctx.group.data, indexes: [ctx.index] }]);
             await render();
           }
         },
@@ -106,9 +117,9 @@ export function createArchiveSurface({
       ],
       groupActions: [
         {
-          id: "restore-all", label: localeMessage("list_restore_all"), always: true, key: "r",
+          id: "restore-all", label: localeMessage("list_open_all"), always: true, key: "r",
           run: async (ctx) => {
-            await restoreArchiveItem(ctx.group.data);
+            await openArchiveItem(ctx.group.data);
             await render();
           }
         },
@@ -144,21 +155,23 @@ export function createArchiveSurface({
               return;
             }
             await labelTabsFromItems(toSources(selection), labels, ARCHIVE_KEY);
-            clear();
+            await render();
+            renderLabels();
           }
         }, localeMessage("list_add_label"));
+        labelButton.dataset.bulkAction = "label";
         return [
-          el("button", { onclick: async () => {
-            await restoreTabsFromItems(toSources(selection), ARCHIVE_KEY);
-            clear();
-          } }, localeMessage("search_action_restore")),
-          el("button", {
+          el("button", { "data-bulk-action": "restore", onclick: async () => {
+            await openTabsFromItems(toSources(selection));
+            await render();
+          } }, localeMessage("search_action_open")),
+          el("button", { "data-bulk-action": "copy",
             title: localeMessage("list_copy_selected_title"),
             onclick: () => copyRefs(selectionRefs(selection))
           }, localeMessage("action_copy")),
           labelTags.element,
           labelButton,
-          el("button", { class: "danger", onclick: async () => {
+          el("button", { class: "danger", "data-bulk-action": "delete", onclick: async () => {
             await deleteTabsFromItems(toSources(selection), ARCHIVE_KEY);
             clear();
           } }, localeMessage("action_delete"))

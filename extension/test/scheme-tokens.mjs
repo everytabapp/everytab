@@ -12,6 +12,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { SCHEMES, SCHEME_META } from "../js/lib/schemes.js";
 import {
   COLOR_ROLE_KEYS,
@@ -41,7 +42,8 @@ import {
   inspectProductionListSpecimen,
   inspectProductionShellSpecimen,
   specimenSurfaceContract
-} from "../tools/scheme-lab-specimen.js";
+} from "../../tools/scheme-lab-specimen.js";
+import { createChromeI18nMock } from "./message-fixture.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extension = path.resolve(here, "..");
@@ -79,7 +81,8 @@ check(SCHEMES.length === 36 && new Set(SCHEMES).size === 36, "exactly 36 unique 
 check(parsed.order.length === 72, "exactly 72 Light/Dark maps");
 same(Object.keys(parsed.maps), SCHEMES, "CSS portfolio order matches the canonical catalogue");
 check(!Object.hasOwn(parsed.maps, "everforest") && !Object.hasOwn(parsed.maps, "catppuccin") &&
-  !Object.hasOwn(parsed.maps, "rosepine"), "legacy aliases never become built-in maps");
+  !Object.hasOwn(parsed.maps, "rosepine") && !Object.hasOwn(parsed.maps, "perestroika"),
+"legacy aliases never become built-in maps");
 
 let completeMaps = 0;
 let establishedBaseFailures = 0;
@@ -254,12 +257,12 @@ const moduleSource = read("extension/js/lib/scheme-tokens.js");
 check(!/\b(document|window|getComputedStyle|localStorage|chrome\.storage)\b/.test(moduleSource),
   "shared scheme implementation stays DOM-free and storage-free");
 
-const labHtml = read("extension/tools/scheme-lab.html");
-const labJs = read("extension/tools/scheme-lab.js");
-const labCss = read("extension/tools/scheme-lab.css");
+const labHtml = read("tools/scheme-lab.html");
+const labJs = read("tools/scheme-lab.js");
+const labCss = read("tools/scheme-lab.css");
 for (const href of [
-  "../css/tokens.css", "../css/primitives.css", "../css/dashboard.css",
-  "../css/tablist-d4.css", "../css/sidepanel.css"
+  "../extension/css/tokens.css", "../extension/css/primitives.css", "../extension/css/dashboard.css",
+  "../extension/css/tablist-d4.css", "../extension/css/sidepanel.css"
 ]) {
   check(labHtml.includes(`href="${href}"`), `Lab loads production stylesheet ${href}`);
 }
@@ -336,6 +339,14 @@ class AnatomyNode {
     return this.attributes.has(name);
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+    if (name === "class") this._classes.clear();
+    if (name.startsWith("data-")) {
+      delete this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())];
+    }
+  }
+
   addEventListener() {}
 
   append(...children) {
@@ -397,6 +408,7 @@ class AnatomyNode {
 
 const previousDocument = globalThis.document;
 const previousWindow = globalThis.window;
+const previousChrome = globalThis.chrome;
 const anatomyBody = new AnatomyNode("body");
 globalThis.document = {
   activeElement: null,
@@ -407,6 +419,7 @@ globalThis.document = {
   createElementNS: (_, tag) => new AnatomyNode(tag)
 };
 globalThis.window = { addEventListener() {}, innerWidth: 400, innerHeight: 900 };
+globalThis.chrome = { i18n: createChromeI18nMock() };
 const compactHost = new AnatomyNode("article");
 compactHost.setAttribute("data-surface", "sidepanel");
 const renderedList = createProductionListSpecimen({ width: 400, instanceId: "node-contract" });
@@ -584,6 +597,8 @@ if (previousDocument === undefined) delete globalThis.document;
 else globalThis.document = previousDocument;
 if (previousWindow === undefined) delete globalThis.window;
 else globalThis.window = previousWindow;
+if (previousChrome === undefined) delete globalThis.chrome;
+else globalThis.chrome = previousChrome;
 
 const selectorSet = new Set();
 const specimenCss = [
@@ -642,6 +657,16 @@ const qaPath = path.join(root, "campaign-assets/p11-scheme-qa-results.json");
 const planPath = path.join(root, "campaign-assets/p11-scheme-qa-capture-plan.json");
 const humanPath = path.join(root, "campaign-assets/p11-scheme-qa-human-review.json");
 const captureSessionPath = path.join(root, "campaign-assets/p11-scheme-qa-capture-session.json");
+// The rest of this suite is the colour-scheme QA ledger contract. Its inputs
+// (the QA results, capture plan, human review, capture session and the
+// regeneration scripts under campaign-assets/) are kept in the private
+// workspace, not in the public repository. Say so explicitly instead of
+// failing on a missing file; the token contracts above already ran.
+if (!fs.existsSync(qaPath)) {
+  console.log(`P11 scheme token tests passed: ${assertions} assertions. ` +
+    "SKIP: the scheme QA ledger contract needs the private campaign-assets QA set, which is absent here.");
+  process.exit(0);
+}
 const qa = JSON.parse(fs.readFileSync(qaPath, "utf8"));
 const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
 const captureSession = JSON.parse(fs.readFileSync(captureSessionPath, "utf8"));
@@ -660,7 +685,7 @@ check(["not-reviewed", "stale", "fail", "contact-sheets-pass", "pass"].includes(
 check(captureSession.sourceSha256 === qa.sourceSha256 &&
   captureSession.captures.length === plan.contactSheets.length &&
   captureSession.captures.every(({ output }) => fs.existsSync(path.join(root, output))),
-"the durable review points to a complete current-source capture session");
+"the historical review points to a complete capture session for its recorded source identity");
 check(captureSession.captures.every(({ viewport, geometry }) =>
   geometry.document.clientWidth === viewport.width &&
   geometry.document.scrollWidth === viewport.width &&
@@ -677,29 +702,81 @@ check(plan.contactSheets.length === 31 &&
 check(plan.contactSheets.every(({ combinations }) => combinations.length <= 5),
   "no contact route recreates the former 34k–41k pixel monolith");
 
-function fingerprintsCurrent(artifact) {
+function fingerprintsCurrent(artifact, sourceRoot) {
   return artifact.inputFingerprint.entries.every((entry) => {
-    const bytes = fs.readFileSync(path.join(root, entry.path));
+    const bytes = fs.readFileSync(path.join(sourceRoot, entry.path));
     return createHash("sha256").update(bytes).digest("hex") === entry.sha256;
   });
 }
-check(fingerprintsCurrent(qa) && fingerprintsCurrent(plan),
-  "every declared machine artifact input fingerprint is current");
-const staleQa = structuredClone(qa);
-staleQa.inputFingerprint.entries[0].sha256 = "0".repeat(64);
-check(!fingerprintsCurrent(staleQa), "stale artifact detection rejects a changed input fingerprint");
 
-const resultsBefore = fs.readFileSync(qaPath, "utf8");
-const planBefore = fs.readFileSync(planPath, "utf8");
-execFileSync(process.execPath, [path.join(root, "campaign-assets/run-p11-scheme-qa.mjs")], {
-  cwd: root,
-  stdio: "ignore"
-});
-check(fs.readFileSync(qaPath, "utf8") === resultsBefore &&
-  fs.readFileSync(planPath, "utf8") === planBefore,
-"machine QA artifacts regenerate deterministically from their fingerprinted inputs");
-check(fs.readFileSync(humanPath, "utf8") === humanBefore,
-  "machine regeneration never overwrites the durable human review ledger");
+// Committed captures are historical evidence. Exercise today's generator on
+// current source in a disposable tree, without rewriting or relabelling them.
+const generatedRoot = fs.mkdtempSync(path.join(tmpdir(), "everytab-scheme-contract-"));
+const historicalBefore = [qaPath, planPath, humanPath, captureSessionPath]
+  .map((file) => [file, fs.readFileSync(file, "utf8")]);
+try {
+  for (const relative of [
+    "extension/js", "extension/css", "extension/_locales/en", "tools",
+    "extension/test/chrome-test-process.mjs",
+    "campaign-assets/run-p11-scheme-qa.mjs", "campaign-assets/capture-p11-scheme-qa.mjs",
+    "campaign-assets/p11-scheme-qa-human-review.json"
+  ]) {
+    const destination = path.join(generatedRoot, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.cpSync(path.join(root, relative), destination, { recursive: true });
+  }
+  const generate = () => execFileSync(process.execPath,
+    [path.join(generatedRoot, "campaign-assets/run-p11-scheme-qa.mjs")],
+    { cwd: generatedRoot, stdio: "pipe" });
+  const generatedPath = (name) => path.join(generatedRoot, "campaign-assets", name);
+  generate();
+  const resultsBefore = fs.readFileSync(generatedPath("p11-scheme-qa-results.json"), "utf8");
+  const planBefore = fs.readFileSync(generatedPath("p11-scheme-qa-capture-plan.json"), "utf8");
+  const currentQa = JSON.parse(resultsBefore);
+  const currentPlan = JSON.parse(planBefore);
+  check(fingerprintsCurrent(currentQa, generatedRoot) && fingerprintsCurrent(currentPlan, generatedRoot),
+    "freshly generated machine artifacts fingerprint every declared current source input");
+  check(currentQa.portfolio.actualBuiltIns === SCHEMES.length &&
+    currentQa.combinations.length === SCHEMES.length * MODES.length,
+    "current generation covers the complete production catalogue");
+  const currentChecks = currentQa.combinations.flatMap(({ checks }) => checks);
+  check(currentQa.productionPairingLedger.checks === currentChecks.length &&
+    currentQa.productionPairingLedger.failures === currentChecks.filter(({ pass }) => !pass).length &&
+    currentQa.productionPairingLedger.passes === currentChecks.filter(({ pass }) => pass).length,
+    "current generation derives its pairing ledger from the actual recorded checks");
+  const expectedIds = currentQa.combinations.map(({ id }) => id).sort();
+  for (const kind of ["wide", "narrow"]) {
+    same(currentPlan.contactSheets.filter((sheet) => sheet.kind === kind)
+      .flatMap((sheet) => sheet.combinations).sort(), expectedIds,
+    `current ${kind} capture plan covers every production combination exactly once`);
+  }
+  check(currentPlan.contactSheets.filter((sheet) => sheet.kind === "pressure")
+    .flatMap((sheet) => sheet.combinations).length === 4 &&
+    currentPlan.contactSheets.every((sheet) => sheet.combinations.length <= 5),
+    "current capture generation keeps four pressure cases and bounded contact pages");
+  check(currentQa.visualStatus === currentQa.humanReviewSummary.overall &&
+    !currentQa.combinations.some(({ humanStatus }) => humanStatus),
+    "current generation derives visual status solely from the preserved human ledger");
+  const staleQa = structuredClone(currentQa);
+  staleQa.inputFingerprint.entries[0].sha256 = "0".repeat(64);
+  check(!fingerprintsCurrent(staleQa, generatedRoot),
+    "stale artifact detection rejects a changed input fingerprint");
+  const changedInput = path.join(generatedRoot, "extension/css/tokens.css");
+  fs.appendFileSync(changedInput, "\n/* Synthetic source change for the freshness guard. */\n");
+  check(!fingerprintsCurrent(currentQa, generatedRoot),
+    "freshness rejects an actual source edit after artifact generation");
+  fs.writeFileSync(changedInput, tokensCss);
+  generate();
+  check(fs.readFileSync(generatedPath("p11-scheme-qa-results.json"), "utf8") === resultsBefore &&
+    fs.readFileSync(generatedPath("p11-scheme-qa-capture-plan.json"), "utf8") === planBefore,
+    "machine QA artifacts regenerate deterministically from their fingerprinted current inputs");
+  check(fs.readFileSync(generatedPath("p11-scheme-qa-human-review.json"), "utf8") === humanBefore,
+    "machine regeneration never overwrites the copied human review ledger");
+  check(historicalBefore.every(([file, before]) => fs.readFileSync(file, "utf8") === before),
+    "the regression suite preserves every committed historical capture and review ledger");
+} finally {
+  fs.rmSync(generatedRoot, { recursive: true, force: true });
+}
 
 if (failures) {
   console.error(`P11 scheme token tests failed: ${failures}/${assertions} assertions.`);

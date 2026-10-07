@@ -1,4 +1,4 @@
-await import("../tools/custom-scheme-harness.js");
+await import("../../tools/custom-scheme-harness.js");
 
 const result = document.getElementById("result");
 const checks = [];
@@ -7,10 +7,11 @@ const check = (condition, message) => {
   checks.push(message);
 };
 const waitFor = async (fn, message, limit = 2000) => {
-  for (let index = 0; index < limit; index++) {
+  const deadline = performance.now() + limit;
+  while (performance.now() < deadline) {
     const value = fn();
     if (value) return value;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(message);
 };
@@ -39,15 +40,24 @@ try {
   const row = await waitFor(() => [...document.querySelectorAll(".custom-scheme-row")]
     .find((node) => node.textContent.includes("Mounted Harbor")),
   "saved custom scheme did not join the compact library");
-  check([...document.querySelectorAll("option")].some((option) => option.textContent === "Mounted Harbor"),
-    "saved scheme joins the Yours selector group");
+  check(document.querySelector(
+    `.scheme-category-yours .scheme-favorite[data-scheme-id="custom:${created.value.id}"]`
+  ), "saved scheme joins the Yours catalogue group");
   const edit = [...row.querySelectorAll("a")].find((node) => node.textContent === "Edit");
   check(edit?.href.includes(`custom%3A${created.value.id}`),
     "Edit routes the exact saved custom record into the dedicated editor");
 
   [...row.querySelectorAll("button")].find((node) => node.textContent === "Apply").click();
-  await waitFor(() => document.documentElement.dataset.scheme === "custom",
-    "saved custom scheme did not apply live");
+  try {
+    await waitFor(() => document.documentElement.dataset.scheme === "custom",
+      "saved custom scheme did not apply live");
+  } catch (error) {
+    throw new Error(`${error.message}; observed scheme=${document.documentElement.dataset.scheme ?? "missing"}, ` +
+      `selection=${globalThis.__customSchemeHarnessState.settings?.uiScheme ?? "missing"}, ` +
+      `custom ids=${Object.keys(globalThis.__customSchemeHarnessState.customSchemes ?? {}).join(",") || "none"}, ` +
+      `painted custom=${document.documentElement.dataset.customScheme ?? "none"}, ` +
+      `runtime errors=${globalThis.__customSchemeHarnessErrors.join(" | ") || "none"}`);
+  }
   check(Boolean(document.documentElement.style.getPropertyValue("--bg-solid")) &&
     Boolean(document.documentElement.dataset.customScheme),
   "live custom theme projects complete inline identity and roles");
@@ -65,7 +75,8 @@ try {
   await waitFor(() => document.querySelectorAll(".custom-scheme-row").length === 0,
     "confirmed delete did not remove the live record");
   check(globalThis.__customSchemeHarnessState.settings.uiScheme === "cream" &&
-    document.querySelector(".settings-group select").value === "cream",
+    document.querySelector('.scheme-favorite[data-scheme-id="cream"] .scheme-apply')
+      ?.getAttribute("aria-pressed") === "true",
   "deleting the active scheme atomically repairs Settings to Cream");
 
   await chrome.storage.local.set({
@@ -74,16 +85,22 @@ try {
       uiScheme: "custom:99999999-9999-4999-8999-999999999999"
     }
   });
-  await waitFor(() => globalThis.__customSchemeHarnessState.customSchemeNotice &&
-    globalThis.__customSchemeHarnessState.settings.uiScheme === "cream",
-  "missing custom theme did not repair");
+  try {
+    await waitFor(() => globalThis.__customSchemeHarnessState.customSchemeNotice &&
+      globalThis.__customSchemeHarnessState.settings.uiScheme === "cream",
+    "missing custom theme did not repair");
+  } catch (error) {
+    throw new Error(`${error.message}; selection=${globalThis.__customSchemeHarnessState.settings?.uiScheme ?? "missing"}, ` +
+      `notice=${JSON.stringify(globalThis.__customSchemeHarnessState.customSchemeNotice ?? null)}, ` +
+      `runtime errors=${globalThis.__customSchemeHarnessErrors.join(" | ") || "none"}`);
+  }
   check(document.documentElement.dataset.scheme === "cream" &&
     globalThis.__customSchemeHarnessState.customSchemeNotice.message.includes("replaced with Cream"),
   "a missing active custom record paints Cream, repairs Settings, and records one notice");
 
   const bootFrame = document.createElement("iframe");
   bootFrame.hidden = true;
-  bootFrame.src = "../tools/custom-theme-boot-harness.html";
+  bootFrame.src = "../../tools/custom-theme-boot-harness.html";
   await new Promise((resolve, reject) => {
     bootFrame.addEventListener("load", resolve, { once: true });
     bootFrame.addEventListener("error", () => reject(new Error("cold theme fixture did not load")), { once: true });

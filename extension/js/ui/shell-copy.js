@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Localized presentation for Dashboard and side-panel chrome. Route ids and
  * section ids remain stable English-free data; only this module turns them

@@ -1,11 +1,11 @@
 /** Real-Chrome 2×2 scheme-selector and reserved-star regression. */
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
@@ -15,16 +15,24 @@ const chromeBin = [
 if (!chromeBin) throw new Error("Chrome is required for the scheme selector regression");
 
 const extensionRoot = path.dirname(fileURLToPath(new URL("../manifest.json", import.meta.url)));
+const projectRoot = path.resolve(extensionRoot, "..");
+const servedRoots = [extensionRoot, path.join(projectRoot, "tools")];
+const servedRealRoots = await Promise.all(servedRoots.map((root) => realpath(root)));
 const mime = { ".css": "text/css", ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript" };
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    const file = path.resolve(extensionRoot, decodeURIComponent(url.pathname).replace(/^\/+/, ""));
-    if (file !== extensionRoot && !file.startsWith(`${extensionRoot}${path.sep}`)) {
+    const file = path.resolve(projectRoot, decodeURIComponent(url.pathname).replace(/^\/+/, ""));
+    if (!servedRoots.some((root) => file === root || file.startsWith(`${root}${path.sep}`))) {
       response.writeHead(403).end("Forbidden");
       return;
     }
-    const body = await readFile(file);
+    const resolved = await realpath(file);
+    if (!servedRealRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))) {
+      response.writeHead(403).end("Forbidden");
+      return;
+    }
+    const body = await readFile(resolved);
     response.writeHead(200, { "Content-Type": mime[path.extname(file)] ?? "application/octet-stream" });
     response.end(body);
   } catch {
@@ -37,7 +45,7 @@ await new Promise((resolve, reject) => {
 });
 
 const profile = await mkdtemp(`${tmpdir()}/everytab-theme-picker-`);
-const chrome = spawn(chromeBin, [
+const chrome = spawnOwnedChrome(chromeBin, [
   "--headless=new", "--disable-gpu", "--disable-background-networking",
   "--disable-component-update", "--disable-default-apps", "--no-first-run",
   "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"
@@ -142,16 +150,7 @@ try {
   ).join(", ")}`);
 } finally {
   client?.close();
-  if (chrome.exitCode == null) {
-    chrome.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 1500);
-      chrome.once("exit", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
-  }
+  await terminateOwnedChrome(chrome);
   server.close();
   await rm(profile, { recursive: true, force: true });
 }

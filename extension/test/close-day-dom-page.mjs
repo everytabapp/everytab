@@ -2,8 +2,21 @@ import * as planner from "../js/lib/close-day-planner.js";
 import { coalesce } from "../js/ui/dom.js";
 import { createBrowserI18nMock } from "./i18n-browser-mock.mjs";
 
-globalThis.chrome = { ...(globalThis.chrome ?? {}), i18n: await createBrowserI18nMock() };
-const { createCloseDaySurface } = await import("../js/ui/close-day-surface.js");
+const organizationStores = { organizationGroups: {}, organizationMemberships: {}, sessions: {} };
+globalThis.chrome = {
+  ...(globalThis.chrome ?? {}),
+  i18n: await createBrowserI18nMock(),
+  storage: {
+    local: {
+      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys])
+        .map((key) => [key, structuredClone(organizationStores[key])])),
+      set: async (patch) => Object.assign(organizationStores, structuredClone(patch))
+    },
+    onChanged: { addListener() {}, removeListener() {} }
+  }
+};
+const { createCloseDaySurface, reviewDestinationOptions } =
+  await import("../js/ui/close-day-surface.js");
 
 const result = document.querySelector("#result");
 const host = document.querySelector("#host");
@@ -51,10 +64,16 @@ try {
       ref: null }
   ] }];
   let plan = planner.buildCloseDayPlan({
-    windows, sessions, inbox: {}, archive: { archivedResearch: {
-      id: "archivedResearch", modifiedAt: now, labels: [],
-      tabs: [{ ...ref("https://example.com/new", "New research"), labels: ["web_design", "to_buy"] }]
-    } }, bindings: { 1: { sessionId: "sessionA", windowIndex: 0 } },
+    windows, sessions, inbox: {}, archive: {
+      archivedResearch: {
+        id: "archivedResearch", modifiedAt: now, labels: [],
+        tabs: [{ ...ref("https://example.com/new", "New research"), labels: ["web_design", "to_buy"] }]
+      },
+      archivedSaved: {
+        id: "archivedSaved", modifiedAt: now, labels: [],
+        tabs: [{ ...ref("https://example.com/a", "Saved A"), labels: ["project"] }]
+      }
+    }, bindings: { 1: { sessionId: "sessionA", windowIndex: 0 } },
     extensionOrigin: "chrome-extension://fixture/", protectedTabId: null
   });
   // A resumable v0.8.325 draft persisted the active tab title as the window
@@ -65,6 +84,7 @@ try {
   const messages = [];
   let holdChoice = false;
   let releaseChoice = null;
+  let openedSessionId = "";
   let surface;
   const renderSurface = coalesce(async () => host.replaceChildren(await surface.render()));
   const msg = async (message) => {
@@ -99,7 +119,8 @@ try {
     throw new Error(`Unexpected message ${message.type}`);
   };
   surface = createCloseDaySurface({ msg, rerender: renderSurface, showNotice: () => {},
-    onNavigate: () => {}, onLeave: () => {}, decisionTimeoutMs: 60_000 });
+    onNavigate: () => {}, onSessionOpen: (id) => { openedSessionId = id; },
+    onLeave: () => {}, decisionTimeoutMs: 60_000 });
   await renderSurface();
   await wait();
   check(messages.filter((type) => type === "close-day-capture").length === 1,
@@ -143,6 +164,15 @@ try {
     savedLabelStyle.borderColor !== "rgba(0, 0, 0, 0)" &&
     archivedRow.querySelector(".close-day-labels .chip").classList.contains("is-accented"),
   "saved labels use the stronger accent treatment without moving from the subline");
+  const multiplySavedRow = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((row) => row.textContent.includes("Saved A"));
+  const savedLabelChip = multiplySavedRow.querySelector(".close-day-labels .chip");
+  const savedSessionLink = multiplySavedRow.querySelector(".session-membership-link");
+  savedSessionLink.click();
+  check(savedLabelChip?.textContent === "project" &&
+    multiplySavedRow.querySelector(".session-memberships")?.textContent === "In Session:Client review" &&
+    openedSessionId === "sessionA",
+  "a Close-the-day row distinguishes its label from a linked named Session membership");
   check(archivedRow.querySelector('.close-day-action-option[data-action="close"]')
     ?.getAttribute("aria-label") === "Close. Already saved with labels",
   "an Archive close choice explains the saved-label state without repeating names");
@@ -223,12 +253,27 @@ try {
   "every action uses the same centred icon and fast product tooltip grammar");
   check(host.querySelector('.close-day-action-option[data-action="stay"]')?.dataset.icon === "eye",
     "Leave open uses the explicit eye icon instead of the ambiguous pin");
+  const shortcutPairs = {
+    close: "w", inbox: "i", snooze: "s", "add-session": "a",
+    session: "t", "archive-label": "l", stay: "o", "close-unfiled": "w"
+  };
+  check([...host.querySelectorAll(".close-day-row .close-day-action-option")].every((button) =>
+    button.dataset.shortcutKey === shortcutPairs[button.dataset.action] &&
+    button.dataset.tip?.endsWith(` (${shortcutPairs[button.dataset.action].toUpperCase()})`)),
+  "Close the day advertises shared action keys plus mnemonic keys for its local actions");
   check(!host.querySelector(".close-day-choice-current") &&
     host.querySelector(".close-day-action-copy")?.textContent.startsWith("Action: "),
   "the selected action moves into the ordinary row copy instead of a second full-width band");
   check(host.querySelector('.close-day-row .close-day-action-option[data-action="close"]')
     ?.getAttribute("aria-label")?.includes("Session “Client review”"),
   "an already-saved close choice names the durable destination");
+  host.querySelector('.close-day-row .close-day-action-option[data-action="snooze"]')?.click();
+  await waitUntil(() => document.querySelector(".action-popover .snoozebar"));
+  check(document.querySelector('.action-popover input[type="datetime-local"]') &&
+    document.querySelectorAll(".action-popover .palette-choice-grid button").length >= 5,
+  "Close the day uses the complete shared Snooze picker with presets and Custom time");
+  document.querySelector(".action-popover .action-popover-close")?.click();
+  await wait();
   const actionSetStyle = getComputedStyle(firstAction);
   check(Number.parseFloat(actionSetStyle.borderTopWidth) > 0 &&
     firstAction.getBoundingClientRect().height <= 36,
@@ -262,11 +307,9 @@ try {
   const otherStage = host.querySelector('[data-close-day-stage="regular"]');
   const currentSummary = host.querySelector(".close-day-summary").getBoundingClientRect();
   window.scrollTo(0, Math.max(0, window.scrollY + otherStage.getBoundingClientRect().top -
-    currentSummary.bottom - 16));
-  await frame();
-  await frame();
-  check(host.querySelector('.close-day-stage-link[data-stage-target="regular"]')
-    ?.getAttribute("aria-current") === "true",
+    currentSummary.bottom - 8));
+  const regularLink = host.querySelector('.close-day-stage-link[data-stage-target="regular"]');
+  check(await waitUntil(() => regularLink?.getAttribute("aria-current") === "true"),
   "ordinary scrolling updates the active section link without a rerender");
   window.scrollTo(0, 0);
   await frame();
@@ -299,6 +342,36 @@ try {
     .find((row) => row.textContent.includes("New research"))
     ?.querySelector(".close-day-row-select")?.checked,
   "clicking the non-interactive part of a row selects it");
+  const looseCopy = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((row) => row.textContent.includes("Loose tab")).querySelector(".close-day-copy");
+  looseCopy.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+  await wait();
+  const ranged = [...host.querySelectorAll('.close-day-row-select:not(:disabled)')]
+    .filter((checkbox) => checkbox.checked);
+  check(ranged.length >= 2 && ranged[0].closest("[data-close-day-row]").textContent.includes("New research") &&
+    ranged.at(-1).closest("[data-close-day-row]").textContent.includes("Loose tab"),
+  "Shift-click selects the visual range from the last individually selected Close-the-day row");
+  const rangeEnd = ranged.at(-1);
+  rangeEnd.focus();
+  const shiftX = new KeyboardEvent("keydown", {
+    key: "X", code: "KeyX", shiftKey: true, bubbles: true, cancelable: true
+  });
+  rangeEnd.dispatchEvent(shiftX);
+  await wait();
+  check(shiftX.defaultPrevented &&
+    [...host.querySelectorAll('.close-day-row-select:not(:disabled)')].every((checkbox) => !checkbox.checked),
+  "Shift+X mirrors Shift-click and toggles the anchored range off from the keyboard");
+  const shortcutOwner = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((row) => row.textContent.includes("New research"))
+    .querySelector(".close-day-row-select");
+  shortcutOwner.focus();
+  const labelKey = new KeyboardEvent("keydown", { key: "l", code: "KeyL", bubbles: true, cancelable: true });
+  shortcutOwner.dispatchEvent(labelKey);
+  check(labelKey.defaultPrevented && await waitUntil(() =>
+    Boolean(document.querySelector('input[aria-label^="Labels for"]'))),
+  "a Close-the-day row action fires from its advertised key while the row owns focus");
+  document.querySelector(".action-popover .action-popover-close")?.click();
+  await wait();
   [...host.querySelectorAll("[data-close-day-row]")]
     .find((row) => row.textContent.includes("New research"))?.querySelector(".close-day-copy")?.click();
   await wait();
@@ -375,7 +448,16 @@ try {
     .find((card) => card.textContent.includes("Client review"));
   check(sessionCard.querySelector(".close-day-window-bulk")?.textContent.includes("2 selected"),
     "a window header exposes one bulk action rail for its selected tabs");
+  check(sessionCard.querySelectorAll(".close-day-row .close-day-action-option").length === 0 &&
+    sessionCard.querySelectorAll(".close-day-bulk-action").length > 0,
+  "multiple selected rows expose only the window bulk actions");
   const bulkButtons = [...sessionCard.querySelectorAll(".close-day-bulk-action")];
+  const selectedHeaderCheckbox = sessionCard.querySelector(".close-day-window-select");
+  selectedHeaderCheckbox.focus();
+  const headerArrow = new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true });
+  selectedHeaderCheckbox.dispatchEvent(headerArrow);
+  check(headerArrow.defaultPrevented && document.activeElement === bulkButtons[0],
+    "right arrow enters the window header action rail from its select-all control");
   bulkButtons[0].focus();
   const bulkArrow = new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true });
   bulkButtons[0].dispatchEvent(bulkArrow);
@@ -394,6 +476,14 @@ try {
   [...document.querySelectorAll(".action-popover [role=option]")]
     .find((option) => option.textContent.trim() === "Reading")
     ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  await wait();
+  await frame();
+  const sessionOrganizer = document.querySelector('[data-inline-organization-editor="session"]');
+  check(sessionOrganizer && !sessionOrganizer.textContent.includes("null") &&
+    sessionOrganizer.textContent.includes("You can change them later in Sessions"),
+  "Close the day keeps Session organization on the same screen with user-facing guidance");
+  [...document.querySelectorAll(".action-popover button")]
+    .find((button) => button.textContent.trim() === "Apply Session")?.click();
   await wait();
   await frame();
   check([...host.querySelectorAll(".close-day-action-copy")]
@@ -420,6 +510,11 @@ try {
   bulkInput.value = "Project";
   bulkInput.dispatchEvent(new Event("input", { bubbles: true }));
   bulkInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await wait();
+  const labelOrganizer = document.querySelector('[data-inline-organization-editor="label"]');
+  check(labelOrganizer && !labelOrganizer.textContent.includes("null") &&
+    labelOrganizer.textContent.includes("You can change them later in Labels"),
+  "Close the day keeps Label organization on the same screen without implementation text");
   bulkInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await wait();
   check(messages.includes("close-day-bulk-choice"),
@@ -454,8 +549,9 @@ try {
 
   buttonNamed("Close the day").click();
   await wait();
-  check(buttonNamed("Save first, then close 2 tabs"), "final close is a truthful P4 second step");
-  buttonNamed("Save first, then close 2 tabs").click();
+  check(buttonNamed("Confirm actions for 2 tabs"),
+    "the final P4 step confirms the reviewed actions without sounding like advice");
+  buttonNamed("Confirm actions for 2 tabs").click();
   await wait();
   check(host.textContent.includes("The day is closed") && buttonNamed("Undo Close the day"),
     "successful completion replaces the review with receipt-backed Undo");
@@ -465,6 +561,161 @@ try {
   check(host.textContent.includes("Close the day undone"), "Undo has a distinct terminal result");
   check(messages.filter((type) => type === "close-day-commit").length === 1,
     "the P4 flow emits exactly one close transaction");
+
+  buttonNamed("Start another review").click();
+  await wait();
+  const reusableRows = plan.groups.flatMap((group) => group.rows)
+    .filter((entry) => entry.availableActions.includes(planner.CLOSE_DAY_ACTIONS.newSession));
+  check(reusableRows.length >= 2, "the synthetic review has following tabs for destination reuse");
+  const pendingSessionName = "Evening research";
+  check(planner.applyCloseDayChoice(plan, reusableRows[0].fingerprintKey, {
+    action: planner.CLOSE_DAY_ACTIONS.newSession, newSessionName: pendingSessionName
+  }), "a new named Session choice can be recorded in the review draft");
+  await renderSurface();
+  const followingSessionAction = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((node) => node.dataset.closeDayRow === reusableRows[1].fingerprintKey)
+    ?.querySelector('.close-day-action-option[data-action="session"]');
+  check(followingSessionAction,
+    "a following tab has a mounted Session picker action");
+  followingSessionAction.click();
+  await waitUntil(() => document.querySelector('.action-popover input[role="combobox"]'));
+  check(document.querySelector('.action-popover input[role="combobox"]'),
+    "the following Session picker opened");
+  await waitUntil(() => [...document.querySelectorAll('.action-popover [role="option"]')]
+    .some((node) => node.textContent.trim() === "Reading"));
+  const pendingSessionOptions = [...document.querySelectorAll('.action-popover [role="option"]')]
+    .map((node) => node.textContent.trim());
+  check(pendingSessionOptions.includes(pendingSessionName),
+    "a newly named Session is offered again for following tabs without retyping",
+    pendingSessionOptions.join("|"));
+  [...document.querySelectorAll('.action-popover [role="option"]')]
+    .find((node) => node.textContent.trim() === pendingSessionName)
+    ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  await wait();
+  [...document.querySelectorAll('.action-popover button')]
+    .find((node) => node.textContent.trim() === "Apply Session")?.click();
+  await wait();
+  check(reusableRows[1].choice.action === planner.CLOSE_DAY_ACTIONS.newSession &&
+    reusableRows[1].choice.newSessionName === pendingSessionName,
+    "reusing the pending Session assigns the same new destination to the following tab");
+  check(reviewDestinationOptions(plan).sessions.some((session) =>
+    session.name === pendingSessionName), "the draft carries the reusable Session destination");
+  let pendingBulkCard = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((node) => node.dataset.closeDayRow === reusableRows[1].fingerprintKey)
+    ?.closest(".close-day-window");
+  pendingBulkCard.querySelector(".close-day-window-select").click();
+  await wait();
+  pendingBulkCard = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((node) => node.dataset.closeDayRow === reusableRows[1].fingerprintKey)
+    ?.closest(".close-day-window");
+  pendingBulkCard.querySelector('.close-day-bulk-action[data-action="session"]').click();
+  await waitUntil(() => [...document.querySelectorAll('.action-popover [role="option"]')]
+    .some((node) => node.textContent.trim() === "Reading"));
+  check([...document.querySelectorAll('.action-popover [role="option"]')]
+    .some((node) => node.textContent.trim() === pendingSessionName),
+    "the window bulk Session picker also offers the pending name",
+    [...document.querySelectorAll('.action-popover [role="option"]')]
+      .map((node) => node.textContent.trim()).join("|"));
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown",
+    { key: "Escape", bubbles: true, cancelable: true }));
+  await wait();
+  pendingBulkCard.querySelector(".close-day-window-select").click();
+  await wait();
+
+  const reusableLabelRows = plan.groups.flatMap((group) => group.rows)
+    .filter((entry) => entry.availableActions.includes(planner.CLOSE_DAY_ACTIONS.archiveLabel));
+  check(reusableLabelRows.length >= 2, "the synthetic review has following tabs for Label reuse");
+  const pendingLabelName = "evening_notes";
+  check(planner.applyCloseDayChoice(plan, reusableLabelRows[0].fingerprintKey, {
+    action: planner.CLOSE_DAY_ACTIONS.archiveLabel, labels: [pendingLabelName]
+  }), "a new Label choice can be recorded in the review draft");
+  await renderSurface();
+  const followingLabelAction = [...host.querySelectorAll("[data-close-day-row]")]
+    .find((node) => node.dataset.closeDayRow === reusableLabelRows[1].fingerprintKey)
+    ?.querySelector('.close-day-action-option[data-action="archive-label"]');
+  check(followingLabelAction, "a following tab has a mounted Label picker action");
+  followingLabelAction.click();
+  await waitUntil(() => document.querySelector('.action-popover input[role="combobox"]'));
+  const labelInputForReuse = document.querySelector('.action-popover input[role="combobox"]');
+  labelInputForReuse.value = "evening";
+  labelInputForReuse.dispatchEvent(new Event("input", { bubbles: true }));
+  await wait();
+  const pendingLabelOptions = [...document.querySelectorAll('.action-popover [role="option"]')]
+    .map((node) => node.textContent.trim());
+  check(pendingLabelOptions.includes(pendingLabelName),
+    "a newly named Label is offered again for following tabs without retyping",
+    pendingLabelOptions.join("|"));
+  [...document.querySelectorAll('.action-popover [role="option"]')]
+    .find((node) => node.textContent.trim() === pendingLabelName)
+    ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  await wait();
+  [...document.querySelectorAll('.action-popover button')]
+    .find((node) => node.textContent.trim() === "Apply labels")?.click();
+  await wait();
+  check(reusableLabelRows[1].choice.action === planner.CLOSE_DAY_ACTIONS.archiveLabel &&
+    reusableLabelRows[1].choice.labels.includes(pendingLabelName),
+    "reusing the pending Label assigns the same name to the following tab");
+
+  for (const uncertain of [false, true]) for (const restore of [false, true]) {
+    const receipt = {
+      id: "incomplete-receipt", phase: "undo-incomplete", updatedAt: Date.now(),
+      reopenResult: uncertain
+        ? { reopened: 0, expected: 3, uncertain: 3 }
+        : { reopened: 2, expected: 3, failed: 1 },
+      storeUndo: { conflicts: 0 }
+    };
+    const notices = [];
+    const undoMessages = [];
+    let finishUndo;
+    surface = createCloseDaySurface({
+      msg: async (message) => {
+        undoMessages.push(message.type);
+        if (message.type === "close-day-status") return {
+          latest: restore ? receipt : {
+            id: receipt.id, phase: "complete", updatedAt: Date.now(),
+            result: { closed: 3, skipped: 0 }
+          }
+        };
+        if (message.type === "close-day-undo") {
+          if (undoMessages.filter((type) => type === "close-day-undo").length === 1) {
+            return { ok: false, status: "busy" };
+          }
+          return new Promise((resolve) => { finishUndo = resolve; });
+        }
+        throw new Error(`Unexpected incomplete Undo message ${message.type}`);
+      },
+      rerender: renderSurface, showNotice: (notice) => notices.push(notice),
+      onNavigate: () => {}, onLeave: () => {}
+    });
+    await renderSurface();
+    await wait();
+    if (!restore) {
+      buttonNamed("Undo Close the day").click();
+      await wait();
+      check(notices.at(-1) === "Undo is already in progress." &&
+        host.textContent.includes("The day is closed"),
+      "a concurrent Undo reports busy without claiming success");
+      buttonNamed("Undo Close the day").click();
+      await wait();
+      finishUndo({ ok: false, status: "incomplete", receipt });
+      await wait();
+      await frame();
+      check(document.activeElement === host.querySelector(".close-day-complete h3"),
+        "an asynchronous incomplete Undo focuses its result heading");
+    }
+    const context = `${restore ? "restored" : "asynchronous"} ${uncertain ? "uncertain" : "partial"} Undo`;
+    check(host.textContent.includes("Undo did not finish") &&
+      !host.textContent.includes("Close the day undone") && !host.textContent.includes("The day is closed"),
+    `${context} renders the incomplete outcome instead of a success receipt`);
+    check(host.textContent.includes(uncertain
+      ? "0 of 3 saved addresses confirmed reopened. EveryTab could not confirm the rest."
+      : "2 of 3 saved addresses reopened. Some addresses could not be reopened."),
+    `${context} uses confirmed counts and distinguishes unknown browser effects`);
+    check(!buttonNamed("Undo Close the day") && buttonNamed("Start another review"),
+      `${context} cannot replay browser creation and retains the next review action`);
+    check(undoMessages.filter((type) => type === "close-day-undo").length === (restore ? 0 : 2),
+      `${context} never replays Undo while rendering its receipt`);
+  }
 
     result.dataset.status = "pass";
     result.textContent = `PASS: ${checks.length} Close-the-day mounted checks`;

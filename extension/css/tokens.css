@@ -1,5 +1,8 @@
+/* Copyright 2026 Hadrien Gelas and EveryTab contributors */
+/* SPDX-License-Identifier: MPL-2.0 */
+
 /* ============================================================
-   EveryTab design tokens (M6) — the two-axis system, final form.
+   EveryTab design tokens (M6) — color, mode, and interface style.
    data-scheme = pure color (23 palettes) · data-mode = light|dark
    body.gradient = optional gradient atmosphere + orbs (a setting)
    One form (user decision): Bold typography, solid surfaces,
@@ -94,6 +97,9 @@
      but moves toward the scheme ink enough to remain a visible boundary. */
   --focus-accent: color-mix(in srgb, var(--accent) 64%, var(--ink) 36%);
   --focus-ring: color-mix(in srgb, var(--focus-accent) 30%, transparent);
+  /* Typed fields use an inset cue so sticky parents and compact side-panel
+     layouts cannot crop the focus boundary. */
+  --field-focus-shadow: inset 0 0 0 2px var(--focus-ring);
   --ok-bg: color-mix(in srgb, var(--ok) 13%, transparent);
   --warn-bg: color-mix(in srgb, var(--warn) 14%, transparent);
   --danger-bg: color-mix(in srgb, var(--danger) 13%, transparent);
@@ -132,7 +138,7 @@
   --workbench-tertiary: color-mix(in srgb, var(--ink-2) 12%, var(--ink) 88%);
 }
 
-[data-corner-style="soft"] {
+[data-interface-style="soft"] {
   --shape-mini: 7px;
   --shape-nav: 8px;
   --shape-focus: 9px;
@@ -145,6 +151,23 @@
   --shape-card: 14px;
 }
 
+[data-interface-style="terminal"] {
+  --font-display: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-body: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --display-weight: 700;
+  --display-tracking: -0.02em;
+  --shape-mini: 0;
+  --shape-nav: 0;
+  --shape-focus: 0;
+  --shape-control: 0;
+  --shape-search: 0;
+  --shape-keeper: 0;
+  --shape-panel: 0;
+  --shape-card: 0;
+  --shadow-1: none;
+  --btn-glow: none;
+}
+
 body {
   background: var(--bg-solid);
   color: var(--ink);
@@ -155,6 +178,53 @@ body.gradient, [data-gradient="true"] body {
   background: var(--bg-grad, var(--bg-solid));
   background-attachment: fixed;
 }
+
+/* One compositor-owned crossfade keeps a manual scheme preview coherent. It
+   snapshots the complete painted interface, so individual token consumers do
+   not change at visibly different speeds and no layout is animated. Named
+   regions used by other transitions must join this snapshot too: separate
+   groups paint above root content, including the onboarding modal. */
+html[data-scheme-transition="true"] *,
+html[data-scheme-transition="true"] *::before,
+html[data-scheme-transition="true"] *::after {
+  transition-property: none !important;
+  view-transition-name: none !important;
+}
+html[data-scheme-transition="true"]::view-transition-old(root),
+html[data-scheme-transition="true"]::view-transition-new(root) {
+  animation-duration: 190ms;
+  animation-timing-function: var(--ease-out);
+  mix-blend-mode: normal;
+}
+html[data-scheme-transition="true"]::view-transition-old(root) {
+  animation-name: everytab-scheme-fade-out;
+}
+html[data-scheme-transition="true"]::view-transition-new(root) {
+  animation-name: everytab-scheme-fade-in;
+}
+/* The fixed scheme catalogue is a control surface, not page content. Give it
+   a named, stationary snapshot so the root crossfade cannot send the sheet to
+   the viewport edge and back while the user previews another scheme. A modal
+   keeps even this control in the root snapshot, preserving its stacking. */
+html[data-scheme-transition="true"]:not(:has([aria-modal="true"])) .theme-pop:not(.hidden) {
+  view-transition-name: everytab-theme-picker !important;
+}
+html[data-scheme-transition="true"]::view-transition-group(everytab-theme-picker) {
+  animation: none;
+}
+html[data-scheme-transition="true"]::view-transition-old(everytab-theme-picker),
+html[data-scheme-transition="true"]::view-transition-new(everytab-theme-picker) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-scheme-transition="true"]::view-transition-old(everytab-theme-picker) {
+  opacity: 0;
+}
+html[data-scheme-transition="true"]::view-transition-new(everytab-theme-picker) {
+  opacity: 1;
+}
+@keyframes everytab-scheme-fade-out { to { opacity: 0; } }
+@keyframes everytab-scheme-fade-in { from { opacity: 0; } }
 
 /* gradient atmosphere orbs (only with body.gradient; pages opt in with <span class="orb">) */
 .orb { display: none; }
@@ -181,6 +251,12 @@ body.gradient .orb, [data-gradient="true"] body .orb {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  html[data-scheme-transition="true"]::view-transition-old(root),
+  html[data-scheme-transition="true"]::view-transition-new(root),
+  html[data-scheme-transition="true"]::view-transition-old(everytab-theme-picker),
+  html[data-scheme-transition="true"]::view-transition-new(everytab-theme-picker) {
+    animation: none !important;
+  }
 }
 
 /* ============================================================
@@ -201,6 +277,22 @@ body.gradient .orb, [data-gradient="true"] body .orb {
   --ink: #eee5d0; --ink-2: #b3a88e; --ink-3: #9f9680;
   --accent: #de8b5c; --accent-ink: #241505; --accent-strong: #eba471; --accent-strong-ink: #eba471;
   --ok: #a4bd7c; --warn: #dcb45e; --danger: #de7a62;
+}
+
+/* Aladdin */
+[data-scheme="aladdin"][data-mode="light"] {
+  --bg-solid: #efa36f; --bg-grad: linear-gradient(130deg, #f2b36f 0%, #e9865e 55%, #b92242 100%);
+  --surface: #f5c487; --surface-2: #ed956f; --border: #b95750;
+  --ink: #20091b; --ink-2: #593534; --ink-3: #5b3635;
+  --accent: #8f1635; --accent-ink: #ffffff; --accent-strong: #245a88; --accent-strong-ink: #173855;
+  --ok: #3a5b33; --warn: #6f4d0d; --danger: #8f372b;
+}
+[data-scheme="aladdin"][data-mode="dark"] {
+  --bg-solid: #101b42; --bg-grad: linear-gradient(135deg, #101b42 0%, #244d82 55%, #e06642 100%);
+  --surface: #172856; --surface-2: #263667; --border: #354e7c;
+  --ink: #f4c9a5; --ink-2: #dfb99d; --ink-3: #dcb79c;
+  --accent: #f57a45; --accent-ink: #000000; --accent-strong: #53b6d8; --accent-strong-ink: #99d4e8;
+  --ok: #608a58; --warn: #a37826; --danger: #be6458;
 }
 
 /* Candy */
@@ -648,22 +740,6 @@ body.gradient .orb, [data-gradient="true"] body .orb {
   --ink: #f7e4c5; --ink-2: #d3c0a5; --ink-3: #d1bea3;
   --accent: #d9a441; --accent-ink: #000000; --accent-strong: #5ea0c7; --accent-strong-ink: #b9d6e7;
   --ok: #598551; --warn: #a07420; --danger: #bc6053;
-}
-
-/* Perestroika */
-[data-scheme="perestroika"][data-mode="light"] {
-  --bg-solid: #f4e9df; --bg-grad: linear-gradient(135deg, #efddd5 0%, #f8eee4 55%, #ecdfd3 100%);
-  --surface: #fff7ee; --surface-2: #ead3c7; --border: #d7bcb1;
-  --ink: #5b1924; --ink-2: #814b51; --ink-3: #824d53;
-  --accent: #a62435; --accent-ink: #ffffff; --accent-strong: #8b6b45; --accent-strong-ink: #634d31;
-  --ok: #4f7d46; --warn: #9a6b12; --danger: #b04435;
-}
-[data-scheme="perestroika"][data-mode="dark"] {
-  --bg-solid: #32131c; --bg-grad: linear-gradient(135deg, #3c1c21 0%, #38151e 55%, #3e1720 100%);
-  --surface: #431923; --surface-2: #55212c; --border: #6b3039;
-  --ink: #f3d8b4; --ink-2: #dcc0a2; --ink-3: #dbbea0;
-  --accent: #d9ae72; --accent-ink: #000000; --accent-strong: #c94552; --accent-strong-ink: #f0cccf;
-  --ok: #5d8a55; --warn: #a17521; --danger: #bc6255;
 }
 
 /* Metropolis */

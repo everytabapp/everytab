@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Localized disclosure copy for the optional browser History permission. */
 import { msg } from "../lib/i18n.js";
 

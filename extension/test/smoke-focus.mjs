@@ -164,7 +164,7 @@ export async function runSmokeFocus({ check, local }) {
     // (requested from a user gesture); F14 adds the warning-free `sidePanel` and
     // P11-21 adds warning-free `search` for explicit default-provider handoff.
     // There is still no host/DNR/content access.
-    const expectedPerms = ["tabs", "storage", "unlimitedStorage",
+    const expectedPerms = ["tabs", "favicon", "storage", "unlimitedStorage",
                            "alarms", "notifications", "contextMenus", "search", "sessions", "sidePanel"];
     check(JSON.stringify(manifest.permissions) === JSON.stringify(expectedPerms),
       "F8-1/F18: install-time permissions are the expected set (no host permissions / DNR / content scripts)");
@@ -188,350 +188,6 @@ export async function runSmokeFocus({ check, local }) {
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/[^\n]*/g, "");
     check(!copy.includes("—"), "F8-1: no em dash in the Focus settings copy");
-  }
-  
-  /* ================= F8-R1: Workspace Focus retirement =================
-   * focus-mode.md §9, §12.1. Focus v0.2 removed the unreliable window/session
-   * "Workspace Focus" experiment. `js/lib/focus-retirement.js` is what remains: a
-   * RESTORATION-ONLY compatibility drain for a legacy `focusState`. A controllable
-   * window world (state/incognito/focused per window, restore, alarms, isolated
-   * storage, and an ordered/deferred late-minimize model) drives the REAL retirement
-   * service through the §12.1 characterizations A1-A9. The old start/switch/hide/
-   * minimize/render window-session tests were removed with the feature. */
-  {
-    const retire = await import("../js/lib/focus-retirement.js");
-    const ALARM = retire.FOCUS_ALARM;
-    const baseChrome = globalThis.chrome;
-    // Shrink poll/retry/quiet so the drain converges at ~zero time (never real time);
-    // transitions commit by request count / read count in the mock below, not the clock.
-    retire.configureFocusRetirement({ maxRequests: 3, pollsPerRequest: 3, pollIntervalMs: 0, retryMs: 1000, quietPolls: 2 });
-  
-    // A self-contained window world. It never MINIMIZES on its own; `minimizeRequests`
-    // records any minimize the code under test issues (must stay empty — the drain only
-    // restores). `commitAfter`/`commitOnRead`/`lateMinimize` model a lagging or late
-    // native transition so the quiet-proof + retry paths are exercised.
-    function makeWorld(winSpecs) {
-      const store = {};
-      const alarms = {};
-      let windows = winSpecs.map((w) => ({ type: "normal", incognito: false, focused: false, state: "normal", ...w }));
-      const world = {
-        store, alarms, updateRequests: [], minimizeRequests: [],
-        commitAfter: new Map(),      // id -> number of accepted-but-uncommitted requests before it lands
-        commitOnRead: new Map(),     // id -> number of reads after which the last request commits
-        requestedState: new Map(),
-        lateMinimize: new Set(),     // id -> an OLDER minimize still queued ahead of a corrective request
-        _pendingLateMin: new Set(),
-        get windows() { return windows; },
-        win: (id) => windows.find((w) => w.id === id),
-        close: (id) => { windows = windows.filter((w) => w.id !== id); },
-        setState: (id, s) => { const w = windows.find((x) => x.id === id); if (w) w.state = s; }
-      };
-      world.chrome = {
-        ...baseChrome,
-        storage: { local: {
-          get: async (keys) => {
-            if (keys == null) return { ...store };
-            if (typeof keys === "string") return keys in store ? { [keys]: store[keys] } : {};
-            const out = {}; for (const k of keys) if (k in store) out[k] = store[k]; return out;
-          },
-          set: async (obj) => { Object.assign(store, obj); },
-          remove: async (keys) => { for (const k of [].concat(keys)) delete store[k]; }
-        } },
-        alarms: {
-          create: async (name, info) => { alarms[name] = info; },
-          clear: async (name) => { const had = name in alarms; delete alarms[name]; return had; }
-        },
-        windows: {
-          getAll: async () => windows.map((w) => ({ ...w })),
-          get: async (id) => {
-            const w = windows.find((x) => x.id === id);
-            if (!w) throw new Error("no window " + id);
-            // An OLDER queued minimize lands now (after a newer corrective request acknowledged).
-            if (world._pendingLateMin.has(id)) { w.state = "minimized"; world._pendingLateMin.delete(id); return { ...w }; }
-            if (world.commitOnRead.has(id)) {
-              const n = world.commitOnRead.get(id) - 1;
-              if (n <= 0) { const to = world.requestedState.get(id); if (to) w.state = to; world.commitOnRead.delete(id); }
-              else world.commitOnRead.set(id, n);
-            }
-            return { ...w };
-          },
-          update: async (id, props) => {
-            const w = windows.find((x) => x.id === id);
-            if (!w) throw new Error("no window " + id);
-            if (props.state) {
-              world.updateRequests.push({ id, state: props.state });
-              if (props.state === "minimized") world.minimizeRequests.push(id);
-              // A corrective (non-minimized) request while an OLDER minimize is queued does not
-              // commit and does not cancel it — the minimize lands on the next read.
-              if (props.state !== "minimized" && world.lateMinimize.has(id)) {
-                world.lateMinimize.delete(id); world._pendingLateMin.add(id); return { ...w };
-              }
-              world.requestedState.set(id, props.state);
-              if (world.commitOnRead.has(id)) { /* deferred to reads */ }
-              else { const pending = world.commitAfter.get(id) ?? 0; if (pending > 0) world.commitAfter.set(id, pending - 1); else w.state = props.state; }
-            }
-            if (props.focused) { for (const x of windows) x.focused = false; w.focused = true; }
-            return { ...w };
-          }
-        }
-      };
-      return world;
-    }
-    const useWorld = (winSpecs) => { const world = makeWorld(winSpecs); globalThis.chrome = world.chrome; return world; };
-    // A legacy Workspace-Focus run as a pre-v0.2 install would still hold it.
-    const legacy = (minimized, extra = {}) => ({
-      id: "legacy", startedAt: 1, endsAt: null, label: "Work",
-      target: { kind: "window", windowIds: [1] }, minimized, ...extra
-    });
-  
-    /* -- the pure duration + display helpers survive for Batch 2; the retired
-     *    window/session status builder (buildFocusStatus) is gone -- */
-    {
-      const focus = await import("../js/lib/focus.js");
-      const focusCopy = await import("../js/lib/focus-copy.js");
-      check(!("buildFocusStatus" in focus),
-        "F8-R1: buildFocusStatus (the retired window/session run status) is gone from focus.js");
-      const now = 1_000_000;
-      const dflt = focus.resolveEndChoice(undefined, { focusDefaultEndMode: "duration", focusDefaultDurationMinutes: 25 }, now);
-      check(dflt.ok && dflt.endsAt === now + 25 * 60000, "F8-R1: resolveEndChoice defaults kept (reused by Batch 2)");
-      check(focus.resolveEndChoice({ mode: "manual" }, {}, now).endsAt === null, "F8-R1: resolveEndChoice manual stays open-ended");
-      check(focusCopy.formatRemaining(now + 65 * 60000, now) === "1h 5m", "F8-R1: formatRemaining still formats 1h 5m");
-      const info = focus.nextWallClockInfo(now, 0);
-      check(typeof info.at === "number" && typeof info.isTomorrow === "boolean", "F8-R1: nextWallClockInfo kept");
-    }
-  
-    /* -- A1: normal/maximized/fullscreen records restore to prior; clears when visible -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" },
-        { id: 3, state: "minimized" }, { id: 4, state: "minimized" }]);
-      w.store.focusState = legacy([
-        { windowId: 2, priorState: "normal" },
-        { windowId: 3, priorState: "maximized" },
-        { windowId: 4, priorState: "fullscreen" }
-      ]);
-      const r = await retire.drainLegacyFocus();
-      check(r.complete === true, "A1: the retirement drain completes");
-      check(w.win(2).state === "normal" && w.win(3).state === "maximized" && w.win(4).state === "fullscreen",
-        "A1: each recorded window is restored to its prior state");
-      check(!("focusState" in w.store), "A1: focusState clears only after every window is visibly non-minimized");
-      check(!(ALARM in w.alarms), "A1: the legacy alarm is cleared");
-      check(w.minimizeRequests.length === 0, "A1: the drain issues no minimize request");
-    }
-  
-    /* -- A2: a pre-minimized / unrecorded window is never touched -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }, { id: 9, state: "minimized" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }]); // window 9 is NOT recorded
-      await retire.drainLegacyFocus();
-      check(w.win(2).state === "normal", "A2: the recorded window restores");
-      check(w.win(9).state === "minimized", "A2: an unrecorded pre-minimized window stays minimized");
-      check(!w.updateRequests.some((u) => u.id === 9), "A2: no request is issued for the unrecorded window");
-      check(!("focusState" in w.store), "A2: state clears");
-    }
-  
-    /* -- A3: a user-restored recorded window is pruned without being forced back -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "maximized" }]); // record: minimized-from-normal, now visible
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }]);
-      await retire.drainLegacyFocus();
-      check(w.win(2).state === "maximized", "A3: a user-restored recorded window keeps the user's state (not forced to prior)");
-      check(!w.updateRequests.some((u) => u.id === 2), "A3: no state request is issued for the already-visible window");
-      check(!("focusState" in w.store), "A3: the resolved record is pruned and state clears");
-    }
-  
-    /* -- A4: a closed recorded window is pruned -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }, { windowId: 7, priorState: "normal" }]); // 7 closed
-      await retire.drainLegacyFocus();
-      check(w.win(2).state === "normal", "A4: the live recorded window restores");
-      check(!("focusState" in w.store), "A4: a closed recorded window is pruned and state clears");
-    }
-  
-    /* -- A5: a visible pendingMinimize record is not cleared on one read; quiet-proof
-     *       corrects a late legacy minimize before the record is dropped -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "normal" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal", pendingMinimize: true }]);
-      w.lateMinimize.add(2); // an older accepted minimize lands right after the corrective request
-      const r = await retire.drainLegacyFocus();
-      check(r.complete === true && w.win(2).state === "normal",
-        "A5: quiet-proof restores a late-committed legacy minimize on a visible pending record");
-      check(!("focusState" in w.store), "A5: state clears only after the quiet proof completes");
-    }
-  
-    /* -- A6: an unresolved restore retains ONLY the unresolved record under phase:ending
-     *       and arms exactly one calm retry alarm; A7: recovery resumes it idempotently -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }, { id: 3, state: "minimized" }]);
-      w.commitAfter.set(3, 999); // window 3's restore never confirms within the budget
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }, { windowId: 3, priorState: "normal" }]);
-      const r = await retire.drainLegacyFocus();
-      check(r.complete === false, "A6: an unfinished restore keeps the run");
-      check(w.win(2).state === "normal", "A6: the window that could restore did");
-      check(w.store.focusState?.phase === "ending" &&
-        (w.store.focusState.minimized ?? []).length === 1 &&
-        w.store.focusState.minimized[0].windowId === 3,
-        "A6: only the unresolved record is retained under phase:ending");
-      check((w.alarms[ALARM]?.when ?? 0) > Date.now() && Object.keys(w.alarms).length === 1,
-        "A6: exactly one calm retry alarm is armed");
-      w.commitAfter.delete(3); // the native transition settles; the retry restore can now commit
-      const r2 = await retire.drainLegacyFocus();
-      check(r2.complete === true && w.win(3).state === "normal" && !("focusState" in w.store),
-        "A7: a later drain resumes the restoration and completes idempotently");
-    }
-  
-    /* -- A8: once the legacy key is absent, recovery issues zero window updates and
-     *       clears a stale old alarm -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }]);
-      w.alarms[ALARM] = { when: Date.now() + 99999 }; // a stale legacy alarm with NO state
-      const r = await retire.drainLegacyFocus();
-      check(r.complete === true, "A8: a drain with no legacy state completes");
-      check(w.updateRequests.length === 0, "A8: no windows.update is issued when legacy state is absent");
-      check(!(ALARM in w.alarms), "A8: a stale legacy alarm is cleared");
-      check(w.win(2).state === "minimized", "A8: no window is touched");
-    }
-  
-    /* -- A9: the legacy drain never minimizes and never creates a new run; the module
-     *       exposes no start/hide/status/target API -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }, { id: 3, state: "normal" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }]);
-      await retire.drainLegacyFocus();
-      check(w.minimizeRequests.length === 0, "A9: the drain never issues a minimize request");
-      check(w.win(3).state === "normal", "A9: a visible window is never minimized");
-      check(!("focusState" in w.store), "A9: no new run is created (focusState removed, never re-activated)");
-      for (const api of ["startWindowFocus", "startSessionFocus", "hideOtherWindowsAgain",
-                         "getFocusStatus", "handleFocusMessage"]) {
-        check(!(api in retire), `A9: the retirement module exposes no ${api} (no start/hide/status API)`);
-      }
-    }
-  
-    /* -- onFocusWindowRemoved prunes a closed recorded window; emptying clears state -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }, { windowId: 3, priorState: "normal" }]);
-      await retire.onFocusWindowRemoved(3);
-      check((w.store.focusState.minimized ?? []).every((m) => m.windowId !== 3),
-        "F8-R1: onFocusWindowRemoved prunes the closed recorded window");
-      await retire.onFocusWindowRemoved(2);
-      check(!("focusState" in w.store), "F8-R1: emptying the recovery ledger clears focusState");
-    }
-  
-    /* -- full-start retirement clears legacy state WITHOUT driving windows.update -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }]);
-      w.alarms[ALARM] = { when: Date.now() + 99999 };
-      await retire.retireFocusFullStart();
-      check(!("focusState" in w.store) && !(ALARM in w.alarms), "F8-R1: full-start retirement clears legacy state + alarm");
-      check(w.updateRequests.length === 0, "F8-R1: full-start never drives windows.update (stale pre-restart IDs)");
-      check(w.win(2).state === "minimized", "F8-R1: full-start touches no window");
-    }
-  
-    /* -- the legacy focus-end alarm now only drives the restoration drain -- */
-    {
-      const w = useWorld([{ id: 1, focused: true }, { id: 2, state: "minimized" }]);
-      w.store.focusState = legacy([{ windowId: 2, priorState: "normal" }]);
-      check(retire.isFocusAlarm("focus-end") === true && retire.isFocusAlarm("suspend-sweep") === false,
-        "F8-R1: isFocusAlarm identifies only the legacy focus-end alarm");
-      await retire.handleFocusAlarm();
-      check(w.win(2).state === "normal" && !("focusState" in w.store),
-        "F8-R1: the focus-end alarm drains (restores) the legacy run");
-    }
-  
-    globalThis.chrome = baseChrome; // restore the base mock for the source-contract checks below
-  
-    /* -- source contract: no Workspace Focus product surface remains -- */
-    {
-      const fs = await import("node:fs");
-      const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
-      const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-  
-      const bg = strip(read("../js/background.js"));
-      check(!bg.includes("handleFocusMessage"), "F8-R1: background no longer routes Focus messages (handleFocusMessage gone)");
-      for (const t of ["focus-start-window", "focus-start-session", "focus-hide-again"]) {
-        check(!bg.includes(t), `F8-R1: no old '${t}' message is handled in background`);
-      }
-      check(bg.includes("focus-retirement.js") && !bg.includes("focus-coordinator.js"),
-        "F8-R1: background imports the retirement service, not the retired coordinator");
-  
-      const popup = strip(read("../js/ui/popup.js"));
-      const dash = strip(read("../js/ui/dashboard.js"));
-      // The Workspace Focus TELLS (window/session targeting). Generic "Start focus" /
-      // "End focus" are NOT banned — F8-R2's site-only run legitimately uses them.
-      const bannedCopy = ["Focus this window", "Focus this session", "Switch focus here",
-        "Hide other windows again", "Focused on"];
-      for (const c of bannedCopy) {
-        check(!popup.includes(c), `F8-R1: popup has no Workspace Focus action copy ('${c}')`);
-        check(!dash.includes(c), `F8-R1: dashboard has no Workspace Focus action copy ('${c}')`);
-      }
-      for (const t of ["focus-start-window", "focus-start-session", "focus-hide-again", "focus-status"]) {
-        check(!popup.includes(t) && !dash.includes(t), `F8-R1: no '${t}' message is sent by popup/dashboard`);
-      }
-      check(dash.includes("settings-focus") && dash.includes("scrollToFocusSettings"),
-        "F8-R1: the dashboard #settings-focus deep link + scroll is preserved");
-    }
-  
-    /* -- settings: five v0.2 Focus rows; the two retired fields are hidden -- */
-    {
-      const fs = await import("node:fs");
-      const src = fs.readFileSync(new URL("../js/ui/settings-form.js", import.meta.url), "utf8");
-      const start = src.indexOf("F8: Focus group");
-      const end = src.indexOf("const groupNodes =", start);
-      check(start >= 0 && end > start, "F8-R1: Focus settings block located");
-      // Strip comments so the negative checks read the CODE, not the explanatory note.
-      const code = src.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-      for (const [id, title] of [["focusDuration", "Default duration"], ["morningEnds", "Morning ends at"],
-        ["dayEnds", "Day ends at"], ["blockedSites", "Blocked sites"], ["focusAccess", "When you request access"]]) {
-        check(code.includes(`settingsRowCopy("${id}")`),
-          `F8-R1: the Focus settings group keeps the v0.2 row '${title}'`);
-      }
-      check(code.includes('row(durationCopy.title') && code.includes('row(morningCopy.title') &&
-        code.includes('row(dayCopy.title') && code.includes('class: "setrow focus-block"') &&
-        code.includes('el("div", { class: "setrow" }'),
-        "F8-R1: the Focus group renders exactly the three ordinary and two specialized v0.2 rows");
-      check(code.includes('settingsOptions("focusAccess")') &&
-        code.includes("settingsExceptionDescription(e.currentTarget.value)"),
-        "F8-R1: the access-style row uses the v0.2 immediate/pause copy");
-      check(!code.includes('check("focusMinimizeOtherWindows")'),
-        "F8-R1: the 'Hide other windows' row (focusMinimizeOtherWindows control) is gone");
-      check(!code.includes("focusTemporaryEndAction"),
-        "F8-R1: the 'When temporary access ends' control (focusTemporaryEndAction) is gone");
-      // No em dash in the (new) Focus settings user-facing copy.
-      check(!code.includes("—"), "F8-R1: no em dash in the v0.2 Focus settings copy");
-    }
-  
-    /* -- the two retired settings keys survive defaults + a settings round-trip -- */
-    {
-      const { DEFAULT_SETTINGS } = await import("../js/lib/types.js");
-      check("focusMinimizeOtherWindows" in DEFAULT_SETTINGS && "focusTemporaryEndAction" in DEFAULT_SETTINGS,
-        "F8-R1: both retired keys remain in DEFAULT_SETTINGS");
-      const { getSettings, saveSettings } = await import("../js/lib/store.js");
-      // An install with EXPLICIT non-default retired values must not be clobbered by v0.2.
-      mem.settings = { ...DEFAULT_SETTINGS, focusMinimizeOtherWindows: false, focusTemporaryEndAction: "save-close" };
-      const s = await getSettings();
-      check(s.focusMinimizeOtherWindows === false && s.focusTemporaryEndAction === "save-close",
-        "F8-R1: stored retired values survive getSettings (never overwritten by v0.2)");
-      await saveSettings({ ...s, focusSiteRules: [{ domain: "x.com", displayDomain: "x.com", scope: "focus" }] });
-      const s2 = await getSettings();
-      check(s2.focusMinimizeOtherWindows === false && s2.focusTemporaryEndAction === "save-close",
-        "F8-R1: a save that changes other Focus settings preserves the retired values");
-      delete mem.settings;
-    }
-  
-    /* -- manifest permissions are unchanged by the retirement (no host/DNR/content) -- */
-    {
-      const fs = await import("node:fs");
-      const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-      check(JSON.stringify(manifest.permissions) === JSON.stringify(["tabs", "storage",
-        "unlimitedStorage", "alarms", "notifications", "contextMenus", "search", "sessions", "sidePanel"]),
-        "F8-R1/F18/P11-21: install-time permissions are expected (Search adds no page access)");
-      check(!("host_permissions" in manifest) && !("content_scripts" in manifest) &&
-        !("declarative_net_request" in manifest),
-        "F8-R1: still no host_permissions, content_scripts, or DNR");
-    }
   }
   
   /* ================= F8-R2: distraction-site Focus guard =================
@@ -1138,7 +794,7 @@ export async function runSmokeFocus({ check, local }) {
         "P11-16: Loading is one solid delayed accent label with no looping gloss or duplicate text");
       check(sidepanel.includes('showLoadingFeedback(state.host') &&
         sidepanel.includes("!state.rendered && state.host.childNodes.length === 0") &&
-        dashboard.includes('showLoadingFeedback(openSec.body, { label: "Loading open tabs…" })') &&
+        dashboard.includes('showLoadingFeedback(openSec.body, { label: localeMessage("shell_loading_open") })') &&
         dashboard.includes("openSec.body.childNodes.length === 0") &&
         !dashboard.includes('label: "Loading history suggestions…"') &&
         !sideCss.includes(".panel-loading"),
@@ -1531,13 +1187,22 @@ export async function runSmokeFocus({ check, local }) {
       const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
       const gsrc = strip(fs.readFileSync(new URL("../js/lib/focus-guard.js", import.meta.url), "utf8"));
       const bgsrc = strip(fs.readFileSync(new URL("../js/background.js", import.meta.url), "utf8"));
+      const tabsrc = strip(fs.readFileSync(
+        new URL("../js/background/tab-lifecycle-owner.js", import.meta.url), "utf8"
+      ));
+      const notificationsrc = strip(fs.readFileSync(
+        new URL("../js/background/notification-owner.js", import.meta.url), "utf8"
+      ));
       check(!gsrc.includes("focusState") && !gsrc.includes("focus-coordinator") && !gsrc.includes("focus-end"),
         "F8-R2 J: the site guard never touches legacy focusState / the retired coordinator / the 'focus-end' alarm");
       check(!gsrc.includes("minimize") && !gsrc.includes("Hide other windows"),
         "F8-R2 K: no window minimize / Hide-again logic leaks into the site guard");
-      check(/focusGuardTabActivated\(tabId\)/.test(bgsrc) &&
-        /isAccessNotification\(id\)/.test(bgsrc) && /onAccessNotificationButton\(id, idx\)/.test(bgsrc) &&
-        /onAccessNotificationClicked\(id\)/.test(bgsrc),
+      check(/focus\.activate\(tabId\)/.test(tabsrc) &&
+        /owns: isAccessNotification/.test(bgsrc) &&
+        /handleButton: onAccessNotificationButton/.test(bgsrc) &&
+        /handleClick: onAccessNotificationClicked/.test(bgsrc) &&
+        /access\.handleButton\(notificationId, buttonIndex\)/.test(notificationsrc) &&
+        /access\.handleClick\(notificationId\)/.test(notificationsrc),
         "P11-17s: the worker wires deferred activation plus button and body-click notification actions");
       const accessUi = strip(fs.readFileSync(new URL("../js/ui/focus-access.js", import.meta.url), "utf8"));
       const popupUi = strip(fs.readFileSync(new URL("../js/ui/popup.js", import.meta.url), "utf8"));
@@ -1552,7 +1217,7 @@ export async function runSmokeFocus({ check, local }) {
         stripUi.includes("createFocusAccessPanel"),
         "P11-17r/s: popup, every non-blank new-tab surface, and the shared Focus band expose repeatable timer actions");
       const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-      check(JSON.stringify(manifest.permissions) === JSON.stringify(["tabs", "storage",
+      check(JSON.stringify(manifest.permissions) === JSON.stringify(["tabs", "favicon", "storage",
         "unlimitedStorage", "alarms", "notifications", "contextMenus", "search", "sessions", "sidePanel"]),
         "F8-R2 J/F18/P11-21: install-time permissions are expected (Search adds no page access)");
       check(!manifest.permissions.includes("webNavigation") && !manifest.permissions.includes("declarativeNetRequest") &&

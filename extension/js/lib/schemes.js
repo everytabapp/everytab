@@ -1,6 +1,10 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** D3 — one DOM-free source of truth for scheme identity and behavior. */
 const BUILT_IN_SCHEME_META = {
   cream:      { label: "Cream",       accent: "#bc5f3c", defaultMode: "light" },
+  aladdin:    { label: "Aladdin",     accent: "#8f1635", defaultMode: "light" },
   candy:      { label: "Candy",       accent: "#7b2ff7", defaultMode: "light" },
   solarized:  { label: "Solarized",   accent: "#268bd2", defaultMode: "light" },
   laser:      { label: "Laser",       accent: "#f425a9", defaultMode: "dark" },
@@ -29,9 +33,8 @@ const BUILT_IN_SCHEME_META = {
   goodnight:  { label: "Good Night",     accent: "#e0bd5d", defaultMode: "light" },
   oblivion:   { label: "Oblivion",       accent: "#39789a", defaultMode: "light" },
   chocolatier:{ label: "Chocolatier",    accent: "#d9a441", defaultMode: "dark" },
-  perestroika:{ label: "Perestroika",    accent: "#d9ae72", defaultMode: "dark" },
   metropolis: { label: "Metropolis",     accent: "#37c7d4", defaultMode: "dark" },
-  hineybeige: { label: "Hiney Beige",    accent: "#5f5546", defaultMode: "light" },
+  hineybeige: { label: "Hineybeige",     accent: "#5f5546", defaultMode: "light" },
   taiga:      { label: "Taiga",          accent: "#72bc87", defaultMode: "dark" },
   bushido:    { label: "Bushido",        accent: "#f4646e", defaultMode: "dark" },
   dasher:     { label: "Dasher",         accent: "#4bc6dd", defaultMode: "dark" },
@@ -67,7 +70,7 @@ export const SCHEME_GROUPS = Object.freeze([
   ]) }),
   Object.freeze({ id: "light-vivid", label: "Light default · Vivid",
     defaultMode: "light", tone: "vivid", ids: Object.freeze([
-    "candy", "darling", "easter", "ember", "frozenllama", "godspeed", "sunset"
+    "aladdin", "candy", "darling", "easter", "ember", "frozenllama", "godspeed", "sunset"
   ]) }),
   Object.freeze({ id: "dark-soft", label: "Dark default · Soft",
     defaultMode: "dark", tone: "soft", ids: Object.freeze([
@@ -76,8 +79,8 @@ export const SCHEME_GROUPS = Object.freeze([
   ]) }),
   Object.freeze({ id: "dark-vivid", label: "Dark default · Vivid",
     defaultMode: "dark", tone: "vivid", ids: Object.freeze([
-    "cyberwave", "jamon", "laser", "miaminights", "nautilus", "perestroika",
-    "phosphor", "redsamurai"
+    "cyberwave", "jamon", "laser", "miaminights", "nautilus", "phosphor",
+    "redsamurai"
   ]) })
 ]);
 
@@ -86,7 +89,8 @@ export function normalizeScheme(id) {
   const canonical = {
     everforest: "matcha",
     catppuccin: "dracula",
-    rosepine: "dracula"
+    rosepine: "dracula",
+    perestroika: "jamon"
   }[id] ?? id;
   return SCHEMES.includes(canonical) ? canonical : "cream";
 }

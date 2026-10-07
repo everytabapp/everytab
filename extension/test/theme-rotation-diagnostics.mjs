@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createChromeI18nMock, englishMessages } from "./message-fixture.mjs";
 import {
   isEveryTabNewTab,
   runThemeRotationDiagnostics
-} from "../js/ui/theme-rotation-diagnostics.js";
+} from "../../tools/diagnostics/theme-rotation-diagnostics.js";
+
+globalThis.chrome = { i18n: createChromeI18nMock() };
 
 const poolKey = "cream|tide";
 const baseInput = (workerTrace = [], expectedHandshake = false, expectedTabId = null) => ({
@@ -130,7 +133,7 @@ const unavailable = await runThemeRotationDiagnostics(() => {}, {
 assert.equal(created, false, "a missing diagnostic worker never opens a temporary tab");
 assert.equal(unavailable.context.check.reason, "trace-unavailable");
 
-const source = await readFile(new URL("../js/ui/theme-rotation-diagnostics.js", import.meta.url), "utf8");
+const source = await readFile(new URL("../../tools/diagnostics/theme-rotation-diagnostics.js", import.meta.url), "utf8");
 for (const destructive of [
   "chrome.storage.local.clear",
   "chrome.storage.local.remove",
@@ -139,7 +142,11 @@ for (const destructive of [
 ]) {
   assert.equal(source.includes(destructive), false, `diagnostics do not call ${destructive}`);
 }
-assert.match(source, /tab URLs, titles, labels, Sessions, history, Vault folder names/);
+assert.match(source, /themeRotationDiagnosticStatic\.privacy\(\)/,
+  "the diagnostic renders its catalogue-owned privacy boundary");
+assert.match(englishMessages.theme_rotation_diagnostic_privacy.message,
+  /tab addresses, titles, labels, Sessions, history, Vault folder names/,
+  "the catalogue keeps the explicit privacy boundary visible to users");
 assert.match(source, /status,\s*result,\s*evidence,/, "the visible component renders its evidence list");
 
 console.log("PASS: bounded profile rotation check cleans up only its own tab");

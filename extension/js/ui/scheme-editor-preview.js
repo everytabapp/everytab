@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Complete production-anatomy specimen atlas for the dedicated scheme editor. */
 import { el } from "./dom.js";
 import { icon } from "./icons.js";

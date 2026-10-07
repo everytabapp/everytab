@@ -1,5 +1,4 @@
 import { createInterleavableStorage, createMockLockManager } from "./e2-mocks.mjs";
-import { readFileSync } from "node:fs";
 
 const checks = [];
 const check = (condition, name, detail = "") => {
@@ -41,6 +40,11 @@ globalThis.chrome = {
   }
 };
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
 const { moveSelectedOpenTabs } = await import("../js/lib/open-tab-move.js");
 
 const existing = await moveSelectedOpenTabs([11, 22, 11], { kind: "window", windowId: 3 });
@@ -65,6 +69,20 @@ check(inserted.ok && moveCalls.length === 1 &&
 JSON.stringify(moveCalls));
 
 moveCalls.length = 0;
+const sameWindowBefore = await moveSelectedOpenTabs([11], {
+  kind: "window",
+  windowId: 1,
+  index: 8,
+});
+check(sameWindowBefore.ok && moveCalls.length === 1,
+  "a same-window row drop succeeds", JSON.stringify(sameWindowBefore));
+check(
+  JSON.stringify(moveCalls[0]) === JSON.stringify({ ids: [11], windowId: 1, index: 7 }),
+  "a same-window row drop adjusts the pre-removal index so the tab lands above the indicated row",
+  JSON.stringify(moveCalls),
+);
+
+moveCalls.length = 0;
 const fresh = await moveSelectedOpenTabs([11, 22, 33], { kind: "new-window" });
 check(fresh.ok && fresh.moved === 3 && fresh.windowId === 91,
   "a new-window move reports the complete set and created destination", JSON.stringify(fresh));
@@ -74,7 +92,7 @@ check(createCalls.length === 1 && createCalls[0].tabId === 11 && createCalls[0].
 "new-window movement creates from the first selected tab and moves every remainder",
 JSON.stringify({ createCalls, moveCalls }));
 journal = storage.snapshot().journal;
-check(journal.length === 3 && journal[0].moves.length === 3,
+check(journal.length === 4 && journal[0].moves.length === 3,
   "the new-window path also records one complete Undo entry", JSON.stringify(journal));
 
 const beforeInvalid = JSON.stringify({ journal: storage.snapshot().journal, moveCalls, createCalls });
@@ -82,10 +100,5 @@ const invalid = await moveSelectedOpenTabs([], { kind: "new-window" });
 check(!invalid.ok && invalid.reason === "empty" &&
     JSON.stringify({ journal: storage.snapshot().journal, moveCalls, createCalls }) === beforeInvalid,
 "an empty move is rejected without browser or journal side effects", JSON.stringify(invalid));
-
-const background = readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
-check(background.includes('handler("move-tabs", "async"') &&
-    background.includes("moveSelectedOpenTabs(msg.tabIds, msg.destination)"),
-"the background worker owns the selected-set move boundary");
 
 console.log(`PASS: ${checks.length} Open tab move checks`);

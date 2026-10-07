@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
-      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+      data-interface-style="soft" data-row-info="detailed" data-action-labels="icons">
 <head>
   <meta charset="utf-8">
   <meta name="color-scheme" content="dark light">
   <script src="js/boot.js"></script>
-  <title>Suspended</title>
+  <title></title>
   <link rel="stylesheet" href="css/tokens.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -81,17 +81,18 @@
       font-size: 12px;
       color: var(--ink-3);
     }
-  </style>
+</style>
+<link rel="stylesheet" href="css/interface-style.css" />
 </head>
 <body>
   <div class="card">
     <div class="mark" id="mark-wrap"></div>
-    <div class="brand">Suspended by EveryTab</div>
+    <div class="brand" id="brand"></div>
     <div id="favicon-wrap"></div>
-    <h1 id="title">Suspended tab</h1>
+    <h1 id="title"></h1>
     <div class="url" id="url"></div>
-    <button class="wake-btn" id="wake-btn">Wake up</button>
-    <div class="hint">Or click anywhere on this page · Space · Enter</div>
+    <button class="wake-btn" id="wake-btn"></button>
+    <div class="hint" id="hint"></div>
   </div>
   <script type="module" src="js/ui/suspend-page.js"></script>
 </body>

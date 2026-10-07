@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * P11-03: one guarded whole-window close operation.
  *
@@ -8,7 +11,7 @@
  * window state cannot be recreated and are never represented as recoverable.
  */
 import { saveableTabRef } from "./tabs.js";
-import { closeTabsWithReceipt } from "./live-close.js";
+import { closeTabsWithReceipt, sameLiveTabCloseIdentity } from "./live-close.js";
 
 const sortedIds = (ids) => [...ids].sort((a, b) => a - b);
 const sameIds = (a, b) => a.length === b.length && a.every((id, i) => id === b[i]);
@@ -74,10 +77,30 @@ export async function closeWindowSafely(windowId, expected) {
 
   const recoverableCount = (win.tabs ?? []).filter((tab) => saveableTabRef(tab)).length;
   let closed;
+  let refused = false;
   try {
     closed = await closeTabsWithReceipt(
       win.tabs ?? [],
-      () => chrome.windows.remove(windowId),
+      async () => {
+        let current;
+        try {
+          current = await chrome.windows.get(windowId, { populate: true });
+        } catch {
+          refused = true;
+          return { closed: [] };
+        }
+        const currentTabs = current.tabs ?? [];
+        const currentById = new Map(currentTabs.map((tab) => [tab.id, tab]));
+        if (current.incognito || (current.type && current.type !== "normal") ||
+            !sameWindowFingerprint(live, windowFingerprint(currentTabs)) ||
+            !(win.tabs ?? []).every((tab) =>
+              sameLiveTabCloseIdentity(tab, currentById.get(tab.id)))) {
+          refused = true;
+          return { closed: [] };
+        }
+        await chrome.windows.remove(windowId);
+        return { closed: win.tabs ?? [] };
+      },
       {
         label: `Closed a window with ${recoverableCount} web tab${recoverableCount === 1 ? "" : "s"} (best-effort recovery)`
       }
@@ -85,6 +108,7 @@ export async function closeWindowSafely(windowId, expected) {
   } catch {
     return { ok: false, reason: "error" };
   }
+  if (refused) return { ok: false, reason: "changed", ...windowFingerprint(win.tabs ?? []) };
   if (!closed.ok) return { ok: false, reason: "error" };
   return {
     ok: true,

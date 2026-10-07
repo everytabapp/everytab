@@ -1,12 +1,17 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * M6 — theme engine. Applies data-scheme / data-mode on <html> and the
  * .gradient class on <body> from settings, live-updates on settings changes,
  * and follows the OS for uiMode "system". Import from every UI surface.
  */
 import {
-  getSettings, mutateStores, patchSettings, settingsFromStored
+  getSettings, mutateStores, patchSettings, readFreshStoreMaps, settingsFromStored
 } from "../lib/store.js";
 import { STORE_KEYS } from "../lib/types.js";
+import { msg as localeMessage } from "../lib/i18n.js";
+import { expandStorageChanges } from "../lib/storage/constants.js";
 import {
   SCHEMES, SCHEME_LABELS, SCHEME_ACCENTS, SCHEME_GROUPS, normalizeScheme
 } from "../lib/schemes.js";
@@ -30,11 +35,12 @@ const RESERVATION_LOCK = "everytab-theme-reservation";
 let applyGeneration = 0;
 let ownedOpenCommitToken = null;
 let awaitingWorkerOpenRotation = false;
+let passiveBuiltInRotationTimer = null;
+let activeSchemeTransition = null;
 const NEW_TAB_ROTATION_MESSAGE = "scheme-rotation-new-tab-ready";
 const NEW_TAB_ROTATION_DIAGNOSTIC_PAINT_MESSAGE = "scheme-rotation-diagnostics-page-paint";
 const APPEARANCE_DATA = {
-  uiCheckboxShape: "checkboxShape",
-  uiCornerStyle: "cornerStyle",
+  uiInterfaceStyle: "interfaceStyle",
   uiRowInfo: "rowInfo",
   uiActionLabels: "actionLabels"
 };
@@ -161,6 +167,34 @@ function applyAppearanceData(root, source) {
 }
 
 /**
+ * A worker-owned On-open draw already has one page performing the authoritative
+ * read, validation, and prepaint-cache write. Existing documents can repaint a
+ * built-in selection directly from the Settings change instead of duplicating
+ * that complete transaction. Custom selections keep the full validated path.
+ */
+function schedulePassiveBuiltInRotation(rawSettings) {
+  const s = settingsFromStored(rawSettings ?? {});
+  const resolved = resolveSchemeSelection(s.uiScheme, {});
+  if (resolved.kind !== "built-in" || resolved.missingCustomRef) return false;
+  clearTimeout(passiveBuiltInRotationTimer);
+  passiveBuiltInRotationTimer = setTimeout(() => {
+    passiveBuiltInRotationTimer = null;
+    const root = document.documentElement;
+    const mode = resolveCustomSchemeMode(s.uiMode, resolved, media.matches);
+    clearCustomProperties(root);
+    root.dataset.scheme = resolved.id;
+    root.dataset.mode = mode;
+    root.dataset.gradient = s.uiGradient ? "true" : "false";
+    applyAppearanceData(root, s);
+    document.body.classList.toggle("gradient", Boolean(s.uiGradient));
+    const bg = getComputedStyle(root).getPropertyValue("--bg-solid").trim();
+    if (bg) root.style.backgroundColor = bg;
+    root.style.colorScheme = mode;
+  }, 240);
+  return true;
+}
+
+/**
  * Let at most one live EveryTab document reserve the next On-open scheme.
  * Storage changes are broadcast to every extension page, so queueing the same
  * transaction from each listener turns one click into N store-lock waits.
@@ -209,7 +243,7 @@ async function apply() {
   const generation = ++applyGeneration;
   // One physical read keeps Settings, its revision, custom schemes, and the
   // prepared draw from different commits from being mixed into one cache.
-  const snapshot = await chrome.storage.local.get([
+  const snapshot = await readFreshStoreMaps([
     "settings", "settingsModifiedAt", STORE_KEYS.customSchemes,
     SCHEME_ROTATION_PREPARED_KEY
   ]);
@@ -225,20 +259,90 @@ async function apply() {
   const resolved = resolveSchemeSelection(s.uiScheme, customRecords);
   const mode = resolveCustomSchemeMode(s.uiMode, resolved, media.matches);
   const scheme = resolved.kind === "custom" ? "custom" : resolved.id;
+  let customProperties = null;
   if (resolved.kind === "custom") {
     const projected = runtimeCustomSchemeCssProperties(resolved.record, mode);
-    if (projected.ok) {
-      applyCustomProperties(root, projected.value);
+    if (projected.ok) customProperties = projected.value;
+  }
+  const paint = () => {
+    if (resolved.kind === "custom" && customProperties) {
+      applyCustomProperties(root, customProperties);
       root.dataset.customScheme = resolved.record.id;
+    } else {
+      clearCustomProperties(root);
+    }
+    root.dataset.scheme = scheme;
+    root.dataset.mode = mode;
+    root.dataset.gradient = s.uiGradient ? "true" : "false";
+    applyAppearanceData(root, s);
+    document.body.classList.toggle("gradient", Boolean(s.uiGradient));
+  };
+  const customVisualChange = resolved.kind === "custom" && (
+    root.dataset.customScheme !== resolved.record.id ||
+    CUSTOM_SCHEME_CSS_PROPERTIES.some((property) =>
+      root.style.getPropertyValue(property) !== String(customProperties?.[property] ?? ""))
+  );
+  const visibleSchemeChange = root.dataset.scheme &&
+    (root.dataset.scheme !== scheme || root.dataset.mode !== mode || customVisualChange) &&
+    document.visibilityState !== "hidden" &&
+    !globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  // Chrome does not define useful compositing for overlapping view
+  // transitions. If a newer preview arrives while one is active, finish the
+  // old transition and paint the newest selection directly. The ordinary
+  // single-choice path still gets the intended crossfade, while rapid palette
+  // comparison cannot strand the page on an older scheme.
+  const supersededTransition = activeSchemeTransition;
+  if (supersededTransition) {
+    activeSchemeTransition = null;
+    supersededTransition.skipTransition?.();
+    delete root.dataset.schemeTransition;
+  }
+  if (visibleSchemeChange && typeof document.startViewTransition === "function" &&
+      !supersededTransition) {
+    root.dataset.schemeTransition = "true";
+    let transition = null;
+    try {
+      // A superseded transition may still invoke its update callback after a
+      // newer Settings commit has arrived. Never let that stale callback paint
+      // over the latest selection.
+      transition = document.startViewTransition(() => {
+        if (generation === applyGeneration) paint();
+      });
+      activeSchemeTransition = transition;
+      // Chrome rejects both `ready` and `finished` when skipTransition() wins.
+      // Observe each promise even though only updateCallbackDone gates our
+      // persistence work, otherwise rapid previews leak an AbortError.
+      void transition.ready?.catch?.(() => {});
+      const updateOutcome = await Promise.race([
+        transition.updateCallbackDone.then(() => "updated"),
+        new Promise((resolve) => setTimeout(() => resolve("timed-out"), 240))
+      ]);
+      // A suspended compositor must never leave Settings showing one scheme
+      // while the page remains painted with another. Settle to the requested
+      // tokens directly after one short, bounded transition window.
+      if (updateOutcome === "timed-out") {
+        transition.skipTransition?.();
+        if (generation === applyGeneration) paint();
+      }
+      const finish = () => {
+        if (activeSchemeTransition !== transition) return;
+        activeSchemeTransition = null;
+        delete root.dataset.schemeTransition;
+      };
+      // skipTransition() rejects `finished` by design when a newer preview wins.
+      // Handle both outcomes so rapid scheme comparison never emits an
+      // unhandled AbortError in the page or its test harness.
+      void transition.finished.then(finish, finish);
+    } catch {
+      if (generation === applyGeneration) paint();
+      if (activeSchemeTransition === transition) {
+        activeSchemeTransition = null;
+        delete root.dataset.schemeTransition;
+      }
     }
   } else {
-    clearCustomProperties(root);
+    paint();
   }
-  root.dataset.scheme = scheme;
-  root.dataset.mode = mode;
-  root.dataset.gradient = s.uiGradient ? "true" : "false";
-  applyAppearanceData(root, s);
-  document.body.classList.toggle("gradient", Boolean(s.uiGradient));
   // Keep the synchronous paint caches fresh (js/boot.js reads these before CSS so
   // the pre-paint frame is themed, not white).
   const bg = getComputedStyle(root).getPropertyValue("--bg-solid").trim();
@@ -255,9 +359,7 @@ async function apply() {
     // storage listener, where a late generic apply() could otherwise erase the
     // prepared next draw and make On open look inert until after first paint.
     const prepared = preparedThemeFor(s, storedNext, customRecords);
-    const currentProperties = resolved.kind === "custom"
-      ? runtimeCustomSchemeCssProperties(resolved.record, mode).value
-      : null;
+    const currentProperties = resolved.kind === "custom" ? customProperties : null;
     const selectedCustomModifiedAt = resolved.kind === "custom"
       ? Number(resolved.record?.modifiedAt) || 0 : 0;
     const cache = cachePreparedTheme({
@@ -288,7 +390,7 @@ async function apply() {
         [CUSTOM_SCHEME_NOTICE_KEY]: {
           at: Date.now(),
           missing: resolved.missingCustomRef,
-          message: "A missing custom color scheme was replaced with Cream."
+          message: localeMessage("theme_missing_custom_scheme")
         }
       }));
       await patchSettings({ uiScheme: "cream" });
@@ -350,6 +452,7 @@ export function initTheme() {
   media.addEventListener("change", () => apply());
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    changes = expandStorageChanges(changes);
     if (changes.settings || changes[STORE_KEYS.customSchemes]) {
       const rotationCommitPrepared = SCHEME_ROTATION_PREPARED_KEY in changes;
       const ownsRotationCommit = rotationCommitPrepared &&
@@ -361,6 +464,13 @@ export function initTheme() {
       // transaction. Its final apply() reads the authoritative commit once, so
       // an earlier broadcast must not create a duplicate opening repaint.
       if (awaitingWorkerOpenRotation && rotationCommitPrepared) return;
+      // Every other live context receives the same worker-owned commit. A
+      // built-in draw needs only an attribute/token swap there; the opening New
+      // Tab will write the validated synchronous cache when its worker response
+      // settles. This keeps N retained pages from issuing N identical storage
+      // reads and cache preparations on the next New Tab.
+      if (rotationCommitPrepared && changes.settings &&
+          schedulePassiveBuiltInRotation(changes.settings.newValue)) return;
       // Paint the authoritative selection before doing any reservation write.
       // The store lock is shared by every EveryTab context, so coupling paint to
       // `prepareNextSchemeOnOpen()` made a perfectly saved picker choice look

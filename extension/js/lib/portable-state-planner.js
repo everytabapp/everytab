@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Pure portable-state merge planning, stable comparison, and envelope output. */
 import { SCHEMA_VERSION, STORE_KEYS } from "./types.js";
 import { mergeLabelMeta } from "./merge.js";

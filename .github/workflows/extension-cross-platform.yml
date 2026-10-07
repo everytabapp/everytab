@@ -4,12 +4,21 @@ on:
   pull_request:
     paths:
       - "extension/**"
+      - "tools/**"
+      - "test-inventory.json"
       - ".github/workflows/extension-cross-platform.yml"
   push:
     paths:
       - "extension/**"
+      - "tools/**"
+      - "test-inventory.json"
       - ".github/workflows/extension-cross-platform.yml"
   workflow_dispatch:
+    inputs:
+      package_checks:
+        description: "Run package checks only after explicit release authorization"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,16 +37,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Core storage and UI contracts
-        run: |
-          node extension/test/smoke.mjs
-          node extension/test/vault.mjs
-          node extension/test/pre-localization-polish.mjs
-          node extension/test/search-domain-filter.mjs
+      - name: Portable contracts from the shared inventory
+        run: node tools/test.mjs --lane portable --ci
       - name: Stable performance budgets
         if: runner.os == 'Linux'
-        run: |
-          node extension/test/perf.mjs
+        run: node tools/test.mjs --lane performance --ci
 
   installed-chrome:
     name: Installed Chrome (${{ matrix.os }})
@@ -46,6 +50,33 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      EVERYTAB_CHROME_NO_SANDBOX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+      - name: Declared browser variants (Linux)
+        if: runner.os == 'Linux'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: xvfb-run -a node tools/test.mjs --lane browser --ci
+      - name: Declared browser variants (Windows and macOS)
+        if: runner.os != 'Linux'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: node tools/test.mjs --lane browser --ci
+
+  package-checks:
+    name: Explicitly authorized package checks
+    if: github.event_name == 'workflow_dispatch' && inputs.package_checks
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -56,24 +87,9 @@ jobs:
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
-      - name: Real unpacked-extension New Tab sequence (Linux)
-        if: runner.os == 'Linux'
+      - name: Package-only checks from the shared inventory
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           EVERYTAB_CHROME_NO_SANDBOX: "1"
           EVERYTAB_STABLE_EXTENSION_TARGET: "1"
-        run: xvfb-run -a node extension/test/theme-on-open-extension.mjs
-      - name: Installed extension and native New Tab singleton (Windows)
-        if: runner.os == 'Windows'
-        env:
-          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-          EVERYTAB_STABLE_EXTENSION_TARGET: "1"
-        run: node extension/test/theme-on-open-extension.mjs
-      - name: Installed extension worker bootstrap (macOS)
-        if: runner.os == 'macOS'
-        env:
-          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-          EVERYTAB_CHROME_HEADLESS: "1"
-          EVERYTAB_CHROME_NO_SANDBOX: "1"
-          EVERYTAB_WORKER_BOOTSTRAP_ONLY: "1"
-        run: node extension/test/theme-on-open-extension.mjs
+        run: xvfb-run -a node tools/test.mjs --lane package --allow-packaging --ci

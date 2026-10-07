@@ -1,5 +1,9 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Localized presentation for Settings. Stored values and domain decisions stay language-free. */
-import { formatNumber, msg } from "../lib/i18n.js";
+import { browserUiLocale, formatNumber, msg } from "../lib/i18n.js";
+import { UI_LANGUAGE_VALUES } from "../lib/types.js";
 
 const GROUP_KEYS = Object.freeze({
   appearance: "settings_group_appearance",
@@ -7,6 +11,7 @@ const GROUP_KEYS = Object.freeze({
   focus: "settings_group_focus",
   autosave: "settings_group_auto_save",
   suspension: "settings_group_suspension",
+  protection: "settings_group_protection",
   sessions: "settings_group_sessions",
   duplicates: "settings_group_duplicates",
   privacy: "settings_group_privacy",
@@ -15,18 +20,21 @@ const GROUP_KEYS = Object.freeze({
 });
 
 const ROW_KEYS = Object.freeze({
+  language: ["settings_row_language", "settings_desc_language"],
   colorScheme: ["settings_row_color_scheme", "settings_desc_color_scheme"],
   mode: ["settings_row_mode", "settings_desc_mode"],
   rotation: ["settings_row_rotation", "settings_desc_rotation"],
   backgroundGradient: ["settings_row_background_gradient", "settings_desc_background_gradient"],
   sectionDescriptions: ["settings_row_section_descriptions", "settings_desc_section_descriptions"],
-  checkboxShape: ["settings_row_checkbox_shape", "settings_desc_checkbox_shape"],
-  cornerStyle: ["settings_row_corner_style", "settings_desc_corner_style"],
+  interfaceStyle: ["settings_row_interface_style", "settings_desc_interface_style"],
   rowInformation: ["settings_row_row_information", "settings_desc_row_information"],
   rowActionLabels: ["settings_row_row_action_labels", "settings_desc_row_action_labels"],
-  newTabPage: ["settings_row_new_tab_page", "settings_desc_new_tab_page"],
-  newTabFocus: ["settings_row_new_tab_focus", "settings_desc_new_tab_focus"],
   oneNewTab: ["settings_row_one_new_tab", "settings_desc_one_new_tab"],
+  welcomePhrasesEnabled: [
+    "settings_row_welcome_phrases_enabled", "settings_desc_welcome_phrases_enabled"
+  ],
+  welcomePhrases: ["settings_row_welcome_phrases", "settings_desc_welcome_phrases"],
+  welcomeTone: ["settings_row_welcome_tone", "settings_desc_welcome_tone"],
   focusDuration: ["settings_row_focus_duration", "settings_desc_focus_duration"],
   morningEnds: ["settings_row_morning_ends", "settings_desc_morning_ends"],
   dayEnds: ["settings_row_day_ends", "settings_desc_day_ends"],
@@ -34,12 +42,15 @@ const ROW_KEYS = Object.freeze({
   focusAccess: ["settings_row_focus_access", "settings_desc_focus_access_immediate"],
   autoSaveAfter: ["settings_row_auto_save_after", "settings_desc_auto_save_after"],
   maxTabsOpen: ["settings_row_max_tabs_open", "settings_desc_max_tabs_open"],
-  keepTabsOpen: ["settings_row_keep_tabs_open", "settings_desc_keep_tabs_open"],
+  protectedPages: ["settings_row_protected_pages", "settings_desc_protected_pages"],
   inboxExpiry: ["settings_row_inbox_expiry", "settings_desc_inbox_expiry"],
   suspendAfter: ["settings_row_suspend_after", "settings_desc_suspend_after"],
   suspendMinTabs: ["settings_row_suspend_min_tabs", "settings_desc_suspend_min_tabs"],
   suspendMaxTabs: ["settings_row_suspend_max_tabs", "settings_desc_suspend_max_tabs"],
-  neverSuspend: ["settings_row_never_suspend", "settings_desc_never_suspend"],
+  automationExclusions: [
+    "settings_row_automation_exclusions", "settings_desc_automation_exclusions"
+  ],
+  suspendPageExceptions: ["settings_row_temporary_suspend_exceptions", "settings_desc_temporary_suspend_exceptions"],
   suspendPage: ["settings_row_suspend_page", "settings_desc_suspend_page"],
   preserveGroups: ["settings_row_preserve_groups", "settings_desc_preserve_groups"],
   snapshotEvery: ["settings_row_snapshot_every", "settings_desc_snapshot_every"],
@@ -51,6 +62,10 @@ const ROW_KEYS = Object.freeze({
 });
 
 const OPTION_KEYS = Object.freeze({
+  language: {
+    system: "settings_option_language_system", en: "settings_option_language_en",
+    fr: "settings_option_language_fr"
+  },
   mode: {
     system: "settings_option_mode_system", scheme: "settings_option_mode_scheme",
     light: "settings_option_mode_light", dark: "settings_option_mode_dark"
@@ -59,8 +74,10 @@ const OPTION_KEYS = Object.freeze({
     off: "settings_option_rotation_off", open: "settings_option_rotation_open",
     hourly: "settings_option_rotation_hourly", daily: "settings_option_rotation_daily"
   },
-  checkbox: { round: "settings_option_checkbox_round", square: "settings_option_checkbox_square" },
-  corners: { crisp: "settings_option_corner_crisp", soft: "settings_option_corner_soft" },
+  interfaceStyle: {
+    soft: "settings_option_interface_soft", crisp: "settings_option_interface_crisp",
+    terminal: "settings_option_interface_terminal"
+  },
   rowInfo: {
     clean: "settings_option_row_clean", useful: "settings_option_row_useful",
     detailed: "settings_option_row_detailed"
@@ -68,12 +85,8 @@ const OPTION_KEYS = Object.freeze({
   actionLabels: {
     named: "settings_option_actions_named", icons: "settings_option_actions_icons"
   },
-  newTabMode: {
-    dashboard: "settings_option_new_tab_dashboard", minimal: "settings_option_new_tab_minimal",
-    blank: "settings_option_new_tab_blank"
-  },
-  newTabFocus: {
-    omnibox: "settings_option_focus_omnibox", search: "settings_option_focus_search"
+  welcomeTone: {
+    clock: "settings_option_welcome_tone_clock", accent: "settings_option_welcome_tone_accent"
   },
   focusDuration: {
     "1h": "settings_option_duration_hour", "morning-end": "settings_option_duration_morning",
@@ -99,6 +112,38 @@ export function settingsRowCopy(id, substitutions = []) {
 
 export function settingsOptions(kind) {
   return Object.entries(OPTION_KEYS[kind] ?? {}).map(([value, key]) => [value, msg(key)]);
+}
+
+/**
+ * A language's name in that language ("English", "Français"), for the option
+ * that follows the browser. Falls back to the code when Intl.DisplayNames is
+ * unavailable or does not know the language.
+ * @param {string} locale BCP 47 tag
+ */
+export function settingsLanguageOwnName(locale) {
+  try {
+    const language = new Intl.Locale(locale).language;
+    const name = new Intl.DisplayNames([locale], { type: "language" }).of(language);
+    if (!name || name === language) return language;
+    return name.charAt(0).toLocaleUpperCase(locale) + name.slice(1);
+  } catch {
+    return String(locale);
+  }
+}
+
+/**
+ * Options for the Language select: "System (<browser language name>)" then each
+ * packaged language under its own name. Stored values stay language codes.
+ * @param {string} [browserLocale] the browser's UI locale, not the installed one
+ * @returns {[string, string][]}
+ */
+export function settingsLanguageOptions(browserLocale = browserUiLocale()) {
+  return UI_LANGUAGE_VALUES.map((value) => [
+    value,
+    value === "system"
+      ? msg(OPTION_KEYS.language.system, [settingsLanguageOwnName(browserLocale)])
+      : msg(OPTION_KEYS.language[value])
+  ]);
 }
 
 export function settingsOptionLabel(kind, value) {
@@ -137,18 +182,19 @@ export function settingsSchemeGroupLabel(defaultMode, tone) {
 }
 
 export function settingsFavoritesSummary(count, total) {
-  if (!count) return msg("settings_favorites_all", [formatNumber(total)]);
-  return msg(count === 1 ? "settings_favorites_one" : "settings_favorites_many", [formatNumber(count)]);
+  return msg("settings_favorites_title");
 }
 
 export function settingsFavoritesHelp(count, rotation) {
-  return count === 1 && rotation !== "off"
-    ? msg("settings_favorites_single_help")
-    : msg("settings_favorites_help");
+  return msg("settings_favorites_help");
 }
 
 export function settingsFavoriteAria(selected, label) {
   return msg(selected ? "settings_favorite_remove_aria" : "settings_favorite_add_aria", [label]);
+}
+
+export function settingsApplySchemeAria(selected, label) {
+  return msg(selected ? "settings_scheme_current_aria" : "settings_scheme_apply_aria", [label]);
 }
 
 export function settingsDurationLabel(minutes, mode = "minutes") {
@@ -173,6 +219,7 @@ export const settingsStatic = Object.freeze({
   noMatch: () => msg("settings_no_match"),
   jumpTo: (title) => msg("settings_jump_to", [title]),
   patternsPlaceholder: () => msg("settings_patterns_placeholder"),
+  welcomePhrasesPlaceholder: () => msg("settings_welcome_phrases_placeholder"),
   keyboardHint: () => msg("settings_keyboard_hint"),
   focusHint: () => msg("settings_focus_hint"),
   customDurationAria: () => msg("settings_custom_duration_aria"),
@@ -183,6 +230,10 @@ export const settingsStatic = Object.freeze({
   siteScopeAria: (domain) => msg("settings_site_scope_aria", [domain]),
   removeSiteAria: (domain) => msg("settings_site_remove_aria", [domain]),
   remove: () => msg("settings_remove"),
+  manageProtection: () => msg("settings_manage_protection"),
+  noSuspendPageExceptions: () => msg("settings_no_suspend_page_exceptions"),
+  suspendPageFor: (remaining) => msg("settings_suspend_page_for", [remaining]),
+  removeSuspendPageAria: (url) => msg("settings_suspend_page_remove_aria", [url]),
   siteDuplicate: (domain) => msg("settings_site_duplicate", [domain]),
   focusAccessAria: () => msg("settings_focus_access_aria"),
   yours: () => msg("settings_yours"),
@@ -200,8 +251,6 @@ export const settingsStatic = Object.freeze({
   replayIntro: () => msg("settings_replay_intro"),
   openHelp: () => msg("settings_open_help"),
   durationOffShort: () => msg("settings_duration_off"),
-  oneHourShort: () => msg("settings_tick_one_hour"),
-  twoHoursShort: () => msg("settings_tick_two_hours"),
   oneDayShort: () => msg("settings_tick_one_day"),
   sevenDaysShort: () => msg("settings_tick_seven_days"),
   thirtyOneDaysShort: () => msg("settings_tick_thirty_one_days"),
@@ -212,6 +261,12 @@ export const settingsStatic = Object.freeze({
   modeDarkTip: () => msg("settings_mode_dark_tip"),
   modeSchemeTip: () => msg("settings_mode_scheme_tip"),
   schemeEditorAction: () => msg("settings_scheme_editor_action"),
+  schemePickerTitle: () => msg("settings_scheme_picker_title"),
+  schemePickerBack: () => msg("settings_scheme_picker_back"),
+  schemePickerFavorites: () => msg("settings_scheme_picker_favorites"),
+  schemePickerAll: () => msg("settings_scheme_picker_all"),
+  schemePickerEmptyFavorites: () => msg("settings_scheme_picker_empty_favorites"),
+  schemePickerCurrent: () => msg("settings_scheme_picker_current"),
   followingSystem: (description) => msg("settings_following_system", [description])
 });
 

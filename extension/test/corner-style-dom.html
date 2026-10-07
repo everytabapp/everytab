@@ -1,10 +1,12 @@
 <!doctype html>
-<html lang="en" data-scheme="ink" data-mode="light" data-corner-style="crisp"
-      data-checkbox-shape="round" data-row-info="detailed">
+<html lang="en" data-scheme="ink" data-mode="light" data-interface-style="soft"
+      data-row-info="detailed">
 <head>
   <meta charset="utf-8">
-  <title>Corner style computed contract</title>
+  <title>Interface style computed contract</title>
   <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/tablist-d4.css">
+  <link rel="stylesheet" href="../css/interface-style.css">
   <style>
     body { margin: 0; padding: 8px; }
     #fixtures { display: grid; gap: 8px; }
@@ -14,6 +16,10 @@
 </head>
 <body>
   <pre id="result">RUNNING</pre>
+  <div class="tablist"><div class="trow">
+    <span class="row-select-slot"><input id="global-checkbox" type="checkbox" aria-label="Selection grammar"></span>
+    <span></span><span class="row-copy">Selection fixture</span><span></span><span></span>
+  </div></div>
   <main id="fixtures"></main>
   <script>
     const reportFailure = (reason) => {
@@ -27,4 +33,3 @@
   <script type="module" src="./corner-style-dom-page.mjs"></script>
 </body>
 </html>
-

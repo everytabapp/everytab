@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en" data-scheme="ink" data-mode="light" data-emphasis="bold"
-      data-checkbox-shape="round" data-corner-style="soft" data-row-info="detailed" data-action-labels="icons">
+      data-interface-style="soft" data-row-info="detailed" data-action-labels="icons">
 <head>
 <meta charset="utf-8" />
 <meta name="color-scheme" content="dark light" />
@@ -8,6 +8,7 @@
 <title>EveryTab settings</title>
 <link rel="stylesheet" href="css/tokens.css" />
 <link rel="stylesheet" href="css/onboarding.css" />
+<link rel="stylesheet" href="css/new-tab-choices.css" />
 <link rel="stylesheet" href="css/settings-schemes.css" />
 <style>
   * { box-sizing: border-box; }
@@ -29,7 +30,7 @@
   body.gradient .settings-toolbar, [data-gradient="true"] body .settings-toolbar {
     background: var(--bg-grad, var(--bg-solid)); background-attachment: fixed; }
   .settings-filter { width: 100%; padding: 8px 12px; font-size: 13px; border-radius: var(--r-btn); }
-  .settings-filter:focus { border-color: var(--focus-accent); box-shadow: 0 0 0 3px var(--focus-ring); outline: none; }
+  .settings-filter:focus { border-color: var(--focus-accent); box-shadow: var(--field-focus-shadow); outline: none; }
   .settings-nav { display: flex; flex-wrap: wrap; gap: 6px; }
   .settings-nav-chip { padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer;
                        color: var(--ink-2); background: var(--surface-2);
@@ -45,7 +46,13 @@
   input, select, textarea { padding: 6px 9px; border: var(--bw) solid var(--border);
     border-radius: var(--r-btn); font: inherit; font-size: 13px;
     background: var(--surface); color: var(--ink); }
+  :where(input[type="text"], input[type="search"], input[type="number"],
+    input[type="time"], input[type="datetime-local"], textarea, select):focus {
+    outline: none; border-color: var(--focus-accent); box-shadow: var(--field-focus-shadow);
+  }
   textarea { width: 240px; font: 12px/1.4 var(--font-mono); }
+  .setrow.setrow-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
+  .setrow.setrow-stacked textarea { width: 100%; min-height: 92px; margin-top: 0; resize: vertical; }
   .saved { color: var(--ink-2); margin-top: 12px; min-height: 18px; }
   /* F8 — Focus settings: inline blocked-site editor + save-close warning */
   .setrow.focus-block { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -99,6 +106,7 @@
   input.slider-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
   input.slider-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--focus-ring); }
 </style>
+<link rel="stylesheet" href="css/interface-style.css" />
 </head>
 <body>
   <span class="orb o1"></span><span class="orb o2"></span>

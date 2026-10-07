@@ -51,7 +51,7 @@ const plan = (overrides = {}) => planNewTabRetirement({
 
 assert.deepEqual(plan(), { keeperTabId: 13, retireTabIds: [11, 12] },
   "the newest mounted EveryTab New Tab retires every older unpinned override tab");
-assert.equal(plan({ enabled: false }), null, "the opt-in defaults to no mutation");
+assert.equal(plan({ enabled: false }), null, "an explicit off setting performs no mutation");
 assert.equal(plan({ readyTabId: 12 }), null,
   "an older page cannot win a close race while a newer New Tab is mounting");
 assert.deepEqual(plan({
@@ -90,7 +90,6 @@ assert.equal(plan({
 }), null, "an inactive restored page still cannot initiate cleanup");
 
 const entrySource = readFileSync(new URL("../js/ui/newtab-entry.js", import.meta.url), "utf8");
-const backgroundSource = readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
 const entryPlanAt = entrySource.indexOf("const plan = newTabEntryPlan");
 const earlyClaimAt = entrySource.indexOf("const newTabRetirementClaim");
 const dashboardImportAt = entrySource.indexOf('await import("./dashboard.js")');
@@ -105,12 +104,9 @@ const minimalSource = readFileSync(new URL("../js/ui/newtab.js", import.meta.url
 assert.ok(entrySource.includes("globalThis.__everyTabNewTabSettings = settings") &&
   minimalSource.includes("globalThis.__everyTabNewTabSettings ?? await getSettings()"),
 "Minimal reuses the authoritative entry Settings snapshot instead of repeating its cold read");
-assert.ok(minimalSource.indexOf("app.append(clockBlock, deck)") >= 0 &&
-  minimalSource.indexOf("app.append(clockBlock, deck)") < minimalSource.indexOf("void renderStarred()") &&
-  !minimalSource.includes("await renderStarred("),
+const minimalMountAt = minimalSource.indexOf("app.append(clockBlock, deck)");
+const initialStarredReadAt = minimalSource.indexOf("void renderStarred()", minimalMountAt);
+assert.ok(minimalMountAt >= 0 && initialStarredReadAt > minimalMountAt &&
+  !minimalSource.slice(minimalMountAt).includes("await renderStarred("),
 "Minimal paints its useful clock/Search deck before reading the optional Starred launcher");
-assert.ok(backgroundSource.includes("shouldReconcileNewTabUpdate(changeInfo, tab") &&
-  backgroundSource.includes("void retireOlderEveryTabNewTabs(tab)"),
-"Chrome's completed-tab event independently invokes the worker-owned singleton policy");
-
 console.log("PASS: one EveryTab New Tab per window planner");

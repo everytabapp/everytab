@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * L2b — competitive import formats. A PURE module (no chrome.*): `detectFormat`
  * and `parseImport` turn a pasted/loaded export from another tab tool into one
@@ -18,19 +21,16 @@
 import { unwrapSuspendedUrl } from "./tabs.js";
 import { isEveryTabMarkdown, parseEveryTabMarkdown } from "./import-markdown.js";
 
-/** Human labels for the format picker + the "imported from X" journal line. */
-export const FORMAT_LABELS = {
-  "everytab-markdown": "EveryTab Markdown",
-  onetab: "OneTab",
-  "session-buddy": "Session Buddy",
-  "tab-session-manager": "Tab Session Manager",
-  toby: "Toby",
-  "raindrop-csv": "Raindrop (CSV)",
-  "bookmarks-html": "Bookmarks (HTML)"
-};
-
-/** Ordered list for the picker's <select>. */
-export const IMPORT_FORMATS = Object.keys(FORMAT_LABELS).map((id) => ({ id, label: FORMAT_LABELS[id] }));
+/** Stable, language-neutral identifiers in the format picker's display order. */
+export const IMPORT_FORMAT_IDS = Object.freeze([
+  "everytab-markdown",
+  "onetab",
+  "session-buddy",
+  "tab-session-manager",
+  "toby",
+  "raindrop-csv",
+  "bookmarks-html"
+]);
 
 /* ------------------------------ shared helpers ------------------------------ */
 
@@ -331,7 +331,7 @@ function parseBookmarksHtml(text) {
   const lines = stripBom(text).split(/\r?\n/);
   const stack = []; // folder path segments
   const byPath = new Map();
-  const ROOT = " root";
+  const ROOT = "\u0000root";
   for (const line of lines) {
     const h3 = line.match(/<H3[^>]*>([\s\S]*?)<\/H3>/i);
     if (h3) {
@@ -361,7 +361,7 @@ function parseBookmarksHtml(text) {
 
 /**
  * Parse an export blob of a known format into the uniform import shape.
- * @param {string} text @param {string} format one of the FORMAT_LABELS ids
+ * @param {string} text @param {string} format one of the IMPORT_FORMAT_IDS
  * @returns {{name: string, groups: {name: string, tabs: import("./types.js").TabRef[]}[], source: string}}
  */
 /**

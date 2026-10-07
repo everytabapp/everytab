@@ -1,9 +1,10 @@
-/** Computed-style coverage for the shared Crisp/Soft shape contract. */
+/** Computed-style coverage for the shared Soft/Crisp/Terminal style contract. */
 const resultNode = document.querySelector("#result");
 const fixtures = document.querySelector("#fixtures");
 const params = new URLSearchParams(location.search);
-const profile = params.get("corner") === "soft" ? "soft" : "crisp";
-document.documentElement.dataset.cornerStyle = profile;
+const profile = ["soft", "crisp", "terminal"].includes(params.get("style"))
+  ? params.get("style") : "soft";
+document.documentElement.dataset.interfaceStyle = profile;
 
 const read = async (url) => {
   const response = await fetch(url);
@@ -54,6 +55,8 @@ const dashboardRoot = mount("dashboard", `${primitives}\n${dashboard}\n${tablist
       <div id="d-body" class="item-body-frame"><div id="d-row" class="trow sel">Tab</div></div>
     </article></div>
     <span id="d-chip" class="chip">Label</span>
+    <div class="daily-stage"><div id="d-sections" class="sections"><section>Ledger</section></div></div>
+    <aside id="d-star" class="starred-edge"><button class="starred-edge-toggle">Starred</button></aside>
   </div>`);
 
 const popupRoot = mount("popup", `${primitives}\n${tablist}\n${inlineStyle(popupHtml)}`, `
@@ -92,8 +95,10 @@ const settingsRoot = mount("settings", `${settingsSchemes}\n${inlineStyle(settin
     <input id="o-field" class="settings-filter">
     <div class="settings-nav"><button id="o-chip" class="settings-nav-chip">Appearance</button></div>
   </div>
-  <div id="o-card" class="scheme-favorites"><button id="o-button" class="scheme-favorite">
-    <span id="o-star" class="scheme-star">☆</span><span id="o-swatch" class="scheme-swatch"></span><span>Ink</span></button></div>
+  <div id="o-card" class="scheme-favorites"><div id="o-choice" class="scheme-favorite">
+    <button id="o-button" class="scheme-apply"><span id="o-swatch" class="scheme-swatch"></span><span>Ink</span></button>
+    <button id="o-star-button" class="scheme-star-toggle"><span id="o-star" class="scheme-star">☆</span></button>
+  </div></div>
   <select id="o-select"><option>Ink</option></select></div>`);
 
 const editorRoot = mount("scheme-editor", `${primitives}\n${dashboard}\n${tablist}\n${schemeEditor}`, `
@@ -112,7 +117,9 @@ const editorRoot = mount("scheme-editor", `${primitives}\n${dashboard}\n${tablis
 const roots = { dashboardRoot, popupRoot, sidepanelRoot, minimalRoot, settingsRoot, editorRoot };
 const expected = profile === "soft"
   ? { mini: 7, nav: 8, focus: 9, control: 12, search: 18, keeper: 13, panel: 14, card: 14 }
-  : { mini: 3, nav: 3, focus: 2, control: 5, search: 4, keeper: 7, panel: 9, card: 10 };
+  : profile === "crisp"
+    ? { mini: 3, nav: 3, focus: 2, control: 5, search: 4, keeper: 7, panel: 9, card: 10 }
+    : { mini: 0, nav: 0, focus: 0, control: 0, search: 0, keeper: 0, panel: 0, card: 0 };
 const checks = [];
 const check = (condition, name, detail = "") => {
   if (!condition) throw new Error(`${name}${detail ? `: ${detail}` : ""}`);
@@ -168,7 +175,9 @@ expectRadius("minimalRoot", "#m-result-row", 0);
 
 /* Settings and Scheme Editor consume the same field/control/card profiles. */
 expectRadius("settingsRoot", "#o-field", expected.control);
-expectRadius("settingsRoot", "#o-button", expected.control);
+expectRadius("settingsRoot", "#o-choice", expected.control);
+expectRadius("settingsRoot", "#o-button", 0);
+expectRadius("settingsRoot", "#o-star-button", 0);
 expectRadius("settingsRoot", "#o-select", expected.control);
 expectRadius("settingsRoot", "#o-card", expected.card);
 expectRadius("editorRoot", "#e-field", expected.control);
@@ -183,10 +192,13 @@ for (const [root, selector] of [
   ["dashboardRoot", "#d-chip"], ["popupRoot", "#p-chip"],
   ["minimalRoot", "#m-chip"], ["settingsRoot", "#o-chip"],
   ["editorRoot", "#e-pill"]
-]) check(radius(root, selector).number >= 99, `${root} ${selector} remains a capsule`);
+]) {
+  const actual = radius(root, selector).number;
+  check(actual >= 99, `${root} ${selector} remains a semantic capsule`, String(actual));
+}
 check(radius("popupRoot", "#p-favicon").number === 4, "Popup favicon crop stays fixed");
 check(radius("settingsRoot", "#o-swatch").value === "50%", "scheme swatch stays circular");
-const schemeButtonRect = node("settingsRoot", "#o-button").getBoundingClientRect();
+const schemeButtonRect = node("settingsRoot", "#o-star-button").getBoundingClientRect();
 const schemeStarRect = node("settingsRoot", "#o-star").getBoundingClientRect();
 check(Math.abs((schemeButtonRect.top + schemeButtonRect.height / 2) -
   (schemeStarRect.top + schemeStarRect.height / 2)) <= 1,
@@ -194,6 +206,51 @@ check(Math.abs((schemeButtonRect.top + schemeButtonRect.height / 2) -
 check(radius("editorRoot", "#e-dot").value === "50%", "status dot stays circular");
 check(radius("minimalRoot", "#m-favicon").number === 7,
   "Minimal favicon keeps its fixed crop radius");
+
+if (innerWidth === 800) {
+  const sections = node("dashboardRoot", "#d-sections").getBoundingClientRect();
+  const closedStar = node("dashboardRoot", "#d-star").getBoundingClientRect();
+  check(sections.right <= closedStar.left + 1,
+    "compact Dashboard reserves the closed Starred edge lane",
+    JSON.stringify({ sectionsRight: sections.right, starLeft: closedStar.left }));
+}
+if (innerWidth >= 800) {
+  node("dashboardRoot", "#d-star").classList.add("is-open");
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const sections = node("dashboardRoot", "#d-sections").getBoundingClientRect();
+  const openStar = node("dashboardRoot", "#d-star").getBoundingClientRect();
+  check(sections.right <= openStar.left + 1,
+    "open Starred yields real ledger space instead of covering it",
+    JSON.stringify({ sectionsRight: sections.right, starLeft: openStar.left }));
+}
+
+const globalCheckbox = document.querySelector("#global-checkbox");
+const uncheckedMark = getComputedStyle(globalCheckbox, "::after").content;
+if (profile === "terminal") {
+  check(Number.parseFloat(getComputedStyle(globalCheckbox).width) === 27,
+    "Terminal reserves the bracket-selection lane");
+  check(uncheckedMark.includes("[ ]"), "Terminal unchecked selection renders [ ]", uncheckedMark);
+  globalCheckbox.checked = true;
+  check(getComputedStyle(globalCheckbox, "::after").content.includes("[x]"),
+    "Terminal checked selection renders [x]");
+  check(getComputedStyle(globalCheckbox, "::after").clipPath === "none",
+    "Terminal brackets are not clipped by the wide-row tick mask");
+  check(getComputedStyle(document.body).fontFamily.includes("monospace"),
+    "Terminal uses the native mono stack");
+} else {
+  const checkboxRadius = getComputedStyle(globalCheckbox).borderTopLeftRadius;
+  check(profile === "soft" ? checkboxRadius === "50%" : Number.parseFloat(checkboxRadius) === 3,
+    `${profile} owns checkbox geometry`, checkboxRadius);
+  globalCheckbox.checked = true;
+  const checkedMark = getComputedStyle(globalCheckbox, "::after");
+  check(Number.parseFloat(checkedMark.width) === 15 && Number.parseFloat(checkedMark.height) === 15,
+    `${profile} uses the complete centered checkmark`, `${checkedMark.width} × ${checkedMark.height}`);
+  check(checkedMark.borderWidth === "0px" && checkedMark.transform === "none" &&
+      checkedMark.clipPath === "none" && checkedMark.maskImage !== "none",
+    `${profile} checkmark is not mixed with the legacy narrow tick`,
+    JSON.stringify({ border: checkedMark.borderWidth, transform: checkedMark.transform,
+      clipPath: checkedMark.clipPath, mask: checkedMark.maskImage }));
+}
 
 resultNode.dataset.status = "pass";
 resultNode.textContent = `PASS: ${profile} ${innerWidth}px (${checks.length} computed checks)`;

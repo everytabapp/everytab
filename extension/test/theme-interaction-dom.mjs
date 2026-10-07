@@ -1,11 +1,11 @@
 /** Mounted Settings-to-theme interaction regression in Chrome's real DOM. */
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
@@ -37,7 +37,7 @@ await new Promise((resolve, reject) => {
 });
 
 const profile = await mkdtemp(`${tmpdir()}/everytab-theme-interaction-`);
-const chrome = spawn(chromeBin, [
+const chrome = spawnOwnedChrome(chromeBin, [
   "--headless=new", "--disable-gpu", "--disable-background-networking",
   "--disable-component-update", "--disable-default-apps", "--no-first-run",
   "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"
@@ -148,16 +148,7 @@ try {
   console.log(`${result.text} | Settings has no horizontal overflow at 320px`);
 } finally {
   client?.close();
-  if (chrome.exitCode == null) {
-    chrome.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 1500);
-      chrome.once("exit", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
-  }
+  await terminateOwnedChrome(chrome);
   server.close();
   await rm(profile, { recursive: true, force: true });
 }

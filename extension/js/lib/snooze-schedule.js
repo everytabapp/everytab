@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Advance a recurring snooze to its next occurrence strictly after `from`,
  * preserving the original clock time.

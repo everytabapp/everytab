@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Localized presentation for the toolbar popup. Worker messages, action ids,
  * routes, and shortcut keys remain stable; callers ask this module only for
@@ -19,6 +22,17 @@ export const popupStatic = Object.freeze({
   saveWindowInbox: () => msg("popup_save_window_inbox"),
   snooze: () => msg("popup_snooze"),
   suspend: () => msg("action_suspend"),
+  keepAwake: () => msg("popup_keep_awake"),
+  keepAwakeDay: () => msg("popup_keep_awake_day"),
+  keepAwakeAlways: () => msg("popup_keep_awake_always"),
+  keepAwakeDayDone: () => msg("popup_keep_awake_day_done"),
+  keepAwakeAlwaysDone: () => msg("popup_keep_awake_always_done"),
+  keepAwakeForeverStatus: () => msg("popup_keep_awake_forever_status"),
+  keepAwakeRuleStatus: () => msg("popup_keep_awake_rule_status"),
+  keepAwakeRemove: () => msg("popup_keep_awake_remove"),
+  keepAwakeRemoved: () => msg("popup_keep_awake_removed"),
+  manageSuspension: () => msg("popup_manage_suspension"),
+  keepAwakeFailed: () => msg("popup_keep_awake_failed"),
   label: () => msg("popup_label"),
   suspendOthers: () => msg("popup_suspend_others"),
   saveSession: () => msg("popup_save_session"),
@@ -79,6 +93,7 @@ export const popupStatic = Object.freeze({
 });
 
 export const popupRenamed = (name) => msg("popup_renamed", [name]);
+export const popupKeepAwakeFor = (remaining) => msg("popup_keep_awake_for", [remaining]);
 export const popupRenameFailed = () => msg("popup_rename_failed");
 export const popupDefaultDuration = (label) => msg("popup_default_duration", [label]);
 export const popupUntilTomorrow = (time) => msg("popup_until_tomorrow", [time]);

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/tablist-d4.css">
+  <script>
+    globalThis.chrome = {
+      i18n: { getMessage: () => "" },
+      runtime: { getURL: (path) => `chrome-extension://test/${path}` }
+    };
+  </script>
+</head>
+<body>
+  <main id="fixture"></main>
+  <pre id="result">RUNNING</pre>
+  <script type="module" src="./anchored-refresh-dom-page.mjs"></script>
+</body>
+</html>

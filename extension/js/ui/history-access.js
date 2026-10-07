@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { requestHistoryAccess } from "../lib/history-access.js";
 import { el } from "./dom.js";
 import { historyAccessCopy } from "./history-access-copy.js";

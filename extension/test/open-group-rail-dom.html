@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-scheme="cream" data-mode="light" data-interface-style="terminal">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open group accent rail visual regression</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/primitives.css">
+  <link rel="stylesheet" href="../css/tablist-d4.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+  <link rel="stylesheet" href="../css/interface-style.css">
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 42px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    #result { display: none; }
+    #fixture {
+      --hero-h: 0px;
+      --section-lead-h: 0px;
+      --section-local-h: 0px;
+      container-type: inline-size;
+    }
+    .fixture-shell {
+      width: min(980px, calc(100vw - 84px));
+      margin: 0 auto;
+    }
+    .fixture-titlebar {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 16px;
+    }
+    .fixture-titlebar h1 { margin: 0; font-size: 24px; }
+    .fixture-titlebar p { margin: 0; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body data-workbench="true" data-row-info="clean">
+  <pre id="result">RUNNING</pre>
+  <main class="fixture-shell">
+    <header class="fixture-titlebar">
+      <div>
+        <h1>Open tabs</h1>
+        <p>Live Chrome groups inside one window</p>
+      </div>
+      <p id="scheme-name"></p>
+    </header>
+    <section id="fixture" aria-label="Open tabs fixture"></section>
+  </main>
+  <script type="module" src="./open-group-rail-dom-page.mjs"></script>
+</body>
+</html>

@@ -2,13 +2,21 @@
   "manifest_version": 3,
   "name": "__MSG_manifest_name__",
   "short_name": "__MSG_manifest_short_name__",
-  "version": "0.8.384",
+  "version": "0.8.666",
   "default_locale": "en",
-  "icons": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon.png" },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon.png"
+  },
   "description": "__MSG_manifest_description__",
-  "omnibox": { "keyword": "et" },
+  "omnibox": {
+    "keyword": "et"
+  },
   "permissions": [
     "tabs",
+    "favicon",
     "storage",
     "unlimitedStorage",
     "alarms",
@@ -18,9 +26,16 @@
     "sessions",
     "sidePanel"
   ],
-  "optional_permissions": ["history", "tabGroups"],
-  "side_panel": { "default_path": "sidepanel.html" },
-  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "optional_permissions": [
+    "history",
+    "tabGroups"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
   "background": {
     "service_worker": "js/background.js",
     "type": "module"
@@ -28,23 +43,45 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "__MSG_manifest_action_title__",
-    "default_icon": { "16": "icon16.png", "24": "icon24.png", "32": "icon32.png", "48": "icon48.png", "128": "icon.png" }
+    "default_icon": {
+      "16": "icon16.png",
+      "24": "icon24.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon.png"
+    }
   },
   "options_page": "options.html",
   "commands": {
+    "open-popup": {
+      "suggested_key": {
+        "default": "Alt+Shift+E",
+        "mac": "MacCtrl+Shift+E"
+      },
+      "description": "__MSG_command_popup_description__"
+    },
     "open-search-popup": {
-      "suggested_key": { "default": "Alt+Shift+K", "mac": "MacCtrl+Shift+K" },
+      "suggested_key": {
+        "default": "Alt+Shift+K",
+        "mac": "MacCtrl+Shift+K"
+      },
       "description": "__MSG_command_search_description__"
     },
     "open-dashboard": {
-      "suggested_key": { "default": "Alt+Shift+D", "mac": "MacCtrl+Shift+D" },
       "description": "__MSG_command_dashboard_description__"
     },
     "open-side-panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "MacCtrl+Shift+S"
+      },
       "description": "__MSG_command_side_panel_description__"
     },
     "dump-window": {
-      "suggested_key": { "default": "Alt+Shift+S", "mac": "MacCtrl+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+I",
+        "mac": "MacCtrl+Shift+I"
+      },
       "description": "__MSG_command_save_window_description__"
     },
     "dump-tab": {

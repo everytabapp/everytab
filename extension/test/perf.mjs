@@ -17,7 +17,6 @@
  *   collectLabels (T2)                    target 30 ms (renderLabels + resolveScope feed) → assert 90
  *   sortLabelGroups (T2, all modes)       target  5 ms → assert 15
  *   mergeMaps (T2 archive, 10k tabs)      target 80 ms (sync merge phase under the vault lock) → assert 240
- *   matchesForView (T2, all-scope)        target 50 ms (search view: scope + ghost-chip warm) → assert 150
  *   cold Open primary library (T2)         target 10 ms (Session identities + bindings) → assert 30
  *   Session identity rebuild (T2)          target 10 ms (named-Session URL projection) → assert 30
  *   cold Open saved-label enrichment (T2)  target 40 ms (deferred, outside first paint) → assert 120
@@ -25,6 +24,65 @@
  * T3 rows are printed for information only (§2: T3 must not hang; no budget).
  * Exit code 1 on any failed assertion, so it can gate a manual pre-beta run.
  */
+
+import assert from "node:assert/strict";
+
+/* Diagnostic metadata must stay safe even in a deliberately active dev report. */
+{
+  const original = Object.fromEntries(["location", "performance", "__etPerf"].map((key) =>
+    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const originalLog = console.log;
+  const originalTable = console.table;
+  const output = [];
+  const timeline = [];
+  const privateText = "https://private.example/Secret-title?token=private";
+  let touchedPayload = 0;
+  const hostile = {
+    toString() { touchedPayload++; throw new Error("must not stringify diagnostic payload"); },
+    valueOf() { touchedPayload++; throw new Error("must not coerce diagnostic payload"); }
+  };
+  try {
+    Object.defineProperty(globalThis, "location", { configurable: true, value: {
+      search: "", get href() { touchedPayload++; return privateText; }
+    } });
+    Object.defineProperty(globalThis, "performance", { configurable: true, value: {
+      now: () => 12, mark: (name) => timeline.push(name),
+      measure: (name) => timeline.push(name)
+    } });
+    console.log = (...args) => output.push(args);
+    console.table = (...args) => output.push(args);
+    const perf = await import("../js/lib/perf.js?diagnostic-privacy");
+    perf.activateFromSettings({ perfHud: true });
+    perf.pspan("store:commit")(privateText);
+    perf.precord("refresh:flush", 7.25, privateText);
+    perf.pcount("refresh tasks (total)", 3, 1.5);
+    perf.pmark(privateText);
+    perf.pspan(privateText)(privateText);
+    perf.precord(privateText, 4, privateText);
+    perf.pcount(privateText, 2, 1);
+    const report = JSON.parse(perf.preport());
+    assert.equal(JSON.stringify({ report, output, timeline,
+      entries: globalThis.__etPerf.entries, counts: [...globalThis.__etPerf.counts] })
+      .includes(privateText), false, "reports, stored metadata and timeline labels exclude payloads");
+    assert.equal(Object.hasOwn(report, "url"), false, "report omits page URL");
+    assert.equal(report.spans.find((entry) => entry.name === "refresh:flush").ms, 7.25);
+    assert.deepEqual(report.counters.find((entry) => entry.name === "refresh tasks (total)"),
+      { name: "refresh tasks (total)", n: 3, totalMs: 1.5 });
+    perf.pmark(hostile);
+    perf.pspan(hostile)(hostile);
+    perf.precord(hostile, hostile, hostile);
+    perf.pcount(hostile, hostile, hostile);
+    perf.preport();
+    assert.equal(touchedPayload, 0, "diagnostics neither read page URL nor coerce hostile metadata");
+  } finally {
+    console.log = originalLog;
+    console.table = originalTable;
+    for (const [key, descriptor] of Object.entries(original)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  }
+}
 
 /* ---- chrome mock (storage read-only + tabs.query) BEFORE lib imports ---- */
 
@@ -50,17 +108,40 @@ globalThis.chrome = {
   tabs: { query: async () => currentOpenTabs }
 };
 
-const { buildTierData, buildOpenTabs } = await import("../tools/perf-seed.mjs");
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
+const { buildTierData, buildOpenTabs } = await import("../../tools/perf-seed.mjs");
 const { STORE_KEYS } = await import("../js/lib/types.js");
 const { searchAll } = await import("../js/lib/search.js");
 const { collectLabels, sortLabelGroups } = await import("../js/lib/labels.js");
 const { mergeMaps } = await import("../js/lib/merge.js");
-const { matchesForView } = await import("../js/lib/smartviews.js");
+{
+  const privateId = "https://private.example/Secret-title";
+  const local = { id: privateId, modifiedAt: 1, schemaVersion: 1 };
+  const remote = { id: privateId, modifiedAt: 2, schemaVersion: 999 };
+  const diagnostics = [];
+  const originalWarn = console.warn;
+  try {
+    console.warn = (...args) => diagnostics.push(args);
+    assert.deepEqual(mergeMaps({ [privateId]: local }, { [privateId]: remote }),
+      { merged: { [privateId]: local }, pulled: [], pushed: [] },
+      "newer-schema records remain untouched and do not overwrite the local record");
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepEqual(diagnostics, [["EveryTab: merge-newer-schema failed [name:UnknownError]"]],
+    "unsupported schema diagnostics do not reveal saved record identities");
+}
+// SmartView matching is retired; Search's maintained paths are benchmarked below.
 const { listItems, readStoreMap } = await import("../js/lib/store.js");
 const { buildSavedLabelsByUrl } = await import("../js/lib/saved-label-index.js");
 const {
-  SESSION_IDENTITY_INDEX_KEY, buildSessionIdentityIndex, readSessionIdentities
+  SESSION_IDENTITY_INDEX_KEY, buildSessionIdentityIndex
 } = await import("../js/lib/session-identity-index.js");
+const { readSessionIdentities } = await import("../js/lib/session-identity-store.js");
 
 /* ---- fixtures ---- */
 
@@ -222,10 +303,6 @@ const t2Archive = t2[STORE_KEYS.archive];
 const t2Remote = remoteVariant(t2Archive);
 record(await bench("mergeMaps T2 archive", () => mergeMaps(t2Archive, t2Remote), 240),
   (r) => `${r.pulled.length} pulled / ${r.pushed.length} pushed`);
-
-const prView = { name: "GitHub PRs", field: "url", pattern: "github\\.com/.+/pull/", scope: "all" };
-record(await bench("matchesForView T2 (all scope)", () => matchesForView(prView), 150),
-  (r) => `${r.length} matches`);
 
 /* ---- T3 (informational — must not hang, no budget) ---- */
 

@@ -1,3 +1,7 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
+import { reportFailure } from "./failure-diagnostic.js";
 /**
  * F18 — group-aware sessions. Read-and-recreate ONLY: EveryTab captures a
  * window's Chrome tab groups at save time and recreates them at restore time. It
@@ -126,6 +130,43 @@ export async function fetchGroupTemplates(groupIds, withPermission) {
 }
 
 /**
+ * Read metadata for live group ids in one query when Chrome supports it. Open
+ * tabs use this read model only for presentation; membership still comes from
+ * each tab's ordinary `groupId`, so the UI can retain neutral group structure
+ * without the optional permission. Missing/vanished groups remain `{}`.
+ * @param {number[]} groupIds
+ * @param {boolean} withPermission
+ * @returns {Promise<Map<number, import("./types.js").GroupTemplate>>}
+ */
+export async function fetchLiveGroupDetails(groupIds, withPermission) {
+  const ids = [...new Set((groupIds ?? []).filter((id) => Number.isInteger(id) && id !== NO_GROUP))];
+  const details = new Map(ids.map((id) => [id, {}]));
+  if (!withPermission || ids.length === 0) return details;
+
+  const keep = (group) => {
+    if (!group || !details.has(group.id)) return;
+    const meta = {};
+    if (group.title) meta.title = group.title;
+    if (group.color) meta.color = group.color;
+    if (group.collapsed) meta.collapsed = true;
+    details.set(group.id, meta);
+  };
+  if (typeof chrome.tabGroups?.query === "function") {
+    try {
+      (await chrome.tabGroups.query({})).forEach(keep);
+      return details;
+    } catch {
+      /* fall through to bounded per-id reads */
+    }
+  }
+  await Promise.all(ids.map(async (id) => {
+    try { keep(await chrome.tabGroups.get(id)); }
+    catch { /* group vanished mid-read — retain membership-only metadata */ }
+  }));
+  return details;
+}
+
+/**
  * Pure: turn a restored window's refs (each aligned to a created tab id) into a
  * grouping plan — one entry per group index that has ≥1 created tab, carrying the
  * tab ids to group and the stored template. Refs without a `groupIndex`, or whose
@@ -193,8 +234,9 @@ export async function recreateWindowGroups(windowId, refs, tabIds, groups, gate)
     }
   }
   if (!ok) {
-    console.warn("EveryTab: some tab groups could not be recreated on restore");
-    groupNotifier?.("Tab groups could not be recreated");
+    reportFailure("tab-group-restore", undefined);
+    // Language-free reason; the Dashboard owner maps it to catalogue copy.
+    groupNotifier?.("tab-group-restore");
   }
   return { attempted: true, ok };
 }

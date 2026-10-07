@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Locale-backed compact relative age shared by Search and saved-list rows. */
 import { formatNumber, msg } from "./i18n.js";
 

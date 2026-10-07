@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /**
  * Localized presentation data for first run and permanent Help.
  *
@@ -11,29 +14,31 @@ const page = (id, title, essence, why, options = {}) => Object.freeze({
 });
 
 export const ONBOARDING_PAGES = Object.freeze([
-  page("local", msg("onboarding_local_title"), msg("onboarding_local_essence"), [
-    msg("onboarding_local_body_one"), msg("onboarding_local_body_two")
-  ], {
-    terms: [
-      [msg("onboarding_overview_clear_term"), msg("onboarding_overview_clear_desc")],
-      [msg("onboarding_overview_organize_term"), msg("onboarding_overview_organize_desc")],
-      [msg("onboarding_overview_focus_term"), msg("onboarding_overview_focus_desc")]
+  page("local", msg("onboarding_intro_title"), msg("onboarding_intro_essence"), [], {
+    benefits: [
+      ["inbox", msg("onboarding_intro_save")],
+      ["search", msg("onboarding_intro_find")],
+      ["activity", msg("onboarding_intro_automate")]
     ],
-    note: msg("onboarding_local_note")
+    note: msg("onboarding_intro_local")
   }),
-  page("newtab", msg("onboarding_new_tab_title"), msg("onboarding_new_tab_essence"),
-    msg("onboarding_new_tab_body"), { special: "newtab", note: msg("onboarding_new_tab_note") }),
-  page("save", msg("onboarding_save_title"), msg("onboarding_save_essence"), [
-    msg("onboarding_save_body_one"), msg("onboarding_save_body_two")
-  ], { special: "automation" }),
-  page("find", msg("onboarding_find_title"), msg("onboarding_find_essence"), [
-    msg("onboarding_find_body_one"), msg("onboarding_find_body_two")
-  ], { note: msg("onboarding_find_note") }),
-  page("scheme", msg("onboarding_scheme_title"), msg("onboarding_scheme_essence"),
-    msg("onboarding_scheme_body"), { special: "scheme" }),
-  page("data", msg("onboarding_data_title"), msg("onboarding_data_essence"), [
-    msg("onboarding_data_body_one"), msg("onboarding_data_body_two")
-  ], { special: "vault", settingsClosure: true })
+  page("find", msg("onboarding_organize_title"), msg("onboarding_organize_essence"), [], {
+    definitions: [
+      ["inbox", msg("shell_section_inbox"), msg("onboarding_organize_inbox")],
+      ["sessions", msg("shell_section_sessions"), msg("onboarding_organize_sessions")],
+      ["labels", msg("shell_section_labels"), msg("onboarding_organize_labels")]
+    ],
+    note: msg("onboarding_organize_search")
+  }),
+  page("save", msg("onboarding_automation_title"), msg("onboarding_automation_essence"), [],
+    { special: "automation" }),
+  page("newtab", msg("onboarding_new_tab_title"), msg("onboarding_new_tab_essence"), [],
+    { special: "newtab" }),
+  page("scheme", msg("onboarding_appearance_title"), msg("onboarding_appearance_essence"), [],
+    { special: "scheme" }),
+  page("data", msg("onboarding_vault_title"), msg("onboarding_vault_essence"), [
+    msg("onboarding_vault_body"), msg("onboarding_vault_folders")
+  ], { special: "vault", note: msg("onboarding_vault_optional") })
 ]);
 
 export const HELP_TOPICS = Object.freeze([
@@ -116,6 +121,12 @@ export const HELP_TOPICS = Object.freeze([
   })
 ]);
 
+/** The full Help list in compact form, with Imports replacing permissions during first run. */
+export const ONBOARDING_FEATURES = Object.freeze(HELP_TOPICS.map((topic) => topic.id === "history"
+  ? Object.freeze({ id: "import", title: msg("onboarding_feature_import_title"),
+    description: msg("onboarding_feature_import_detail") })
+  : Object.freeze({ id: topic.id, title: topic.title, description: topic.essence })));
+
 export const HELP_GROUPS = Object.freeze([
   Object.freeze({
     id: "start", title: msg("help_group_start"),
@@ -183,29 +194,10 @@ export const onboardingStatic = Object.freeze({
   progressAria: () => msg("onboarding_progress_aria"),
   pageAria: (current, total, title) => msg("onboarding_page_aria", [formatNumber(current), formatNumber(total), title]),
   example: () => msg("onboarding_example"),
-  newTabAria: () => msg("onboarding_new_tab_aria"),
-  newTabDashboard: () => msg("onboarding_new_tab_dashboard"),
-  newTabDashboardDesc: () => msg("onboarding_new_tab_dashboard_desc"),
-  newTabMinimal: () => msg("onboarding_new_tab_minimal"),
-  newTabMinimalDesc: () => msg("onboarding_new_tab_minimal_desc"),
-  newTabBlank: () => msg("onboarding_new_tab_blank"),
-  newTabBlankDesc: () => msg("onboarding_new_tab_blank_desc"),
-  tuneAutomation: () => msg("onboarding_tune_automation"),
-  tuneAutomationHint: () => msg("onboarding_tune_automation_hint"),
-  automationSummary: (autoSave, suspend, snapshots, keep) =>
-    msg("onboarding_automation_summary", [autoSave, suspend, snapshots, keep]),
-  keepAllSnapshots: () => msg("onboarding_keep_all_snapshots"),
-  keepSnapshots: (count) => msg("onboarding_keep_snapshots", [formatNumber(count)]),
-  moreAutomation: () => msg("onboarding_more_automation"),
-  schemeAria: () => msg("onboarding_scheme_aria"),
-  finalSettingsCopy: () => msg("onboarding_final_settings_copy"),
-  openSettings: () => msg("onboarding_open_settings"),
   openHelp: () => msg("onboarding_open_help"),
   settingsSaved: () => msg("onboarding_settings_saved"),
   vaultConnect: () => msg("onboarding_vault_connect"),
-  vaultLater: () => msg("onboarding_vault_later"),
   vaultConnected: (name) => msg("onboarding_vault_connected", [name]),
-  vaultLocal: () => msg("onboarding_vault_local"),
   vaultUnavailable: () => msg("onboarding_vault_unavailable"),
   helpBrand: () => msg("help_brand"),
   helpTitle: () => msg("help_title"),

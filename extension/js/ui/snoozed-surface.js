@@ -1,5 +1,8 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 import { STORE_KEYS } from "../lib/types.js";
-import { listItems } from "../lib/store.js";
+import { listItems, listNamedSessions } from "../lib/store.js";
 import { createTabList, fromSnoozes } from "./tablist.js";
 import { buildSnoozedListConfig } from "./list-configs.js";
 import { createCopyHelpers } from "./list-helpers.js";
@@ -15,7 +18,7 @@ export function createSnoozedSurface({ getBody, setHeading, showNotice }) {
   async function renderInner() {
     const snoozes = (await listItems(STORE_KEYS.snoozes)).sort((a, b) => a.dueAt - b.dueAt);
     const sessionsById = new Map(
-      (await listItems(STORE_KEYS.sessions)).map((session) => [session.id, session])
+      (await listNamedSessions()).map((session) => [session.id, session])
     );
     setHeading(shellSectionCountTitle("snoozed", snoozes.length));
     getBody().replaceChildren(createTabList(buildSnoozedListConfig({
@@ -25,7 +28,8 @@ export function createSnoozedSurface({ getBody, setHeading, showNotice }) {
       // scheduler owns that cross-section repaint instead of this hidden view.
       renderSessions: () => {},
       msg: send,
-      copyRefs
+      copyRefs,
+      showNotice
     })));
   }
 

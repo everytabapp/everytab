@@ -99,7 +99,7 @@ assert.equal(calls.length, 1, "one-character and non-History scopes never query 
 Date.now = realNow;
 
 const production = [
-  "../js/lib/search.js", "../js/lib/suggest.js", "../js/lib/history-access.js"
+  "../js/lib/search.js", "../js/lib/history-access.js"
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 assert.doesNotMatch(production, /chrome\.history\.(?:addUrl|deleteAll|deleteRange|deleteUrl)\s*\(/);
 

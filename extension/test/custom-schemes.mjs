@@ -22,6 +22,12 @@ import {
   validateCustomSchemeRecord
 } from "../js/lib/custom-schemes.js";
 import { maybeRotateSchemeOnOpen, rotationPool } from "../js/lib/scheme-rotation.js";
+import { createLibraryStore } from "../js/lib/storage/library-store.js";
+import { createRecoveryStore } from "../js/lib/storage/recovery-store.js";
+import { createStorageAuthority } from "../js/lib/storage/local-authority.js";
+import { LIBRARY_SCHEMA, RECOVERY_SCHEMA } from "../js/lib/storage/schema.js";
+import { setStorageAuthorityForTests } from "../js/lib/storage/authority-runtime.js";
+import { createMemoryIndexedDbAdapter } from "./memory-indexeddb-adapter.mjs";
 
 let checks = 0;
 const ok = (condition, message) => { checks += 1; assert.ok(condition, message); };
@@ -47,6 +53,7 @@ ok(customSchemeRef(UUID_A) === `custom:${UUID_A}` &&
   customSchemeIdFromRef(`custom:${UUID_A}`) === UUID_A,
 "custom identity uses one namespaced UUID reference");
 ok(normalizeSchemeSelection("everforest") === "matcha" &&
+  normalizeSchemeSelection("perestroika") === "jamon" &&
   normalizeSchemeSelection(`custom:${UUID_A}`) === `custom:${UUID_A}` &&
   normalizeSchemeSelection("not-real") === "cream",
 "selection normalization preserves custom ids and built-in compatibility");
@@ -129,7 +136,7 @@ ok(JSON.stringify(rotationPool([customSchemeRef(UUID_A)], { [UUID_A]: created.va
 
 const { createInterleavableStorage, createMockLockManager } = await import("./e2-mocks.mjs");
 const customRefA = customSchemeRef(UUID_A);
-const storage = createInterleavableStorage({
+const initialMaps = {
   customSchemes: { [UUID_A]: created.value },
   settings: {
     uiScheme: customRefA,
@@ -138,11 +145,22 @@ const storage = createInterleavableStorage({
   },
   schemeRotationState: { remaining: [customRefA] },
   schemeRotationPrepared: { from: "tide", next: customRefA }
-});
+};
+const storage = createInterleavableStorage({ deviceId: "custom-scheme-test" });
 globalThis.chrome = { storage: { local: storage.local, onChanged: storage.onChanged } };
 Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }, configurable: true
 });
+const commits = [];
+const library = createLibraryStore({
+  adapter: createMemoryIndexedDbAdapter(LIBRARY_SCHEMA), deviceId: "custom-scheme-test",
+  onCommit: (event) => commits.push(event)
+});
+const recovery = createRecoveryStore({ adapter: createMemoryIndexedDbAdapter(RECOVERY_SCHEMA) });
+const authority = createStorageAuthority({ library, recovery,
+  readBrowserLocal: (keys) => storage.local.get(keys) });
+setStorageAuthorityForTests(authority);
+await authority.commitMaps(initialMaps);
 const {
   deleteCustomSchemeAndRepair, loadCustomSchemeDraft, saveCustomSchemeDraft
 } = await import("../js/lib/custom-scheme-store.js");
@@ -150,19 +168,26 @@ await saveCustomSchemeDraft({ kind: "editor-test", draft: seed.value });
 ok((await loadCustomSchemeDraft()).kind === "editor-test",
   "the one operational editor draft persists locally outside the portable registry");
 storage.setLog.splice(0);
+commits.splice(0);
 ok(await deleteCustomSchemeAndRepair(UUID_A),
   "deleting a custom scheme finds and tombstones the live mergeable record");
-const afterDelete = storage.snapshot();
+const afterDelete = await authority.readMaps(Object.keys(initialMaps));
 ok(afterDelete.customSchemes[UUID_A].deletedAt && afterDelete.settings.uiScheme === "cream" &&
   JSON.stringify(afterDelete.settings.schemeFavorites) === JSON.stringify(["tide"]) &&
   afterDelete.schemeRotationState === null && afterDelete.schemeRotationPrepared === null &&
-  storage.setLog.length === 1,
+  storage.setLog.length === 1 && commits.length === 1 &&
+  commits[0].changes.some(({ entity }) => entity.family === "customSchemes" && entity.lifecycle === "deleted") &&
+  commits[0].changes.some(({ entity }) => entity.family === "settings") &&
+  commits[0].localKeys.includes("schemeRotationState") &&
+  commits[0].localKeys.includes("schemeRotationPrepared"),
 "delete, active fallback, favorite cleanup, and rotation invalidation share one atomic commit");
 const rotationAfterDelete = await maybeRotateSchemeOnOpen(() => 0.25);
-const afterRotation = storage.snapshot();
+const afterRotation = await authority.readMaps(Object.keys(initialMaps));
 ok(rotationAfterDelete?.changed === true &&
   afterRotation.settings.uiScheme === "tide" &&
   afterRotation.schemeRotationState && afterRotation.schemeRotationPrepared,
 "the first On-open draw after custom deletion consumes the explicit null invalidation safely");
 
+setStorageAuthorityForTests(null);
+await Promise.all([library.close(), recovery.close()]);
 console.log(`Custom scheme domain tests passed: ${checks} assertions; 100-record catalogue ${catalogueMs.toFixed(2)}ms.`);

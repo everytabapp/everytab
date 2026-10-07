@@ -1,5 +1,6 @@
 /** P11-14 organization domain focused suite. */
 import { createInterleavableStorage, createMockLockManager } from "./e2-mocks.mjs";
+import { installBrowserMapStorageAuthority } from "./storage-authority-fixture.mjs";
 
 const ID = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const T0 = Date.parse("2026-08-17T10:00:00Z");
@@ -8,10 +9,15 @@ globalThis.chrome = { storage: { local: storage.local, onChanged: storage.onChan
 Object.defineProperty(globalThis, "navigator", {
   value: { locks: createMockLockManager() }, writable: true, configurable: true
 });
+// This domain fixture deliberately observes logical map commits and legacy
+// projection inputs; explicitly install its existing map-shaped test adapter.
+installBrowserMapStorageAuthority();
 
 const { STORE_KEYS, ARCHIVE_OVERLAY_KEY } = await import("../js/lib/types.js");
+const { NAMED_SESSION_RECORDS_KEY } = await import("../js/lib/session-identity-index.js");
 const {
-  createOrganizationGroup, deleteNamedSession, deleteOrganizationGroup,
+  applyOrganizationMemberPlan, assignNewOrganizationMembers, createOrganizationGroup,
+  deleteNamedSession, deleteOrganizationGroup,
   organizationMembershipId, projectOrganization, readOrganizationState,
   renameOrganizationGroup, replaceGroupMembers, replaceMemberGroups
 } = await import("../js/lib/organization.js");
@@ -64,6 +70,42 @@ check((await createOrganizationGroup("label", "Ungrouped")).reason === "reserved
   "P11-14 reserves the projected Ungrouped name only for groups");
 check((await createOrganizationGroup("session", "Snapshots", [snapshotId])).reason === "invalid-members",
   "P11-14 automatic Snapshots cannot enter Session groups");
+
+const createdLabelAssignment = await assignNewOrganizationMembers("label", ["fresh-label"], {
+  groupIds: [work.entry.id], createNames: ["Fresh group"]
+});
+const freshGroup = createdLabelAssignment.entry?.createdGroups?.[0];
+let creationSnapshot = storage.snapshot();
+check(createdLabelAssignment.ok && freshGroup?.name === "Fresh group" &&
+  !creationSnapshot[STORE_KEYS.organizationMemberships][
+    organizationMembershipId("label", "fresh-label", work.entry.id)
+  ]?.deletedAt && !creationSnapshot[STORE_KEYS.organizationMemberships][
+    organizationMembershipId("label", "fresh-label", freshGroup.id)
+  ]?.deletedAt,
+"P11-14 a newly created Label joins existing and newly named groups in one organization commit");
+const additiveLabelAssignment = await assignNewOrganizationMembers("label", ["fresh-label"], {
+  groupIds: [personal.entry.id], createNames: []
+});
+creationSnapshot = storage.snapshot();
+check(additiveLabelAssignment.ok &&
+  !creationSnapshot[STORE_KEYS.organizationMemberships][
+    organizationMembershipId("label", "fresh-label", work.entry.id)
+  ]?.deletedAt && !creationSnapshot[STORE_KEYS.organizationMemberships][
+    organizationMembershipId("label", "fresh-label", personal.entry.id)
+  ]?.deletedAt,
+"P11-14 creation-time assignment is additive and preserves earlier memberships");
+check((await assignNewOrganizationMembers("session", [snapshotId], {
+  groupIds: [sessionsGroup.entry.id], createNames: []
+})).reason === "invalid-members",
+"P11-14 creation-time assignment refuses automatic Snapshots at the domain boundary");
+const createdSessionAssignment = await assignNewOrganizationMembers("session", [namedId], {
+  groupIds: [], createNames: ["Fresh Sessions"]
+});
+check(createdSessionAssignment.ok && createdSessionAssignment.entry.createdGroups.length === 1 &&
+  !storage.snapshot()[STORE_KEYS.organizationMemberships][organizationMembershipId(
+    "session", namedId, createdSessionAssignment.entry.createdGroups[0].id
+  )]?.deletedAt,
+"P11-14 a newly created named Session receives its optional group membership durably");
 
 const portable = JSON.parse(await buildPortableExport());
 const portableEdgeId = organizationMembershipId("label", "alpha", work.entry.id);
@@ -206,6 +248,72 @@ check(inlineCreate.ok && inlineGroup?.name === "Inline group" &&
 "P11-14 tag-entry Apply creates new groups and complete membership in one atomic commit");
 
 labelState = await readOrganizationState("label");
+let batchProjection = projectOrganization("label", [
+  { label: "batch-a" }, { label: "batch-b" }
+], labelState);
+const batchSeed = await replaceMemberGroups("label", "batch-a", [personal.entry.id],
+  batchProjection.memberRevisionByKey.get("batch-a"));
+const batchAdd = await applyOrganizationMemberPlan("label", {
+  mode: "add",
+  memberKeys: ["batch-a", "batch-b"],
+  groupIds: [work.entry.id],
+  createNames: ["Shared batch"]
+});
+labelState = await readOrganizationState("label");
+batchProjection = projectOrganization("label", [
+  { label: "batch-a" }, { label: "batch-b" }
+], labelState);
+const sharedBatch = batchProjection.groups.find((group) => group.name === "Shared batch");
+check(batchSeed.ok && batchAdd.ok && sharedBatch &&
+  batchProjection.groupIdsByMemberKey.get("batch-a")?.has(personal.entry.id) &&
+  ["batch-a", "batch-b"].every((key) =>
+    batchProjection.groupIdsByMemberKey.get(key)?.has(work.entry.id) &&
+    batchProjection.groupIdsByMemberKey.get(key)?.has(sharedBatch.id)),
+"P11-14 one shared inline plan preserves existing memberships while adding Groups to every member");
+
+const batchReplace = await applyOrganizationMemberPlan("label", {
+  mode: "replace",
+  members: [
+    { memberKey: "batch-a", groupIds: [personal.entry.id], createNames: [],
+      revision: batchProjection.memberRevisionByKey.get("batch-a") },
+    { memberKey: "batch-b", groupIds: [sharedBatch.id], createNames: [],
+      revision: batchProjection.memberRevisionByKey.get("batch-b") }
+  ]
+});
+labelState = await readOrganizationState("label");
+batchProjection = projectOrganization("label", [
+  { label: "batch-a" }, { label: "batch-b" }
+], labelState);
+check(batchReplace.ok &&
+  batchProjection.groupIdsByMemberKey.get("batch-a")?.size === 1 &&
+  batchProjection.groupIdsByMemberKey.get("batch-a")?.has(personal.entry.id) &&
+  batchProjection.groupIdsByMemberKey.get("batch-b")?.size === 1 &&
+  batchProjection.groupIdsByMemberKey.get("batch-b")?.has(sharedBatch.id),
+"P11-14 separate inline choices replace each member exactly in one transaction");
+
+const staleBatchProjection = batchProjection;
+const concurrentBatchB = await replaceMemberGroups("label", "batch-b",
+  [sharedBatch.id, work.entry.id], staleBatchProjection.memberRevisionByKey.get("batch-b"));
+const staleBatchPlan = await applyOrganizationMemberPlan("label", {
+  mode: "replace",
+  members: [
+    { memberKey: "batch-a", groupIds: [work.entry.id], createNames: [],
+      revision: staleBatchProjection.memberRevisionByKey.get("batch-a") },
+    { memberKey: "batch-b", groupIds: [personal.entry.id], createNames: [],
+      revision: staleBatchProjection.memberRevisionByKey.get("batch-b") }
+  ]
+});
+labelState = await readOrganizationState("label");
+batchProjection = projectOrganization("label", [
+  { label: "batch-a" }, { label: "batch-b" }
+], labelState);
+check(concurrentBatchB.ok && staleBatchPlan.ok === false && staleBatchPlan.reason === "stale" &&
+  batchProjection.groupIdsByMemberKey.get("batch-a")?.has(personal.entry.id) &&
+  !batchProjection.groupIdsByMemberKey.get("batch-a")?.has(work.entry.id) &&
+  batchProjection.groupIdsByMemberKey.get("batch-b")?.has(work.entry.id),
+"P11-14 a stale separate plan writes no member after any selected membership changes");
+
+labelState = await readOrganizationState("label");
 projection = projectOrganization("label", [{ label: "alpha" }, { label: "beta" }], labelState);
 const personalView = projection.groups.find((group) => group.id === personal.entry.id);
 changed = await replaceGroupMembers("label", personal.entry.id, ["beta"], personalView.revision);
@@ -278,16 +386,19 @@ const sessionProjection = projectOrganization(
   "session", [afterLabelDelete[STORE_KEYS.sessions][namedId]], await readOrganizationState("session")
 );
 const snapshotMove = await replaceMemberGroups("session", snapshotId, [], edgeA);
-check(snapshotMove.reason === "snapshot", "P11-14 membership operations explicitly refuse Snapshots");
+check(snapshotMove.reason === "invalid-member",
+  "P11-14 membership operations explicitly refuse Snapshots hidden from the named-Session write model");
 storage.setLog.splice(0);
 const removedSession = await deleteNamedSession(
   namedId, afterLabelDelete[STORE_KEYS.sessions][namedId].modifiedAt
 );
 const afterSessionDelete = storage.snapshot();
 const sessionEdgeId = organizationMembershipId("session", namedId, sessionsGroup.entry.id);
-check(removedSession.ok && afterSessionDelete[STORE_KEYS.sessions][namedId].deletedAt &&
+check(removedSession.ok && !afterSessionDelete[STORE_KEYS.sessions][namedId].deletedAt &&
+  afterSessionDelete[NAMED_SESSION_RECORDS_KEY][namedId].deletedAt &&
   afterSessionDelete[STORE_KEYS.organizationMemberships][sessionEdgeId].deletedAt &&
-  storage.setLog.length === 1 && storage.setLog[0].includes(STORE_KEYS.sessions) &&
+  storage.setLog.length === 1 && storage.setLog[0].includes(NAMED_SESSION_RECORDS_KEY) &&
+  !storage.setLog[0].includes(STORE_KEYS.sessions) &&
   storage.setLog[0].includes(STORE_KEYS.organizationMemberships) && storage.setLog[0].includes("journal"),
 "P11-14 named-Session delete tombstones content and memberships in one atomic commit");
 check(sessionProjection.groups[0].memberKeys.join() === namedId,

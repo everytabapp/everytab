@@ -1,3 +1,6 @@
+// Copyright 2026 Hadrien Gelas and EveryTab contributors
+// SPDX-License-Identifier: MPL-2.0
+
 /** Stable focus identities for controls replaced during the Restore workflow. */
 export function markRestoreFocus(node, identity) {
   node.dataset.restoreFocusId = identity;

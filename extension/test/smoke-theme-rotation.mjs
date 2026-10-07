@@ -32,8 +32,9 @@ export async function runSmokeThemeRotation({ check, local, alarms }) {
     normalizeScheme("everforest") === "matcha" &&
       normalizeScheme("catppuccin") === "dracula" &&
       normalizeScheme("rosepine") === "dracula" &&
+      normalizeScheme("perestroika") === "jamon" &&
       normalizeScheme("unknown") === "cream",
-    "D3: retired overlapping schemes and Everforest keep safe compatibility aliases"
+    "D3: retired schemes keep safe compatibility aliases"
   );
   check(
     resolveSchemeMode("light", "phosphor", true) === "light" &&
@@ -45,7 +46,9 @@ export async function runSmokeThemeRotation({ check, local, alarms }) {
   );
   check(
     rotationPool(["tide", "bogus", "tide"]).length === 1 &&
-      rotationPool(["tide"])[0] === "tide" && rotationPool([]).length === 36,
+      rotationPool(["tide"])[0] === "tide" &&
+      JSON.stringify(rotationPool(["perestroika"])) === JSON.stringify(["jamon"]) &&
+      rotationPool([]).length === 36,
     "D3: favorites constrain rotation; invalid ids are ignored; empty means all"
   );
 
@@ -97,9 +100,16 @@ export async function runSmokeThemeRotation({ check, local, alarms }) {
   check(!(SCHEME_ROTATION_ALARM in alarms), "D3: Off clears the rotation alarm");
 
   const background = fs.readFileSync(new URL("../js/background.js", import.meta.url), "utf8");
+  const alarmOwner = fs.readFileSync(
+    new URL("../js/background/alarm-owner.js", import.meta.url), "utf8"
+  );
+  const settingsOwner = fs.readFileSync(
+    new URL("../js/background/settings-change-owner.js", import.meta.url), "utf8"
+  );
   check(
-    /if \(alarm\.name === SCHEME_ROTATION_ALARM\) await rotateScheme\(\)/.test(background) &&
-      /changes\.settings[\s\S]{0,180}ensureSchemeRotationAlarm\(\)/.test(background),
+    /if \(name === SCHEME_ROTATION_ALARM\)/.test(alarmOwner) &&
+      /rotation\.rotate/.test(alarmOwner) &&
+      /changes\.settings[\s\S]{0,240}ensureSchemeRotationAlarm\(\)/.test(settingsOwner),
     "D3: worker dispatches hourly/daily alarms and repairs cadence after Settings changes"
   );
 

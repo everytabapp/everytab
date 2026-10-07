@@ -105,6 +105,11 @@ globalThis.chrome = {
   }
 };
 
+const { installBrowserMapStorageAuthority } = await import(
+  "./storage-authority-fixture.mjs"
+);
+installBrowserMapStorageAuthority();
+
 const wait = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 const waitFor = async (predicate, label, timeout = 250) => {
   const deadline = performance.now() + timeout;
