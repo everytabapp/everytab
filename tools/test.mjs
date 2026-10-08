@@ -76,7 +76,10 @@ export function main(args = process.argv.slice(2)) {
     else {
       failures++;
       console.log(`FAIL ${run.id}`);
-      console.log(result.error?.message ?? (result.stdout + result.stderr).slice(-5000));
+      // A timed-out suite still has useful partial output; print it with the
+      // spawn error so a hang names its last completed step.
+      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-5000);
+      console.log([result.error?.message, output].filter(Boolean).join("\n"));
     }
   }
   // The portable gate owns runtime syntax once. Targeted and browser/performance

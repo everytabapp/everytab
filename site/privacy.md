@@ -1,6 +1,6 @@
 # EveryTab Privacy Policy
 
-_Last updated: September 11, 2026_
+_Last updated: October 8, 2026_
 
 EveryTab is a local-first Chrome extension for managing browser tabs. The
 extension handles information about tabs on your device so its features can
@@ -15,7 +15,18 @@ snooze, deduplicate, close, and restore tabs.
 
 It also stores information you add to EveryTab, including Labels, Sessions,
 Groups, Starred pages, settings, optional New Tab phrases, and the local Activity
-journal.
+journal. Settings include your interface language (System, English, or
+Français), which only changes how EveryTab looks.
+
+To show site icons, EveryTab normally uses the icon Chrome has already stored
+on your device for each page, or an icon image already saved with the tab.
+EveryTab never loads icons from websites.
+
+Some notifications show tab information on your screen. A Snooze notification
+shows the page title or address, and a Focus notification about timed access
+shows the site's domain. Chrome shows these notifications on this device,
+including in your system's notification center. Other EveryTab notifications
+do not show page titles or addresses.
 
 If you grant the optional Browser History permission, EveryTab uses matching
 history entries locally for Search and suggestions. If you grant the optional
@@ -34,7 +45,12 @@ Chrome's local extension storage.
 
 You may optionally connect a Vault folder that you choose. The Vault contains
 compact incremental data, recovery points, favicons, and readable views of your
-library. EveryTab can read and write only the folder you select. If you use
+library. The Vault folder is not encrypted. Its `library.json` file contains
+your full saved library in plain text, including page addresses, titles,
+Labels, settings, and site icons. Its `index.md` file summarizes your library
+and lists the pages in your named Sessions and Starred pages by title and
+address. Protect that folder as you would any personal
+file. EveryTab can read and write only the folder you select. If you use
 Dropbox, Google Drive, iCloud, Syncthing, or another service to sync that folder,
 that service handles the folder under its own terms and privacy policy. The
 EveryTab developer never receives the folder or its contents.
@@ -50,7 +66,7 @@ handles the query under its own privacy policy.
 ## Data collection, sharing, and advertising
 
 EveryTab has no account system, developer-operated server, analytics,
-advertising, or telemetry. The EveryTab developer cannot see your tab library or
+advertising, or telemetry. The extension itself makes no network requests. The EveryTab developer cannot see your tab library or
 the contents of your Vault.
 
 EveryTab does not sell or transfer user information to third parties. It does

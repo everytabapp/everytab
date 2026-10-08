@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
+import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget,
   evaluate, prepareSession, CdpClient } from './capture-store-screenshots.mjs';
 
@@ -24,7 +24,7 @@ let browser, page, debug, failure;
 const record = (name, details) => { evidence.stages.push({ name, details }); console.log(`PASS: ${name}`); };
 
 async function launch(restore = false) {
-  browser = spawnOwnedChrome(chromeBin, ['--headless=new', '--disable-gpu', '--remote-debugging-port=0',
+  browser = spawnOwnedChrome(chromeBin, [...CHROME_FIXTURE_ARGS, '--headless=new', '--disable-gpu', '--remote-debugging-port=0',
     ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     `--user-data-dir=${profile}`, '--enable-unsafe-extension-debugging',
     '--no-first-run', '--disable-background-networking', ...(restore ? ['--restore-last-session'] : ['about:blank'])

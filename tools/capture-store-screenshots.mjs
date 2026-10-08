@@ -21,7 +21,12 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.dirname(here);
-const extensionRoot = path.join(projectRoot, "extension");
+// EVERYTAB_EXTENSION_ROOT loads another runtime tree, for example an extracted
+// release ZIP, so the captures provably show the shipped package. The source
+// fingerprint below is always computed over the directory actually loaded.
+const extensionRoot = process.env.EVERYTAB_EXTENSION_ROOT
+  ? path.resolve(process.env.EVERYTAB_EXTENSION_ROOT)
+  : path.join(projectRoot, "extension");
 const outputRoot = path.join(
   projectRoot, "docs", "launch", "assets", "store-beta"
 );
@@ -285,7 +290,12 @@ async function createTarget(debugUrl, url, options = {}) {
   }
 }
 
-async function detectExtension(debugUrl) {
+// Store captures opt in to settling a fresh install (wait for storage setup,
+// close the welcome Dashboard). Other tools that share this helper keep the
+// plain detection unless they pass the option or set the environment flag.
+async function detectExtension(debugUrl, {
+  settleFreshInstall = process.env.EVERYTAB_CAPTURE_SETTLE_INSTALL === "1"
+} = {}) {
   const deadline = performance.now() + 15_000;
   let lastCandidates = [];
   while (performance.now() < deadline) {
@@ -297,11 +307,71 @@ async function detectExtension(debugUrl) {
         try { return new URL(url).pathname.endsWith(suffix); } catch { return false; }
       })
     );
-    if (target) return new URL(target.url).host;
+    if (target) {
+      const extensionId = new URL(target.url).host;
+      if (settleFreshInstall) await waitForStorageAuthority(debugUrl, extensionId);
+      return extensionId;
+    }
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
   const inventory = lastCandidates.map(({ type, url }) => ({ type, url }));
   throw new Error(`The unpacked EveryTab extension did not expose a target: ${JSON.stringify(inventory)}`);
+}
+
+/**
+ * A page opened in the first moments after install can start before the
+ * worker has published the storage authority and then stays blank. Wait for
+ * the worker's first-install setup so every capture page boots normally.
+ */
+async function waitForStorageAuthority(debugUrl, extensionId, timeout = 15_000) {
+  const deadline = performance.now() + timeout;
+  const workerUrl = `chrome-extension://${extensionId}/js/background.js`;
+  while (performance.now() < deadline) {
+    const worker = (await targetInfos(debugUrl)).find(({ type, url }) => type === "service_worker" && url === workerUrl);
+    if (worker) {
+      const session = await attachTarget(debugUrl, worker.targetId);
+      try {
+        const result = await session.send("Runtime.evaluate", {
+          expression: "chrome.storage.local.get('storageAuthority').then((value) => Boolean(value.storageAuthority))",
+          awaitPromise: true, returnByValue: true
+        });
+        if (result.result?.value === true) {
+          await closeFirstInstallDashboard(debugUrl, extensionId);
+          return;
+        }
+      } catch {
+        // The worker can restart while installing; poll again.
+      } finally {
+        session.close();
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("EveryTab did not finish its first-install storage setup");
+}
+
+/**
+ * A fresh install opens a welcome Dashboard after storage setup. Close it so
+ * every capture starts from the same synthetic windows; the capture pages
+ * open their own Dashboard afterwards. Builds without it wait 5 s and go on.
+ */
+async function closeFirstInstallDashboard(debugUrl, extensionId, timeout = 5_000) {
+  const deadline = performance.now() + timeout;
+  const prefix = `chrome-extension://${extensionId}/dashboard.html`;
+  while (performance.now() < deadline) {
+    const welcome = (await targetInfos(debugUrl)).filter(({ type, url = "" }) => type === "page" && url.startsWith(prefix));
+    if (welcome.length) {
+      const client = new CdpClient(debugUrl);
+      try {
+        for (const { targetId } of welcome) await client.send("Target.closeTarget", { targetId });
+      } finally {
+        client.close();
+      }
+      return welcome.length;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return 0;
 }
 
 async function evaluate(session, expression) {
@@ -386,7 +456,7 @@ async function capture(session, filename, details) {
   shots.push({ filename, ...details, sha256: createHash("sha256").update(bytes).digest("hex"),
     width, height,
     geometry,
-    appearance: await evaluate(session, `({scheme: document.documentElement.dataset.scheme, mode: document.documentElement.dataset.mode, style: document.documentElement.dataset.interfaceStyle})`) });
+    appearance: await evaluate(session, `({scheme: document.documentElement.dataset.scheme, mode: document.documentElement.dataset.mode, style: document.documentElement.dataset.interfaceStyle, lang: document.documentElement.lang || null, browserUiLanguage: globalThis.chrome?.i18n?.getUILanguage?.() ?? null})`) });
 }
 
 function browserContextHtml({ surfaceData, kind, scheme, style }) {
@@ -691,7 +761,7 @@ async function main() {
 
   try {
     const debugUrl = await debuggingUrl(chrome);
-    const extensionId = await detectExtension(debugUrl);
+    const extensionId = await detectExtension(debugUrl, { settleFreshInstall: true });
     const seed = await openExtensionPage(debugUrl, extensionId, "dashboard.html#open");
     const seeded = await evaluate(seed, seedExpression(captureFixture(fixtureServer.port)));
     await evaluate(seed, `(async () => {
@@ -900,6 +970,8 @@ async function main() {
       app: "everytab",
       kind: "store-beta-screenshot-capture",
       build,
+      // Name only: an absolute scratch path would leak the local account name.
+      extensionRoot: process.env.EVERYTAB_EXTENSION_ROOT ? `${path.basename(extensionRoot)} (EVERYTAB_EXTENSION_ROOT)` : "extension",
       source: sourceAfter,
       captureToolSha256: createHash("sha256").update(await readFile(fileURLToPath(import.meta.url))).digest("hex"),
       capturedAt: new Date().toISOString(),

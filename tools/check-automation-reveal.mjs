@@ -7,33 +7,63 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { cleanupInboxMeasurement } from './testing/inbox-measurement-cleanup.mjs';
-import { spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
+import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget,
   CdpClient, evaluate, prepareSession } from './capture-store-screenshots.mjs';
+
+/**
+ * Operation label, error class and the first line of the message with URLs,
+ * quoted values and paths removed, capped at 160 characters. The fixture
+ * renders only synthetic rows, but a summary must never echo page text.
+ */
+function fixtureFailureDetail(operationLabel, error) {
+  const errorClass = error?.constructor?.name ?? typeof error;
+  const message = String(error?.message ?? '').split('\n')[0]
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
+    .replace(/(["'`])[^"'`]*\1/g, '<value>')
+    .replace(/(?:[A-Za-z]:)?[\\/][^\s]*[\\/][^\s]*/g, '<path>')
+    .replace(/[^\w .:,()<>=-]/g, '')
+    .slice(0, 160);
+  return `operation=${operationLabel} class=${errorClass} message=${message || 'none'}`;
+}
 
 const profile = await mkdtemp(path.join(tmpdir(), 'everytab-automation-reveal-'));
 let browser, client, page, manager;
 let stage = 'setup';
+// Last fixture operation started; reported on failure with an allowlisted
+// summary so hosted-runner failures are diagnosable without page content.
+let operation = 'launch';
 const receipt = { cases: [] };
 const pause = ms => evaluate(page, `new Promise(resolve => setTimeout(resolve, ${ms}))`);
 const pointer = (x, y) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
 try {
-  browser = spawnOwnedChrome(chromeBin, ['--headless=new', '--disable-gpu',
+  browser = spawnOwnedChrome(chromeBin, [...CHROME_FIXTURE_ARGS, '--headless=new', '--disable-gpu',
+    // Hosted Ubuntu restricts the unprivileged user namespaces Chrome's
+    // sandbox needs; CI opts out explicitly, as every other browser suite does.
+    ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     '--remote-debugging-port=0', '--enable-unsafe-extension-debugging',
     '--disable-background-networking', '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding', `--user-data-dir=${profile}`, '--no-first-run', 'about:blank'
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  operation = 'debugging-endpoint';
   const debug = await debuggingUrl(browser);
   client = new CdpClient(debug);
+  operation = 'browser-version';
   receipt.browser = (await client.send('Browser.getVersion')).product;
+  operation = 'extensions-page';
   manager = await createTarget(debug, 'chrome://extensions');
   await prepareSession(manager);
+  operation = 'developer-mode';
   await evaluate(manager, 'chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true })');
+  operation = 'load-unpacked';
   await client.send('Extensions.loadUnpacked', { path: extensionRoot });
+  operation = 'detect-extension';
   const id = await detectExtension(debug);
+  operation = 'dashboard-page';
   page = await createTarget(debug, `chrome-extension://${id}/dashboard.html`);
   await prepareSession(page);
   receipt.version = await evaluate(page, 'chrome.runtime.getManifest().version');
+  operation = 'mount-fixture';
   await evaluate(page, `(async () => {
     const { createAutomationAwareness } = await import('./js/ui/automation-awareness.js');
     globalThis.revealOwner = createAutomationAwareness({ openSettings() {} });
@@ -60,6 +90,7 @@ try {
         bridge:node.matches('.is-rejoining, .is-remounting') };
     };
   })()`);
+  operation = 'interaction';
   for (const reduced of [false, true]) {
     await page.send('Emulation.setEmulatedMedia', {
       features: [{ name:'prefers-reduced-motion', value:reduced ? 'reduce' : 'no-preference' }]
@@ -204,7 +235,8 @@ try {
     'row highlight continuity is independent of automation');
   receipt.cases.push({ stage, frames:plain.samples.length, preHoverFrames:firstPlainHover, continuity:true });
 } catch (error) {
-  console.error(`FAIL automation reveal at ${stage}: ${error instanceof assert.AssertionError ? error.message : 'fixture operation failed'}`);
+  console.error(`FAIL automation reveal at ${stage}: ${error instanceof assert.AssertionError
+    ? error.message : `fixture operation failed (${fixtureFailureDetail(operation, error)})`}`);
   process.exitCode = 1;
 } finally {
   try {

@@ -26,8 +26,8 @@ server, analytics, advertising, or telemetry.
 
 ## Install
 
-EveryTab is preparing for a closed beta. The Chrome Web Store link will appear
-here when the beta package is ready.
+EveryTab 1.0 is coming to the Chrome Web Store. The install link will appear
+here at launch.
 
 ## Privacy
 

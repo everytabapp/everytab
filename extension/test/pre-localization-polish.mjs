@@ -62,7 +62,7 @@ check(listConfigs.includes("restoreBeforeCommit: true") &&
   listConfigs.indexOf("title.textContent = clean") < listConfigs.indexOf("await renameSession"),
   "Session rename updates visible state before the Vault-backed commit settles");
 check(workflow.includes("ubuntu-latest") && workflow.includes("windows-latest") &&
-  workflow.includes("macos-15-intel") &&
+  /\bmacos-15\b/.test(workflow) &&
   workflow.includes("node tools/test.mjs --lane portable --ci") &&
   workflow.includes("node tools/test.mjs --lane browser --ci"),
   "Windows, macOS, and Linux run portable plus installed Chrome gates in CI");

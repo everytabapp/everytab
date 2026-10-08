@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.8.666",
+  "version": "1.0.0",
   "scope": {
     "roots": [
       "extension",
@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "1cbf3f8a816d74d41cf0a2bd87c93d6a406681cd332b2ccaef4de1b39db277fb",
+  "sourceHash": "78c9c8f119bd5e9f1d90fc5bc1b1069854df2aeadd5accd0d6b38688540da632",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -69,9 +69,9 @@
     {
       "path": ".github/workflows/extension-cross-platform.yml",
       "description": "Automation configuration. CI selects checks from the shared test inventory.",
-      "lines": 95,
-      "bytes": 2851,
-      "sha256": "b67a5f486f032f70cba2f5dec20620146800ef3462c75c0fc23817754b0b13d1",
+      "lines": 100,
+      "bytes": 3186,
+      "sha256": "5566d40925cbcc82a8ab72d80f44888e40a8faf04b22f36ed6fde9dcf4f5842b",
       "imports": [],
       "references": [],
       "exports": [],
@@ -91,9 +91,9 @@
     {
       "path": "CHANGELOG.md",
       "description": "Project guide or configuration: CHANGELOG.",
-      "lines": 8013,
-      "bytes": 456323,
-      "sha256": "3e504b933682bdc22878f4215b1a7c525f17e27e715b64cd9aefc66fb53af7b0",
+      "lines": 8036,
+      "bytes": 457534,
+      "sha256": "e2e54b72a08f0f14d15cac5d7ab2e939bcd2f321ed70ac6b3d6e3f236658f749",
       "imports": [],
       "references": [],
       "exports": [],
@@ -168,9 +168,9 @@
     {
       "path": "TESTING.md",
       "description": "Project guide or configuration: TESTING.",
-      "lines": 1170,
-      "bytes": 67987,
-      "sha256": "bdd4cc3869882b9be70c894be46451237363e2d4e44190ff53c6b506eac05891",
+      "lines": 1209,
+      "bytes": 70519,
+      "sha256": "51784237ead53248d38ec017370a18330d1d7078e32b23b7d5c2da71d29d6ba3",
       "imports": [],
       "references": [],
       "exports": [],
@@ -8729,8 +8729,8 @@
       "path": "extension/manifest.json",
       "description": "Chrome reads this permission sheet to find the app entrances, worker and icons.",
       "lines": 97,
-      "bytes": 2263,
-      "sha256": "2295610ae4da6bbb5dac366c78a11092d917f844cf0d21b5f7015c1d26a1c1fc",
+      "bytes": 2261,
+      "sha256": "dde08c702130e2fc3a52a023e2d79a72eb4ea6db11faffebacb4f9f5a8a7fdab",
       "imports": [],
       "references": [
         "extension/icon.png",
@@ -9292,12 +9292,13 @@
     {
       "path": "extension/test/chrome-test-process.mjs",
       "description": "Development support: Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
-      "lines": 174,
-      "bytes": 5950,
-      "sha256": "b48845a649c19b4353a3896b3c33c8ddfb346dea583805837f3257fb5452c8a8",
+      "lines": 184,
+      "bytes": 6486,
+      "sha256": "d07449c70386e6d2016d3b8e6a5022ce337c28cd622ba6a15f60a1fa8d4bfb2d",
       "imports": [],
       "references": [],
       "exports": [
+        "CHROME_FIXTURE_ARGS",
         "hasDomTestReceipt",
         "runOwnedChrome",
         "spawnOwnedChrome",
@@ -9625,9 +9626,9 @@
     {
       "path": "extension/test/corner-style-dom.mjs",
       "description": "Regression checks: Real Chrome nine-case interface-style/viewport matrix; paired with repaired Terminal layout source guard.",
-      "lines": 139,
-      "bytes": 5761,
-      "sha256": "1d6285ef8473a58af9495fa6260796bdbfcf99c54769e4974c396d09d0bc3f5f",
+      "lines": 147,
+      "bytes": 6178,
+      "sha256": "e0f5e35e4e8113eea8edf1c3f9149731ecf4495d6ecb798581d2c0cd750d11ea",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -10106,14 +10107,15 @@
     {
       "path": "extension/test/display-tab-reads.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
-      "lines": 263,
-      "bytes": 10887,
-      "sha256": "2f905634e610490e30eb371918c93e6485a71828a5a98795c21a2ac9d91f182c",
+      "lines": 270,
+      "bytes": 11219,
+      "sha256": "c257c598548fda40cb07a74b6af9158c45b8108ec0e8d673d49b4653292048e2",
       "imports": [
         "extension/js/ui/display-tab-reads.js",
         "extension/js/ui/dom.js",
         "extension/js/ui/duplicates-surface.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/e2-mocks.mjs",
         "extension/test/message-fixture.mjs",
         "extension/test/storage-authority-fixture.mjs"
       ],
@@ -10122,6 +10124,7 @@
         "extension/js/ui/dom.js",
         "extension/js/ui/duplicates-surface.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/e2-mocks.mjs",
         "extension/test/message-fixture.mjs",
         "extension/test/storage-authority-fixture.mjs"
       ],
@@ -10263,6 +10266,7 @@
         "extension/test/close-day.mjs",
         "extension/test/custom-schemes.mjs",
         "extension/test/data-import-lifecycle.mjs",
+        "extension/test/display-tab-reads.mjs",
         "extension/test/duplicate-domain-rules.mjs",
         "extension/test/focus-close-live-identity.mjs",
         "extension/test/import-commit.mjs",
@@ -10287,6 +10291,7 @@
         "extension/test/saved-exit-safety.mjs",
         "extension/test/saved-transfer-safety.mjs",
         "extension/test/scheme-rotation-null-state.mjs",
+        "extension/test/scheme-rotation-surfaces.mjs",
         "extension/test/search-projection-cache.mjs",
         "extension/test/search-projection-parity.mjs",
         "extension/test/session-picker-commit.mjs",
@@ -10709,9 +10714,9 @@
     {
       "path": "extension/test/indexeddb-adapter-dom.mjs",
       "description": "Regression checks: Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server.",
-      "lines": 131,
-      "bytes": 5261,
-      "sha256": "7c2ad9383ae37dcf5dfbd4167701f10765b28c219c4a28b751aff6768e376f60",
+      "lines": 139,
+      "bytes": 5678,
+      "sha256": "29e1043479c0fa23d2ba6958bd74e426d0d132cb148a237ffe034e8085d02041",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -12368,8 +12373,8 @@
       "path": "extension/test/pre-localization-polish.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
       "lines": 201,
-      "bytes": 13049,
-      "sha256": "81ba36910f5f16b65e0e191413ab74f573d4aa5404db107b7ea72a314f5bb4e2",
+      "bytes": 13043,
+      "sha256": "df4acd75718a42fd4553ba382584d17c71bad8fadce9f338fa9d93be7143ad39",
       "imports": [
         "extension/js/ui/command-box.js",
         "extension/js/ui/open-surface.js",
@@ -12870,13 +12875,15 @@
     {
       "path": "extension/test/scheme-rotation-surfaces.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required. Run without arguments: parent entry launches and checks its own child surface scenarios.",
-      "lines": 174,
-      "bytes": 6679,
-      "sha256": "bf5f0fe029119ce0b7aa845fdc2d4f2ed50c2b10be6bc9956c9d67e278e0fb01",
+      "lines": 182,
+      "bytes": 7107,
+      "sha256": "20304f94291931b0845bb7d0755f59302ac698f4448fd9a9a0823d92ab80c671",
       "imports": [
+        "extension/test/e2-mocks.mjs",
         "extension/test/storage-authority-fixture.mjs"
       ],
       "references": [
+        "extension/test/e2-mocks.mjs",
         "extension/test/storage-authority-fixture.mjs"
       ],
       "exports": [],
@@ -13222,9 +13229,9 @@
     {
       "path": "extension/test/selection-geometry-dom.mjs",
       "description": "Regression checks: Starts owned Chrome with disposable profile; requires Chrome binary and browser fixture environment. Hosts its own localhost fixture server.",
-      "lines": 130,
-      "bytes": 5265,
-      "sha256": "8db359f577277d1e156a1c351e89c917948078816b6ac9e856d471b98b4a9396",
+      "lines": 144,
+      "bytes": 6047,
+      "sha256": "6548010bd344d41e767036550c7882f7280c7928f461a936b1dc070a609885c0",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -15396,9 +15403,9 @@
     {
       "path": "extension/test/theme-on-open-extension.mjs",
       "description": "Regression checks: Direct unpacked-extension equivalents of the former packaged CI checks; preserves OS-specific New Tab, context-pressure and worker coverage without building archives.",
-      "lines": 1150,
-      "bytes": 56296,
-      "sha256": "09e35a9d143e3a7faad6f247a548a70648db776821fbab488fd7a76a30f27ed0",
+      "lines": 1167,
+      "bytes": 57568,
+      "sha256": "872d8d68c4f54dab451a4db8d397e08fc8fb7ccf50a4c349626280bce4e16bc3",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -16163,9 +16170,9 @@
     {
       "path": "tools/capture-store-screenshots.mjs",
       "description": "Development support: Explicit screenshot generator also exports Chrome/CDP fixture helpers; guarded main, but import requires discoverable Chrome. Does not run capture merely by importing.",
-      "lines": 927,
-      "bytes": 52950,
-      "sha256": "7f63bc88c00ce5ae1cbdeb3eadebfdf2bf7fbd31ea4a234d940bdbfd1c287a24",
+      "lines": 999,
+      "bytes": 56411,
+      "sha256": "78aeba4c7503014e04001f819fdd5a7563a8cc44fa0d7737299675451cd7c07a",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -16221,9 +16228,9 @@
     {
       "path": "tools/check-automation-reveal.mjs",
       "description": "Regression checks: Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
-      "lines": 221,
-      "bytes": 13861,
-      "sha256": "7094a819f0502513ff2e96ca3ee246d2fa616ebdf95e8840c8501804f87a7b3f",
+      "lines": 253,
+      "bytes": 15379,
+      "sha256": "8ff902bce5e5ff60e6c7b7a57e354e3db95e06c0556e8d5eefbd557c1afaea69",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs",
@@ -16256,8 +16263,8 @@
       "path": "tools/check-data-import.mjs",
       "description": "Regression checks: Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time.",
       "lines": 75,
-      "bytes": 4391,
-      "sha256": "8b53c7c05c1193735b6d222aa6856129d2e8b95f4dc66bec122dcae7f915a533",
+      "bytes": 4435,
+      "sha256": "4f1b2b5a345f5e2ae2932bc82f59dd12fe31a32db7692deaaf5059c354fd3389",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"
@@ -16326,8 +16333,8 @@
       "path": "tools/check-installed-action-races.mjs",
       "description": "Regression checks: Explicit disposable installed Chrome integration: real navigation, native Store Web Lock, destroyed forward-action context, and actual worker replacement before/after Undo browser creation; controlled timing gates. Not yet qualified on remote CI.",
       "lines": 306,
-      "bytes": 17101,
-      "sha256": "59ae1cb84b6ea7c8581a10f8a4a4e7661d7b48bec5987af9d466f6c2c9468112",
+      "bytes": 17145,
+      "sha256": "8019262bab9389b8fb7c91240e85a463fd49298687a8374ac26f0a3dfda59dd7",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"
@@ -16437,8 +16444,8 @@
       "path": "tools/check-installed-vault-handle.mjs",
       "description": "Regression checks: Disposable installed Chrome with native OPFS directory handles, IndexedDB persistence/abort and production syncNow. No native picker/external-folder permissions/cloud claim; not yet qualified on remote CI.",
       "lines": 275,
-      "bytes": 15774,
-      "sha256": "01afbca5e0629f3a1161dfc9f4767d5565945616d14222470e6b8308d3eec53d",
+      "bytes": 15819,
+      "sha256": "92fa15dbcd46540b8fcec436276f00f8166f5289828c03c9da37d2625a40c027",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"
@@ -17289,9 +17296,9 @@
     {
       "path": "tools/test.mjs",
       "description": "Development support: Manifest-driven test CLI; importing is safe, executing it as a suite would recurse.",
-      "lines": 107,
-      "bytes": 4797,
-      "sha256": "5f914338a84832614b073e82a971afbf40e007df7557641ebfe4706c8261415a",
+      "lines": 110,
+      "bytes": 5008,
+      "sha256": "51c76887321c7e20cd7356b9fc8c52dc5a078c3c17ca6eaaf22a686538fa094b",
       "imports": [
         "tools/testing/inventory.mjs"
       ],

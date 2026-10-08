@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
+import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
 
 const chromeBin = [
   process.env.CHROME_BIN,
@@ -38,7 +38,7 @@ await new Promise((resolve, reject) => {
 });
 const port = server.address().port;
 const profile = await mkdtemp(`${tmpdir()}/everytab-selection-geometry-`);
-const chrome = spawnOwnedChrome(chromeBin, [
+const chrome = spawnOwnedChrome(chromeBin, [...CHROME_FIXTURE_ARGS,
   "--headless=new", "--disable-gpu", "--disable-background-networking",
   "--disable-component-update", "--disable-default-apps", "--no-first-run",
   ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
@@ -76,6 +76,7 @@ class CdpClient {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
+      clearTimeout(pending.timer);
       if (message.error) pending.reject(new Error(message.error.message));
       else pending.resolve(message.result);
     });
@@ -83,7 +84,14 @@ class CdpClient {
   async send(method, params = {}) {
     await this.ready;
     const id = this.nextId++;
-    const result = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    // Bound every command so a stalled browser fails with the CDP method name
+    // instead of consuming the runner's whole suite timeout without output.
+    const result = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`Chrome DevTools command ${method} timed out`));
+      }, 30_000);
+      this.pending.set(id, { resolve, reject, timer });
+    });
     this.socket.send(JSON.stringify({ id, method, params }));
     return result;
   }
@@ -100,6 +108,12 @@ try {
   await client.send("Runtime.enable");
   await client.send("Emulation.setDeviceMetricsOverride", {
     width: 1280, height: 900, deviceScaleFactor: 1, mobile: false
+  });
+  // The page asserts the ordinary swift reveal duration. Hosted Windows runners
+  // disable OS animations, which Chrome reports as prefers-reduced-motion, so
+  // pin the media feature instead of inheriting the machine's setting.
+  await client.send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "no-preference" }]
   });
   await client.send("Page.navigate", {
     url: `http://127.0.0.1:${port}/extension/test/selection-geometry-dom.html`

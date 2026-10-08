@@ -3,6 +3,7 @@ import { createDisplayTabReads } from "../js/ui/display-tab-reads.js";
 import { coalesceLatest } from "../js/ui/dom.js";
 import { installBrowserMapStorageAuthority } from "./storage-authority-fixture.mjs";
 import { createChromeI18nMock } from "./message-fixture.mjs";
+import { createMockLockManager } from "./e2-mocks.mjs";
 
 const stored = {};
 globalThis.chrome = {
@@ -19,6 +20,12 @@ globalThis.chrome = {
   }
 };
 installBrowserMapStorageAuthority();
+// Store writes take the everytab-store Web Lock at call time. Node 22 (the CI
+// runtime) has no navigator.locks; install the shared mock on every runtime.
+Object.defineProperty(globalThis, "navigator", {
+  configurable: true,
+  value: { locks: createMockLockManager() }
+});
 const readNoRules = async () => [];
 
 const displayedTabs = [{ id: 1, url: "https://one.example" }];

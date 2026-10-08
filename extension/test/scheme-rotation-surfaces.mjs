@@ -45,6 +45,14 @@ if (surface) {
     dataset: {}, style: { ...style }, remove() {}
   });
 
+  // Store writes take the everytab-store Web Lock. Node 22 (the CI runtime)
+  // has no navigator.locks, while Node 24+ does; install the shared mock in
+  // every child so each surface sees the same lock contract on every runtime.
+  const { createMockLockManager } = await import("./e2-mocks.mjs");
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { locks: createMockLockManager() }
+  });
   globalThis.localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} };
   globalThis.location = { pathname: `/${surface}` };
   globalThis.window = {

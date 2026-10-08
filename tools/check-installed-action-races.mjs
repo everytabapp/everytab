@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
+import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget, CdpClient, attachTarget,
   evaluate, prepareSession, waitFor } from "./capture-store-screenshots.mjs";
 
@@ -18,7 +18,7 @@ const server = createServer((_request, response) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const profile = await mkdtemp(path.join(tmpdir(), "everytab-action-races-"));
-const browser = spawnOwnedChrome(chromeBin, [
+const browser = spawnOwnedChrome(chromeBin, [...CHROME_FIXTURE_ARGS,
   "--headless=new", "--disable-gpu", "--remote-debugging-port=0", "--enable-unsafe-extension-debugging",
   ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
   `--user-data-dir=${profile}`, "--no-first-run",

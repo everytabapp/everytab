@@ -5,6 +5,29 @@ Development build history. Check `extension/manifest.json` or
 Store release. Current verification and next work are in `handoff-prompt.md`;
 detailed receipts are in `review-evidence/`.
 
+## 1.0.0 - 2026-10-08
+
+First public release. Changes since the 0.8.632 closed beta, for users:
+
+- French is available. Settings > Appearance > Language offers System,
+  English and Français; the browser's language is the default.
+- Snapshots to keep is now 1 to 1,000 (default 200) and the Recovery
+  database honors it.
+- Vault: damaged backups, files from other devices that cannot be read, sync
+  service conflict copies and iCloud placeholder files are set aside and named
+  instead of stopping sync; a damaged Restore point no longer hides the
+  others; choosing a different populated Vault asks before merging; the Vault
+  screen says when EveryTab updates it.
+- Chrome updates no longer trigger the extension-reload recovery, and the
+  restarting notice appears only when suspended tabs are actually recovered.
+- Faster: typing in the Inbox filter, opening and closing tabs with a large
+  library, and Search while background tabs change their titles.
+- Inbox filter has the `f` shortcut; automatic Activity entries list their
+  tabs; the Starred rail opens and closes with a designed motion.
+- The source code is published under MPL-2.0 (see README).
+
+Development history for the beta builds follows.
+
 ## 0.8.666 - 2026-10-08
 
 - Open-source preparation. Every runtime, stylesheet and maintained tool

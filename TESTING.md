@@ -38,8 +38,8 @@ Chrome for Testing (`CHROME_BIN` can select it) and permission to start local
 fixture servers. Linux CI uses Xvfb for installed-extension checks.
 
 The inventory classifies every maintained test and tool file. Its default macOS gate executes
-249 suites (238 portable and 11 performance); the macOS browser lane executes
-seven (five are CI-selected). These are execution counts, not a code coverage percentage. Imported smoke
+251 suites (240 portable and 11 performance); the macOS browser lane executes
+eight (six are CI-selected). These are execution counts, not a code coverage percentage. Imported smoke
 helpers are covered by their owning suite rather than counted as separate runs.
 Manual browser entries remain explicit qualification work. Inspect each tool's
 setup and evidence output path before running it; some target historical folders
@@ -53,6 +53,45 @@ lanes. Never use personal browser data or Vault copies for fixtures.
 
 When adding or moving a file, update the inventory classification and run
 `--check-inventory`. The validator and CLI tests live in `tools/testing/`.
+
+## Hosted runners
+
+GitHub-hosted CI differs from a developer Mac in ways the suites handle explicitly:
+
+- **Node 22.** CI uses Node 22, which has no `navigator.locks` (Node 24+ does).
+  A portable suite that reaches a Store write installs `createMockLockManager()`
+  from `extension/test/e2-mocks.mjs` on `globalThis.navigator`, including in
+  child processes it spawns. Prove a change with the official Node 22 binary,
+  for example `<node-v22>/bin/node tools/test.mjs --lane portable --ci`.
+- **Chrome stable.** `browser-actions/setup-chrome` installs the current Chrome
+  for Testing stable build, which can be newer than the local `CHROME_BIN`.
+  Every browser-lane launch passes `CHROME_FIXTURE_ARGS` from
+  `extension/test/chrome-test-process.mjs`: from Chrome 155 on macOS a
+  disposable profile's first network navigation otherwise waits for login
+  Keychain access that a non-interactive runner never grants.
+- **Sandbox.** Hosted Ubuntu blocks the user namespaces Chrome's sandbox uses;
+  the workflow sets `EVERYTAB_CHROME_NO_SANDBOX=1` and every browser suite
+  honours it.
+- **Reduced motion.** Hosted Windows disables OS animations, which Chrome
+  reports as `prefers-reduced-motion: reduce`. A browser check that asserts an
+  ordinary-motion duration pins `no-preference` through
+  `Emulation.setEmulatedMedia`; reduced-motion checks pin `reduce`.
+- **Timing budgets.** The workflow sets `EVERYTAB_HOSTED_RUNNER=1`. The
+  installed-Chrome timing budgets in `theme-on-open-extension.mjs` (spread New
+  Tab 400 ms, context-pressured Popup 300 ms, and the optional content and
+  singleton budgets) then print as `OBSERVATION` lines with the measured value
+  and the local budget instead of failing. Run 37769962127 measured
+  1638/864/1089 ms on one hosted Ubuntu VM. Functional assertions and the 10 s
+  readiness bounds still fail the job. Locally the budgets are enforced
+  unchanged; the Linux `performance` lane keeps its enforced budgets in CI.
+  On one Mac, Chrome for Testing 155 measured the spread New Tabs at about
+  630 ms and the Popup at 500 ms where 150 measured 200 ms and 90 ms, with
+  Dashboard content readiness unchanged (about 85 ms), so a local run with a
+  current stable Chrome can exceed these budgets too.
+- **macOS image.** Both jobs use the `macos-15` (arm64) label.
+- **Bounded hangs.** The three DOM suites bound each DevTools command to 30 s,
+  and the runner prints a timed-out suite's partial output, so a stall names
+  its step instead of consuming the 3-minute suite timeout silently.
 
 ## Choose evidence for the change
 

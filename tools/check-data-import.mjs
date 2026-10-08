@@ -6,12 +6,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
+import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget,
   evaluate, prepareSession, waitFor } from "./capture-store-screenshots.mjs";
 
 const profile = await mkdtemp(path.join(tmpdir(), "everytab-import-"));
-const chrome = spawnOwnedChrome(chromeBin, [
+const chrome = spawnOwnedChrome(chromeBin, [...CHROME_FIXTURE_ARGS,
   "--headless=new", "--disable-gpu", "--remote-debugging-port=0",
   ...(process.env.EVERYTAB_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
   `--user-data-dir=${profile}`, `--load-extension=${extensionRoot}`,

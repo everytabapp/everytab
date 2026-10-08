@@ -29,7 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel]
+        # macos-15 is the arm64 image; the Intel label is retired in August 2027.
+        os: [ubuntu-latest, windows-latest, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -48,11 +49,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel]
+        # macos-15 is the arm64 image; the Intel label is retired in August 2027.
+        os: [ubuntu-latest, windows-latest, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
       EVERYTAB_CHROME_NO_SANDBOX: "1"
+      # Shared hosted VMs print installed-Chrome timing budgets as observations
+      # instead of failing on them; see TESTING.md "Hosted runners".
+      EVERYTAB_HOSTED_RUNNER: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
