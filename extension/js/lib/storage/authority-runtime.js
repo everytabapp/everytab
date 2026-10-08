@@ -28,6 +28,17 @@ let pendingRevisionAuthority = null;
 const STORE_LOCK = "everytab-store";
 const INITIALIZATION_POLL_MS = 25;
 const INITIALIZATION_WAIT_MS = 15_000;
+// A page can load in the moment between installation and the worker's first
+// `runtime.onInstalled`, before the initializing marker exists. Failing closed
+// there left that first New Tab or Dashboard blank until reloaded. Extension
+// pages wait this long for the marker or the authority to appear; the worker,
+// which is the initializer, and non-page contexts keep failing closed at once.
+const FRESH_INSTALL_PAGE_GRACE_MS = 4_000;
+
+function isExtensionPage() {
+  return typeof globalThis.document !== "undefined" &&
+    globalThis.location?.protocol === "chrome-extension:";
+}
 const AUTHORITY_NOT_INITIALIZED_CODE = "storage-authority-not-initialized";
 
 function authorityNotInitializedError() {
@@ -79,7 +90,11 @@ async function authorityRecord() {
           return stored[STORAGE_AUTHORITY_KEY];
         }
         if (!stored[STORAGE_AUTHORITY_INITIALIZATION_KEY]) {
-          throw authorityNotInitializedError();
+          if (!isExtensionPage() || Date.now() - startedAt >= FRESH_INSTALL_PAGE_GRACE_MS) {
+            throw authorityNotInitializedError();
+          }
+          await new Promise((resolve) => setTimeout(resolve, INITIALIZATION_POLL_MS));
+          continue;
         }
         if (Date.now() - startedAt >= INITIALIZATION_WAIT_MS) {
           throw new Error("Storage authority initialization did not finish");

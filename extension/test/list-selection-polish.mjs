@@ -98,6 +98,9 @@ try {
   assert.match(css, /\.automation-awareness-inbox\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/);
   assert.match(css, /\.item:is\(:hover, :focus-within, \.palette-source\) \.automation-awareness-inbox\s*\{[^}]*opacity:\s*1;/);
   assert.match(css, /@media \(hover: none\)\s*\{[^}]*\.automation-awareness-inbox\s*\{[^}]*opacity:\s*1;/);
+  // The row trigger's base rule is scoped under .row-subline; on touch screens
+  // the reveal must match that specificity or the Open status stays invisible.
+  assert.match(css, /@media \(hover: none\)\s*\{[^}]*\.tablist \.row-subline > \.automation-awareness-row,[^{]*\{[^}]*opacity:\s*1;/);
   // The final-edge rule counts a wrapped Activity entry as a row, so an entry
   // with a recorded tab list neither loses nor doubles the ledger edge.
   assert.match(css, /\.trow:not\(:has\(~ \.trow, ~ \.disclosure-row, ~ \.activity-entry\)\)[^{]+\{\s*border-bottom-width:\s*0;/);

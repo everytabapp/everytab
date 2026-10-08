@@ -1247,7 +1247,7 @@ Declared exports: `assetDigestsIn`, `externalizeEmbeddedFavicons`, `hydrateEmbed
 
 [authority-record.js](<extension/js/lib/storage/authority-record.js>): Validates the permanent pointer to the chosen local databases.
 
-Imported by: [extension/js/lib/storage/authority-runtime.js](<extension/js/lib/storage/authority-runtime.js>), [extension/js/lib/store.js](<extension/js/lib/store.js>), [extension/test/dashboard-polish-dom-page.mjs](<extension/test/dashboard-polish-dom-page.mjs>), [extension/test/native-mixed-search-benchmark-page.mjs](<extension/test/native-mixed-search-benchmark-page.mjs>), [extension/test/native-search-benchmark-page.mjs](<extension/test/native-search-benchmark-page.mjs>), [extension/test/storage-authority-record.mjs](<extension/test/storage-authority-record.mjs>).
+Imported by: [extension/js/lib/storage/authority-runtime.js](<extension/js/lib/storage/authority-runtime.js>), [extension/js/lib/store.js](<extension/js/lib/store.js>), [extension/test/dashboard-polish-dom-page.mjs](<extension/test/dashboard-polish-dom-page.mjs>), [extension/test/fresh-install-page-grace.mjs](<extension/test/fresh-install-page-grace.mjs>), [extension/test/native-mixed-search-benchmark-page.mjs](<extension/test/native-mixed-search-benchmark-page.mjs>), [extension/test/native-search-benchmark-page.mjs](<extension/test/native-search-benchmark-page.mjs>), [extension/test/storage-authority-record.mjs](<extension/test/storage-authority-record.mjs>).
 
 Declared exports: `STORAGE_AUTHORITY_KEY`, `createStorageAuthorityRecord`, `isStorageAuthorityRecord`.
 
@@ -2389,7 +2389,7 @@ Imported by: [extension/js/ui/command-box.js](<extension/js/ui/command-box.js>),
 
 Declared exports: `VAULT_META_KEY`, `getVaultHandle`, `getVaultStatus`, `getVaultSyncMeta`, `pickVaultFolder`, `reconnectVault`, `vaultJoinDecision`.
 
-## Tests and fixtures (316 files)
+## Tests and fixtures (317 files)
 
 ### extension/test/action-recovery-readiness.mjs
 
@@ -2834,6 +2834,12 @@ Uses modules: [extension/js/ui/favicon-source.js](<extension/js/ui/favicon-sourc
 [focus-close-live-identity.mjs](<extension/test/focus-close-live-identity.mjs>): Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.
 
 Uses modules: [extension/js/lib/focus-guard.js](<extension/js/lib/focus-guard.js>), [extension/test/e2-mocks.mjs](<extension/test/e2-mocks.mjs>), [extension/test/storage-authority-fixture.mjs](<extension/test/storage-authority-fixture.mjs>).
+
+### extension/test/fresh-install-page-grace.mjs
+
+[fresh-install-page-grace.mjs](<extension/test/fresh-install-page-grace.mjs>): Regression checks: Verifies that an extension page opened before fresh-install storage setup waits briefly for the initializing marker and authority instead of failing closed at once, while the worker and a profile without setup still fail closed.
+
+Uses modules: [extension/js/lib/storage/authority-record.js](<extension/js/lib/storage/authority-record.js>).
 
 ### extension/test/history-search.mjs
 

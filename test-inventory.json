@@ -4627,6 +4627,18 @@
         "darwin",
         "win32"
       ]
+    },
+    {
+      "path": "extension/test/fresh-install-page-grace.mjs",
+      "kind": "suite",
+      "reason": "Verifies that an extension page opened before fresh-install storage setup waits briefly for the initializing marker and authority instead of failing closed at once, while the worker and a profile without setup still fail closed.",
+      "lane": "portable",
+      "cwd": "extension",
+      "ciPlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
     }
   ]
 }

@@ -22,6 +22,9 @@ First public release. Changes since the 0.8.632 closed beta, for users:
   restarting notice appears only when suspended tabs are actually recovered.
 - Faster: typing in the Inbox filter, opening and closing tabs with a large
   library, and Search while background tabs change their titles.
+- A New Tab or Dashboard opened in the first moment after installing no
+  longer stays blank: it waits for EveryTab to finish setting up.
+- On touch screens, the automation status on open tabs is visible again.
 - Inbox filter has the `f` shortcut; automatic Activity entries list their
   tabs; the Starred rail opens and closes with a designed motion.
 - The source code is published under MPL-2.0 (see README).

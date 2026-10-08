@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "b1b3eb8c156a96e1bd9f354fc84362c1a16cdbbbfb8bf432e3f438716e422851",
+  "sourceHash": "1525a502144379862d067f41a681bc4bc2c07aaf7432ae5f87849a17d7b09aff",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -91,9 +91,9 @@
     {
       "path": "CHANGELOG.md",
       "description": "Project guide or configuration: CHANGELOG.",
-      "lines": 8036,
-      "bytes": 457534,
-      "sha256": "e2e54b72a08f0f14d15cac5d7ab2e939bcd2f321ed70ac6b3d6e3f236658f749",
+      "lines": 8039,
+      "bytes": 457745,
+      "sha256": "77d11da50504ec6b4c04e1824eef279fbfce7c14c4d02f799dbd60d14b08d05b",
       "imports": [],
       "references": [],
       "exports": [],
@@ -311,9 +311,9 @@
     {
       "path": "extension/css/tablist-d4.css",
       "description": "Appearance rules for tablist d4: layout, colors and controls.",
-      "lines": 2042,
-      "bytes": 68165,
-      "sha256": "5ba91239580c6755516809ad865f71374e57c4e061fbe28ae3ddacee3ea9cef1",
+      "lines": 2045,
+      "bytes": 68377,
+      "sha256": "4dc9d1719b9ca4ebe3b8e698058e3ed8b03da356c5ba31a6483b439eaab72632",
       "imports": [],
       "references": [],
       "exports": [],
@@ -4015,6 +4015,7 @@
         "extension/js/lib/storage/authority-runtime.js",
         "extension/js/lib/store.js",
         "extension/test/dashboard-polish-dom-page.mjs",
+        "extension/test/fresh-install-page-grace.mjs",
         "extension/test/native-mixed-search-benchmark-page.mjs",
         "extension/test/native-search-benchmark-page.mjs",
         "extension/test/storage-authority-record.mjs"
@@ -4023,9 +4024,9 @@
     {
       "path": "extension/js/lib/storage/authority-runtime.js",
       "description": "Opens the chosen databases and publishes storage-change notifications.",
-      "lines": 420,
-      "bytes": 15635,
-      "sha256": "d1280734085daa9461fb1d2e04e89fa2cb66c51588f31b05e2caa906167ded59",
+      "lines": 435,
+      "bytes": 16432,
+      "sha256": "c75e230b2c15a3b78284a041fb69bd685dd3c4c36ce1249a10b5bd1d2a571665",
       "imports": [
         "extension/js/lib/failure-diagnostic.js",
         "extension/js/lib/storage/authority-record.js",
@@ -10386,6 +10387,21 @@
       "importedBy": []
     },
     {
+      "path": "extension/test/fresh-install-page-grace.mjs",
+      "description": "Regression checks: Verifies that an extension page opened before fresh-install storage setup waits briefly for the initializing marker and authority instead of failing closed at once, while the worker and a profile without setup still fail closed.",
+      "lines": 68,
+      "bytes": 3001,
+      "sha256": "d47881de5ec220b0f27ea6d40729e4f1bc1adb692cdff196df68485b204decf3",
+      "imports": [
+        "extension/js/lib/storage/authority-record.js"
+      ],
+      "references": [
+        "extension/js/lib/storage/authority-record.js"
+      ],
+      "exports": [],
+      "importedBy": []
+    },
+    {
       "path": "extension/test/history-search.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
       "lines": 125,
@@ -11034,9 +11050,9 @@
     {
       "path": "extension/test/list-selection-polish.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
-      "lines": 110,
-      "bytes": 6376,
-      "sha256": "330ee1baecb6c22575338d8d6cebb19b34a14fbc048e64569f39b642047b8520",
+      "lines": 113,
+      "bytes": 6671,
+      "sha256": "e4ee7b9a5cd7417eb06b6cc6b008bb7e992c3bfc4eefb80e4502b5510c08070d",
       "imports": [
         "extension/js/lib/journal.js",
         "extension/js/ui/list-configs.js",
@@ -16131,9 +16147,9 @@
     {
       "path": "test-inventory.json",
       "description": "Project guide or configuration: test inventory.",
-      "lines": 4632,
-      "bytes": 174496,
-      "sha256": "b45dfbd6649d0cd0010060c91d2e1f0969c7546ea03a0881cfa36f0d008e89d4",
+      "lines": 4644,
+      "bytes": 174975,
+      "sha256": "947c8c0f47394dd8253ac7348a0935c77715cdac5096970d48b327f84be6afa5",
       "imports": [],
       "references": [],
       "exports": [],

@@ -2021,7 +2021,10 @@ body.gradient [data-sec="open"] .window-list-curtain,
   .tablist .automation-awareness-inbox { flex-basis: 110px; max-width: 110px; }
 }
 @media (hover: none) {
+  /* Touch screens have no hover to reveal the status. The row trigger's base
+     rule sits under .row-subline, so the reveal must match that specificity. */
   .tablist .automation-awareness-row,
+  .tablist .row-subline > .automation-awareness-row,
   .tablist .automation-awareness-inbox {
     opacity: 1;
     pointer-events: auto;
