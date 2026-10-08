@@ -600,7 +600,8 @@ try {
       "context-pressured Popup", 10_000);
     const popupReady = performance.now() - popupStartedAt;
     checkTimingBudget("Context-pressured Popup", popupReady, maxPopupReadyMs);
-    console.log(`EveryTab installed gate: spread contexts ` +
+    console.log(`${hostedRunner ? "OBSERVATION (hosted runner): " : ""}` +
+      `EveryTab installed gate: spread contexts ` +
       `${spreadReady.map((elapsed) => elapsed.toFixed(1)).join("/")}ms ` +
       `(budget ${maxSpreadReadyMs > 0 ? `${maxSpreadReadyMs}ms` : "none"}); ` +
       `Popup ${popupReady.toFixed(1)}ms ` +

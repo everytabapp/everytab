@@ -65,6 +65,10 @@ for (const [tier, budgetMs] of [["t2", 45], ["t3", null]]) {
   const enforcedMs = budgetMs == null ? null : budgetMs * hostedScale;
   const ok = enforcedMs == null || withMemberships <= enforcedMs;
   if (!ok) failures += 1;
+  if (ok && budgetMs != null && withMemberships > budgetMs) {
+    console.log(`OBSERVATION (hosted runner): Archive ${tier} ${withMemberships.toFixed(1)}ms exceeds ` +
+      `the local ${budgetMs}ms budget; enforced hosted budget ${enforcedMs}ms`);
+  }
   rows.push({
     tier, records: items.length, visibleCards: cards,
     mapAndListMs: withMemberships.toFixed(2),

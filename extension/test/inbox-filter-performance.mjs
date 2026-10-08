@@ -124,6 +124,10 @@ for (const [tier, budgetMs] of [["t2", 120], ["t3", 350]]) {
   // absolute budget; the zero-read and 0.6x-of-before checks are never scaled.
   const enforcedMs = budgetMs * HOSTED_BUDGET_SCALE;
   const ok = after.inboxReads === 0 && after.ms <= enforcedMs && after.ms <= before.ms * 0.6;
+  if (ok && after.ms > budgetMs) {
+    console.log(`OBSERVATION (hosted runner): Inbox filter ${tier} ${after.ms.toFixed(1)}ms exceeds ` +
+      `the local ${budgetMs}ms budget; enforced hosted budget ${enforcedMs}ms`);
+  }
   if (!ok) failures += 1;
   rows.push({ tier, beforeMs: before.ms.toFixed(1), beforeClones: before.clones, afterMs: after.ms.toFixed(1), afterInboxReads: after.inboxReads, afterClones: after.clones, budgetMs, enforcedMs, ok });
   host.remove();

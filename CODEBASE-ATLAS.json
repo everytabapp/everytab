@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "7c10e8949a0e7d62615fb6da45b4517e33a97f443cdb0a6113cc6b628292d081",
+  "sourceHash": "b1b3eb8c156a96e1bd9f354fc84362c1a16cdbbbfb8bf432e3f438716e422851",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -9011,9 +9011,9 @@
     {
       "path": "extension/test/archive-render-performance.mjs",
       "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Archive map plus list build at T2/T3 with lazy card fields.",
-      "lines": 84,
-      "bytes": 3511,
-      "sha256": "651859fc9e716e776746c9b819aa4b5c9210355fbfcbc198a69ef9bc5c5b3af2",
+      "lines": 88,
+      "bytes": 3764,
+      "sha256": "dcbbe66fbf5154cefdefbfff4e25e9b4c547592e2baa1beab57a252fee3a86b3",
       "imports": [
         "extension/js/lib/dedup.js",
         "extension/js/lib/types.js",
@@ -10556,9 +10556,9 @@
     {
       "path": "extension/test/inbox-filter-performance.mjs",
       "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget. Runs with an explicit 4 GB heap: the T3 fixture exceeds the 2 GB default heap of a 7 GB hosted runner.",
-      "lines": 133,
-      "bytes": 6037,
-      "sha256": "7fc4e68e30acdef586f2c2e9d82899644fba19d03281afef3dbe9b3a0c8fa247",
+      "lines": 137,
+      "bytes": 6261,
+      "sha256": "70d6c379b3aa82284d93489fb3480b54417303244fee0613546f71fd7e10230d",
       "imports": [
         "extension/js/lib/session-identity-index.js",
         "extension/js/lib/types.js",
@@ -15426,9 +15426,9 @@
     {
       "path": "extension/test/theme-on-open-extension.mjs",
       "description": "Regression checks: Direct unpacked-extension equivalents of the former packaged CI checks; preserves OS-specific New Tab, context-pressure and worker coverage without building archives.",
-      "lines": 1168,
-      "bytes": 57592,
-      "sha256": "8b9f8f74dc059e00182d889717fc22790758abcc60e39952155c9535090fe642",
+      "lines": 1169,
+      "bytes": 57657,
+      "sha256": "15dd39ec20e46d7f6f805f561aafd77e3427eca870ace5b74677666792d3b439",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "extension/test/hosted-runner.mjs"
@@ -17339,9 +17339,9 @@
     {
       "path": "tools/test.mjs",
       "description": "Development support: Manifest-driven test CLI; importing is safe, executing it as a suite would recurse.",
-      "lines": 110,
-      "bytes": 5008,
-      "sha256": "51c76887321c7e20cd7356b9fc8c52dc5a078c3c17ca6eaaf22a686538fa094b",
+      "lines": 116,
+      "bytes": 5311,
+      "sha256": "6fb40b077148dd7a38910f0dc867155a1e739a35fadfd577095888d557974df6",
       "imports": [
         "tools/testing/inventory.mjs"
       ],

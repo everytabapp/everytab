@@ -72,8 +72,14 @@ export function main(args = process.argv.slice(2)) {
       cwd: command.cwd, env: { ...process.env, ...command.env }, encoding: "utf8",
       timeout: command.timeout, maxBuffer: 16 * 1024 * 1024
     });
-    if (result.status === 0) console.log(`PASS ${run.id}`);
-    else {
+    if (result.status === 0) {
+      console.log(`PASS ${run.id}`);
+      // A passing suite's output stays quiet, except declared observations
+      // (for example a local timing budget exceeded on a hosted runner).
+      for (const line of (result.stdout ?? "").split(/\r?\n/)) {
+        if (line.startsWith("OBSERVATION")) console.log(`  ${line}`);
+      }
+    } else {
       failures++;
       console.log(`FAIL ${run.id}`);
       // A timed-out suite still has useful partial output; print it with the
