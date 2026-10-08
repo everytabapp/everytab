@@ -94,12 +94,16 @@ GitHub-hosted CI differs from a developer Mac in ways the suites handle explicit
   content readiness unchanged (about 85 ms), so a local run with a current
   stable Chrome can exceed these budgets too.
 - **Performance lane.** Budgets stay enforced on hosted Linux. A suite whose
-  Mac-calibrated budget does not fit the 2-vCPU private-repository runner opts
-  into a documented hosted multiple under `EVERYTAB_HOSTED_RUNNER=1` and prints
-  both numbers: `archive-render-performance.mjs` enforces 2 x 45 ms there
-  (47.5 ms measured in run 37775244783; about 21 ms locally).
-  `inbox-filter-performance.mjs` runs with `--max-old-space-size=4096` because
-  its T3 fixture exceeds the 2 GB default heap of a 7 GB runner.
+  Mac-calibrated absolute budget does not fit the 2-vCPU private-repository
+  runner multiplies it by `HOSTED_BUDGET_SCALE` (3) from
+  `extension/test/hosted-runner.mjs` under `EVERYTAB_HOSTED_RUNNER=1` and prints
+  both numbers. The runner measured 2.2x to 3.1x the reference Mac:
+  `archive-render-performance.mjs` T2 47.5 ms (about 21 ms locally, budget 45)
+  and `inbox-filter-performance.mjs` T2/T3 135/513 ms (61/167 ms locally,
+  budgets 120/350). Hardware-independent assertions, such as the Inbox filter's
+  zero reads and its 0.6x-of-before ratio, are never scaled.
+  `inbox-filter-performance.mjs` also runs with `--max-old-space-size=4096`
+  because its T3 fixture exceeds the 2 GB default heap of a 7 GB runner.
 - **macOS.** Both jobs use the `macos-15` (arm64) label. Hosted macOS starts
   Chrome and the extension worker, but page targets have not answered their
   first DevTools command there. The installed job first runs

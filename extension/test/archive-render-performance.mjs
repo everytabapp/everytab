@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { installDomFixture } from "./dom-fixture.mjs";
 import { createChromeI18nMock } from "./message-fixture.mjs";
+import { HOSTED_BUDGET_SCALE } from "./hosted-runner.mjs";
 
 const dom = installDomFixture();
 globalThis.chrome = {
@@ -49,12 +50,9 @@ const render = (items, lookup) => createTabList({
 
 const rows = [];
 let failures = 0;
-// The 45 ms T2 budget is calibrated on a developer Mac (about 21 ms). Hosted
-// CI for a private repository runs on shared 2-vCPU VMs, where run
-// 37775244783 measured 47.5 ms. With EVERYTAB_HOSTED_RUNNER=1 (set only by the
-// workflow) the enforced budget doubles; the table prints both. A real 2x
-// regression still fails there. See TESTING.md "Hosted runners".
-const hostedScale = process.env.EVERYTAB_HOSTED_RUNNER === "1" ? 2 : 1;
+// The 45 ms T2 budget is calibrated on a developer Mac (about 21 ms); a hosted
+// runner enforces the documented multiple and the table prints both.
+const hostedScale = HOSTED_BUDGET_SCALE;
 for (const [tier, budgetMs] of [["t2", 45], ["t3", null]]) {
   const items = archiveItems(tier);
   const memberships = new Map([[normalizeUrl(items[0].tabs[0].url), [{ id: "s1", name: "Session" }]]]);

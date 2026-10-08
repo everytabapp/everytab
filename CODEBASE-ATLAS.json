@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "d031d6d5308a60c1afc98a7b450a02a877431c25cef504ce8aef82a8e296ab70",
+  "sourceHash": "7c10e8949a0e7d62615fb6da45b4517e33a97f443cdb0a6113cc6b628292d081",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -168,9 +168,9 @@
     {
       "path": "TESTING.md",
       "description": "Project guide or configuration: TESTING.",
-      "lines": 1228,
-      "bytes": 71919,
-      "sha256": "f1b091140fd149ec3c20b83d2afbe0a0880568dabcb317ff464874a2a8a93995",
+      "lines": 1232,
+      "bytes": 72205,
+      "sha256": "a093281720a0b363d53ab17d8fcefafa6177f1b42f64686c6415fb510f98b8bb",
       "imports": [],
       "references": [],
       "exports": [],
@@ -9011,14 +9011,15 @@
     {
       "path": "extension/test/archive-render-performance.mjs",
       "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Archive map plus list build at T2/T3 with lazy card fields.",
-      "lines": 86,
-      "bytes": 3700,
-      "sha256": "7dee7ee8bb77203a4719fca3571bf14355662b9ada6c419aac032e1f4f0b8346",
+      "lines": 84,
+      "bytes": 3511,
+      "sha256": "651859fc9e716e776746c9b819aa4b5c9210355fbfcbc198a69ef9bc5c5b3af2",
       "imports": [
         "extension/js/lib/dedup.js",
         "extension/js/lib/types.js",
         "extension/js/ui/tablist.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/hosted-runner.mjs",
         "extension/test/message-fixture.mjs",
         "tools/perf-seed.mjs"
       ],
@@ -9027,6 +9028,7 @@
         "extension/js/lib/types.js",
         "extension/js/ui/tablist.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/hosted-runner.mjs",
         "extension/test/message-fixture.mjs",
         "tools/perf-seed.mjs"
       ],
@@ -10410,6 +10412,24 @@
       "importedBy": []
     },
     {
+      "path": "extension/test/hosted-runner.mjs",
+      "description": "Development support: Hosted CI timing facts (EVERYTAB_HOSTED_RUNNER, documented Node-compute budget multiple) shared by suites with timing budgets; no standalone assertion entry.",
+      "lines": 15,
+      "bytes": 718,
+      "sha256": "228a5f79f0b5a37c56b6e14f0136f1c4a052982865de6cb5605beafc32a260a0",
+      "imports": [],
+      "references": [],
+      "exports": [
+        "HOSTED_BUDGET_SCALE",
+        "HOSTED_RUNNER"
+      ],
+      "importedBy": [
+        "extension/test/archive-render-performance.mjs",
+        "extension/test/inbox-filter-performance.mjs",
+        "extension/test/theme-on-open-extension.mjs"
+      ]
+    },
+    {
       "path": "extension/test/i18n-browser-mock.mjs",
       "description": "Development support: Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
       "lines": 29,
@@ -10536,15 +10556,16 @@
     {
       "path": "extension/test/inbox-filter-performance.mjs",
       "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget. Runs with an explicit 4 GB heap: the T3 fixture exceeds the 2 GB default heap of a 7 GB hosted runner.",
-      "lines": 129,
-      "bytes": 5755,
-      "sha256": "716f034044e64a7bb6130d20af2581ae9dfe33b8807d49b222ba029e8f33765a",
+      "lines": 133,
+      "bytes": 6037,
+      "sha256": "7fc4e68e30acdef586f2c2e9d82899644fba19d03281afef3dbe9b3a0c8fa247",
       "imports": [
         "extension/js/lib/session-identity-index.js",
         "extension/js/lib/types.js",
         "extension/js/ui/dom.js",
         "extension/js/ui/inbox-surface.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/hosted-runner.mjs",
         "extension/test/message-fixture.mjs",
         "extension/test/storage-authority-fixture.mjs",
         "tools/perf-seed.mjs"
@@ -10555,6 +10576,7 @@
         "extension/js/ui/dom.js",
         "extension/js/ui/inbox-surface.js",
         "extension/test/dom-fixture.mjs",
+        "extension/test/hosted-runner.mjs",
         "extension/test/message-fixture.mjs",
         "extension/test/storage-authority-fixture.mjs",
         "tools/perf-seed.mjs"
@@ -15404,14 +15426,16 @@
     {
       "path": "extension/test/theme-on-open-extension.mjs",
       "description": "Regression checks: Direct unpacked-extension equivalents of the former packaged CI checks; preserves OS-specific New Tab, context-pressure and worker coverage without building archives.",
-      "lines": 1167,
-      "bytes": 57568,
-      "sha256": "872d8d68c4f54dab451a4db8d397e08fc8fb7ccf50a4c349626280bce4e16bc3",
+      "lines": 1168,
+      "bytes": 57592,
+      "sha256": "8b9f8f74dc059e00182d889717fc22790758abcc60e39952155c9535090fe642",
       "imports": [
-        "extension/test/chrome-test-process.mjs"
+        "extension/test/chrome-test-process.mjs",
+        "extension/test/hosted-runner.mjs"
       ],
       "references": [
-        "extension/test/chrome-test-process.mjs"
+        "extension/test/chrome-test-process.mjs",
+        "extension/test/hosted-runner.mjs"
       ],
       "exports": [],
       "importedBy": [
@@ -16107,9 +16131,9 @@
     {
       "path": "test-inventory.json",
       "description": "Project guide or configuration: test inventory.",
-      "lines": 4622,
-      "bytes": 174041,
-      "sha256": "be9e045776d6a0c1b4d6b598d476421de0ca7b5702732a7c41198afe15eff784",
+      "lines": 4632,
+      "bytes": 174496,
+      "sha256": "b45dfbd6649d0cd0010060c91d2e1f0969c7546ea03a0881cfa36f0d008e89d4",
       "imports": [],
       "references": [],
       "exports": [],

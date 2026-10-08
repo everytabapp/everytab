@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from "./chrome-test-process.mjs";
+import { HOSTED_RUNNER } from "./hosted-runner.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = process.env.EVERYTAB_EXTENSION_ROOT
@@ -55,7 +56,7 @@ const maxPopupReadyMs = Number(process.env.EVERYTAB_MAX_POPUP_READY_MS ?? 0);
 // so these budgets become printed observations there. Every functional
 // assertion and the 10 s readiness bounds still fail the run; local runs
 // enforce the budgets unchanged. TESTING.md records this decision.
-const hostedRunner = process.env.EVERYTAB_HOSTED_RUNNER === "1";
+const hostedRunner = HOSTED_RUNNER;
 
 /** Fail a local timing budget, or print it as an observation on a hosted runner. */
 function checkTimingBudget(label, measuredMs, budgetMs, detail = "") {

@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { installDomFixture } from "./dom-fixture.mjs";
 import { createChromeI18nMock } from "./message-fixture.mjs";
+import { HOSTED_BUDGET_SCALE } from "./hosted-runner.mjs";
 
 const nativeClone = globalThis.structuredClone.bind(globalThis);
 const mem = {};
@@ -119,9 +120,12 @@ for (const [tier, budgetMs] of [["t2", 120], ["t3", 350]]) {
   afterSamples.sort((a, b) => a.ms - b.ms);
   const after = afterSamples[2];
   // The remaining cost is building the matching cards; the reads are gone.
-  const ok = after.inboxReads === 0 && after.ms <= budgetMs && after.ms <= before.ms * 0.6;
+  // A hosted runner enforces the documented multiple of the Mac-calibrated
+  // absolute budget; the zero-read and 0.6x-of-before checks are never scaled.
+  const enforcedMs = budgetMs * HOSTED_BUDGET_SCALE;
+  const ok = after.inboxReads === 0 && after.ms <= enforcedMs && after.ms <= before.ms * 0.6;
   if (!ok) failures += 1;
-  rows.push({ tier, beforeMs: before.ms.toFixed(1), beforeClones: before.clones, afterMs: after.ms.toFixed(1), afterInboxReads: after.inboxReads, afterClones: after.clones, budgetMs, ok });
+  rows.push({ tier, beforeMs: before.ms.toFixed(1), beforeClones: before.clones, afterMs: after.ms.toFixed(1), afterInboxReads: after.inboxReads, afterClones: after.clones, budgetMs, enforcedMs, ok });
   host.remove();
 }
 console.table(rows);

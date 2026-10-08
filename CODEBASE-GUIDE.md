@@ -2389,7 +2389,7 @@ Imported by: [extension/js/ui/command-box.js](<extension/js/ui/command-box.js>),
 
 Declared exports: `VAULT_META_KEY`, `getVaultHandle`, `getVaultStatus`, `getVaultSyncMeta`, `pickVaultFolder`, `reconnectVault`, `vaultJoinDecision`.
 
-## Tests and fixtures (315 files)
+## Tests and fixtures (316 files)
 
 ### extension/test/action-recovery-readiness.mjs
 
@@ -2443,7 +2443,7 @@ Other literal file references: [extension/manifest.json](<extension/manifest.jso
 
 [archive-render-performance.mjs](<extension/test/archive-render-performance.mjs>): Regression checks: Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Archive map plus list build at T2/T3 with lazy card fields.
 
-Uses modules: [extension/js/lib/dedup.js](<extension/js/lib/dedup.js>), [extension/js/lib/types.js](<extension/js/lib/types.js>), [extension/js/ui/tablist.js](<extension/js/ui/tablist.js>), [extension/test/dom-fixture.mjs](<extension/test/dom-fixture.mjs>), [extension/test/message-fixture.mjs](<extension/test/message-fixture.mjs>), [tools/perf-seed.mjs](<tools/perf-seed.mjs>).
+Uses modules: [extension/js/lib/dedup.js](<extension/js/lib/dedup.js>), [extension/js/lib/types.js](<extension/js/lib/types.js>), [extension/js/ui/tablist.js](<extension/js/ui/tablist.js>), [extension/test/dom-fixture.mjs](<extension/test/dom-fixture.mjs>), [extension/test/hosted-runner.mjs](<extension/test/hosted-runner.mjs>), [extension/test/message-fixture.mjs](<extension/test/message-fixture.mjs>), [tools/perf-seed.mjs](<tools/perf-seed.mjs>).
 
 ### extension/test/authority-session-read-sharing.mjs
 
@@ -2843,6 +2843,14 @@ Uses modules: [extension/js/lib/history-access.js](<extension/js/lib/history-acc
 
 Other literal file references: [extension/js/ui/dashboard.js](<extension/js/ui/dashboard.js>), [extension/js/ui/newtab.js](<extension/js/ui/newtab.js>), [extension/js/ui/popup.js](<extension/js/ui/popup.js>), [extension/js/ui/searchbox.js](<extension/js/ui/searchbox.js>), [extension/js/ui/settings-form.js](<extension/js/ui/settings-form.js>).
 
+### extension/test/hosted-runner.mjs
+
+[hosted-runner.mjs](<extension/test/hosted-runner.mjs>): Development support: Hosted CI timing facts (EVERYTAB_HOSTED_RUNNER, documented Node-compute budget multiple) shared by suites with timing budgets; no standalone assertion entry.
+
+Imported by: [extension/test/archive-render-performance.mjs](<extension/test/archive-render-performance.mjs>), [extension/test/inbox-filter-performance.mjs](<extension/test/inbox-filter-performance.mjs>), [extension/test/theme-on-open-extension.mjs](<extension/test/theme-on-open-extension.mjs>).
+
+Declared exports: `HOSTED_BUDGET_SCALE`, `HOSTED_RUNNER`.
+
 ### extension/test/i18n-browser-mock.mjs
 
 [i18n-browser-mock.mjs](<extension/test/i18n-browser-mock.mjs>): Development support: Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.
@@ -2883,7 +2891,7 @@ Uses modules: [extension/js/background/inbox-capture-message-handlers.js](<exten
 
 [inbox-filter-performance.mjs](<extension/test/inbox-filter-performance.mjs>): Regression checks: Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget. Runs with an explicit 4 GB heap: the T3 fixture exceeds the 2 GB default heap of a 7 GB hosted runner.
 
-Uses modules: [extension/js/lib/session-identity-index.js](<extension/js/lib/session-identity-index.js>), [extension/js/lib/types.js](<extension/js/lib/types.js>), [extension/js/ui/dom.js](<extension/js/ui/dom.js>), [extension/js/ui/inbox-surface.js](<extension/js/ui/inbox-surface.js>), [extension/test/dom-fixture.mjs](<extension/test/dom-fixture.mjs>), [extension/test/message-fixture.mjs](<extension/test/message-fixture.mjs>), [extension/test/storage-authority-fixture.mjs](<extension/test/storage-authority-fixture.mjs>), [tools/perf-seed.mjs](<tools/perf-seed.mjs>).
+Uses modules: [extension/js/lib/session-identity-index.js](<extension/js/lib/session-identity-index.js>), [extension/js/lib/types.js](<extension/js/lib/types.js>), [extension/js/ui/dom.js](<extension/js/ui/dom.js>), [extension/js/ui/inbox-surface.js](<extension/js/ui/inbox-surface.js>), [extension/test/dom-fixture.mjs](<extension/test/dom-fixture.mjs>), [extension/test/hosted-runner.mjs](<extension/test/hosted-runner.mjs>), [extension/test/message-fixture.mjs](<extension/test/message-fixture.mjs>), [extension/test/storage-authority-fixture.mjs](<extension/test/storage-authority-fixture.mjs>), [tools/perf-seed.mjs](<tools/perf-seed.mjs>).
 
 ### extension/test/inbox-filter-reuse.mjs
 
@@ -4265,7 +4273,7 @@ Other literal file references: [extension/manifest.json](<extension/manifest.jso
 
 [theme-on-open-extension.mjs](<extension/test/theme-on-open-extension.mjs>): Regression checks: Direct unpacked-extension equivalents of the former packaged CI checks; preserves OS-specific New Tab, context-pressure and worker coverage without building archives.
 
-Uses modules: [extension/test/chrome-test-process.mjs](<extension/test/chrome-test-process.mjs>).
+Uses modules: [extension/test/chrome-test-process.mjs](<extension/test/chrome-test-process.mjs>), [extension/test/hosted-runner.mjs](<extension/test/hosted-runner.mjs>).
 
 Imported by: [extension/test/cws-package-chrome.mjs](<extension/test/cws-package-chrome.mjs>).
 

@@ -833,6 +833,16 @@
       ]
     },
     {
+      "path": "extension/test/hosted-runner.mjs",
+      "kind": "helper",
+      "reason": "Hosted CI timing facts (EVERYTAB_HOSTED_RUNNER, documented Node-compute budget multiple) shared by suites with timing budgets; no standalone assertion entry.",
+      "owners": [
+        "extension/test/archive-render-performance.mjs",
+        "extension/test/inbox-filter-performance.mjs",
+        "extension/test/theme-on-open-extension.mjs"
+      ]
+    },
+    {
       "path": "extension/test/i18n-browser-mock.mjs",
       "kind": "helper",
       "reason": "Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
