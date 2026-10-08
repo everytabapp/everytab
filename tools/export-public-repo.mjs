@@ -28,7 +28,7 @@ export const WORKSPACE_ROOT = path.resolve(path.dirname(fileURLToPath(import.met
 export const PUBLIC_ROOT_FILES = [
   "LICENSE", "README.md", "ARCHITECTURE.md", "ENGINEERING.md", "TESTING.md", "PRODUCT.md",
   "DESIGN.md", "CONTEXT.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "TRADEMARKS.md",
-  "CODE_OF_CONDUCT.md", ".gitignore", ".nvmrc", "test-inventory.json",
+  "CODE_OF_CONDUCT.md", ".gitattributes", ".gitignore", ".nvmrc", "test-inventory.json",
   "docs/launch/open-source-license-research.md"
 ];
 /** Directories walked recursively; the denylist filters inside them. */

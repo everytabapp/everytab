@@ -24,6 +24,24 @@ try {
   const id = await detectExtension(debug);
   page = await createTarget(debug, `chrome-extension://${id}/dashboard.html`);
   await prepareSession(page);
+  // A fresh install publishes its Storage authority from the worker's install
+  // work, and the product opens its first Dashboard only afterwards. This
+  // fixture opens dashboard.html as soon as the worker target exists, so on a
+  // slow hosted runner it can read before even the initialization marker is
+  // written ("Storage authority is not initialized"). Wait for the same
+  // readiness the product relies on; a real initialization failure still throws.
+  await evaluate(page, `(async () => {
+    const { currentStorageAuthorityRecord } = await import(
+      chrome.runtime.getURL('js/lib/storage/authority-runtime.js'));
+    const deadline = performance.now() + 15000;
+    for (;;) {
+      try { await currentStorageAuthorityRecord(); return true; }
+      catch (error) {
+        if (error?.code !== 'storage-authority-not-initialized' || performance.now() > deadline) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  })()`);
   await evaluate(page, `(async () => {
     const { createDataSurface } = await import(chrome.runtime.getURL('js/ui/data-surface.js'));
     window.importStore = await import(chrome.runtime.getURL('js/lib/store.js'));

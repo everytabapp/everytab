@@ -54,7 +54,9 @@ console.log("PASS: owned Chrome teardown removes a TERM-resistant process tree")
 
 let timeoutError;
 try {
-  await runOwnedChrome(process.execPath, ["-e", stubbornTree], { timeoutMs: 50 });
+  // Long enough for a cold Node start to print its PIDs on a hosted Windows
+  // runner (50 ms left stdout empty there); the tree still never exits.
+  await runOwnedChrome(process.execPath, ["-e", stubbornTree], { timeoutMs: 3_000 });
 } catch (error) {
   timeoutError = error;
 }

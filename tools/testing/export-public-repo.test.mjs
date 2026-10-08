@@ -15,7 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
 test("allowlisted roots and files are public", () => {
   for (const file of ["LICENSE", "README.md", "CONTRIBUTING.md", "SECURITY.md", "TRADEMARKS.md", "CODE_OF_CONDUCT.md",
-    ".gitignore", ".nvmrc", "test-inventory.json", "CODEBASE-ATLAS.json", "docs/launch/open-source-license-research.md",
+    ".gitattributes", ".gitignore", ".nvmrc", "test-inventory.json", "CODEBASE-ATLAS.json", "docs/launch/open-source-license-research.md",
     "extension/manifest.json", "extension/js/background.js", "extension/test/smoke.mjs", "extension/_locales/fr/messages.json",
     "tools/test.mjs", "tools/testing/inventory.mjs", "tools/codebase/source-graph.mjs", "tools/package-cws.mjs",
     "tools/capture-store-screenshots.mjs", "tools/check-data-import.mjs", "tools/measure-native-storage.mjs",

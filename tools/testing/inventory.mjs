@@ -13,7 +13,9 @@ const EXECUTION_FIELDS = ["id", "lane", "cwd", "nodeArgs", "args", "env", "platf
 const ENTRY_FIELDS = new Set(["path", "kind", "reason", "owners", "variants", ...EXECUTION_FIELDS]);
 // Extend deliberately when a suite needs another runtime flag. Arbitrary Node
 // flags can print help or compile only, reporting success without running tests.
-const NODE_FLAGS = new Set(["--expose-gc", "--experimental-vm-modules"]);
+// --max-old-space-size=4096: the T3 Inbox filter fixture peaks above the
+// ~2 GB default heap of a 7 GB hosted runner; state the heap it needs.
+const NODE_FLAGS = new Set(["--expose-gc", "--experimental-vm-modules", "--max-old-space-size=4096"]);
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" && Boolean(value.trim()) && !value.includes("\0");
 const inventoryPath = (value) => text(value) &&

@@ -4021,6 +4021,11 @@
       "reason": "Explicit generation/capture/media/localization/performance-seeding utility; writes requested artifacts or may access external provider. Not a regression-suite entry."
     },
     {
+      "path": "tools/probe-chrome-page-target.mjs",
+      "kind": "utility",
+      "reason": "Bounded hosted-runner probe invoked by the CI workflow before the macOS browser lane: reports whether Chrome can drive a page target (pages=ready/unavailable) and diagnostic switch variants. Decides whether page-driving browser suites run; asserts nothing about EveryTab."
+    },
+    {
       "path": "tools/pseudo-locale.mjs",
       "kind": "helper",
       "reason": "Shared developer fixture/helper loaded by maintained tests or explicitly invoked tooling; no standalone assertion entry.",
@@ -4591,11 +4596,14 @@
     {
       "path": "extension/test/inbox-filter-performance.mjs",
       "kind": "suite",
-      "reason": "Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget.",
+      "reason": "Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget. Runs with an explicit 4 GB heap: the T3 fixture exceeds the 2 GB default heap of a 7 GB hosted runner.",
       "lane": "performance",
       "cwd": "extension",
       "ciPlatforms": [
         "linux"
+      ],
+      "nodeArgs": [
+        "--max-old-space-size=4096"
       ]
     },
     {

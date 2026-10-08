@@ -42,6 +42,10 @@ jobs:
         run: node tools/test.mjs --lane portable --ci
       - name: Stable performance budgets
         if: runner.os == 'Linux'
+        env:
+          # Suites that opt in print their local budget and enforce a documented
+          # hosted multiple; see TESTING.md "Hosted runners".
+          EVERYTAB_HOSTED_RUNNER: "1"
         run: node tools/test.mjs --lane performance --ci
 
   installed-chrome:
@@ -72,11 +76,27 @@ jobs:
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
         run: xvfb-run -a node tools/test.mjs --lane browser --ci
+      # Hosted macOS has started Chrome and its extension worker while page
+      # targets never answered DevTools. Probe that, bounded, before running
+      # page-driving suites, and report the lane honestly when it cannot run.
+      - name: Page-target probe (macOS)
+        id: probe
+        if: runner.os == 'macOS'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: node tools/probe-chrome-page-target.mjs
       - name: Declared browser variants (Windows and macOS)
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows' || steps.probe.outputs.pages == 'ready'
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
         run: node tools/test.mjs --lane browser --ci
+      - name: Worker bootstrap only (macOS page targets unavailable)
+        if: runner.os == 'macOS' && steps.probe.outputs.pages != 'ready'
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          echo "::warning title=macOS browser lane not executed::Chrome page targets did not answer DevTools on this runner (see the probe step). Only installed-worker-bootstrap ran; page-driving browser suites were not executed on macOS."
+          node tools/test.mjs installed-worker-bootstrap
 
   package-checks:
     name: Explicitly authorized package checks

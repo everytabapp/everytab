@@ -7,8 +7,16 @@ import { spawn, spawnSync } from "node:child_process";
  * non-interactive shells never answer, so Page.navigate (and later commands)
  * hang until the suite times out. Chrome for Testing 150 did not wait. Linux
  * and Windows ignore the switch. Fixtures never store real credentials.
+ * --blink-settings: declare the desktop fine, hover-capable pointer EveryTab
+ * targets. Headless Chrome on a hosted Linux runner detects no pointing device
+ * and matches (hover: none), which switches pointer-reveal CSS to its touch
+ * fallback. CDP media emulation cannot override hover or pointer.
+ * Values: HoverType 2 = hover, PointerType 4 = fine.
  */
-export const CHROME_FIXTURE_ARGS = Object.freeze(["--use-mock-keychain"]);
+export const CHROME_FIXTURE_ARGS = Object.freeze([
+  "--use-mock-keychain",
+  "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
+]);
 
 const owned = new Set();
 let hooksInstalled = false;

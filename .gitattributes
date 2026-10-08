@@ -1,0 +1,5 @@
+# Check out LF on every platform. Source-text guards, eval-based fixtures and
+# the codebase-guide freshness hashes read files byte for byte; a Windows
+# checkout with core.autocrlf=true (the GitHub-hosted default) would rewrite
+# them to CRLF and fail those suites. Binary files are detected automatically.
+* text=auto eol=lf

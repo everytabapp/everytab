@@ -235,8 +235,12 @@ try {
     'row highlight continuity is independent of automation');
   receipt.cases.push({ stage, frames:plain.samples.length, preHoverFrames:firstPlainHover, continuity:true });
 } catch (error) {
+  // Assertion values are opacities, booleans and frame samples from the
+  // synthetic fixture; print them (capped) so a hosted failure is diagnosable.
+  const observed = (value) => JSON.stringify(value)?.slice(0, 200) ?? String(value);
   console.error(`FAIL automation reveal at ${stage}: ${error instanceof assert.AssertionError
-    ? error.message : `fixture operation failed (${fixtureFailureDetail(operation, error)})`}`);
+    ? `${error.message} (actual=${observed(error.actual)} expected=${observed(error.expected)})`
+    : `fixture operation failed (${fixtureFailureDetail(operation, error)})`}`);
   process.exitCode = 1;
 } finally {
   try {

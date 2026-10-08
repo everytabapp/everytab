@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "78c9c8f119bd5e9f1d90fc5bc1b1069854df2aeadd5accd0d6b38688540da632",
+  "sourceHash": "d031d6d5308a60c1afc98a7b450a02a877431c25cef504ce8aef82a8e296ab70",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -69,9 +69,9 @@
     {
       "path": ".github/workflows/extension-cross-platform.yml",
       "description": "Automation configuration. CI selects checks from the shared test inventory.",
-      "lines": 100,
-      "bytes": 3186,
-      "sha256": "5566d40925cbcc82a8ab72d80f44888e40a8faf04b22f36ed6fde9dcf4f5842b",
+      "lines": 120,
+      "bytes": 4401,
+      "sha256": "c834391292aa87bba1fa2255f2be78b1dbac972491da272d821078a6d550c36f",
       "imports": [],
       "references": [],
       "exports": [],
@@ -168,9 +168,9 @@
     {
       "path": "TESTING.md",
       "description": "Project guide or configuration: TESTING.",
-      "lines": 1209,
-      "bytes": 70519,
-      "sha256": "51784237ead53248d38ec017370a18330d1d7078e32b23b7d5c2da71d29d6ba3",
+      "lines": 1228,
+      "bytes": 71919,
+      "sha256": "f1b091140fd149ec3c20b83d2afbe0a0880568dabcb317ff464874a2a8a93995",
       "imports": [],
       "references": [],
       "exports": [],
@@ -9011,9 +9011,9 @@
     {
       "path": "extension/test/archive-render-performance.mjs",
       "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock and/or heap budget; run in controlled Linux performance lane. Archive map plus list build at T2/T3 with lazy card fields.",
-      "lines": 78,
-      "bytes": 3146,
-      "sha256": "6cbecdd2e988c52e323e104d2a4858e76463855d102ac9653d92fbbb9bb49607",
+      "lines": 86,
+      "bytes": 3700,
+      "sha256": "7dee7ee8bb77203a4719fca3571bf14355662b9ada6c419aac032e1f4f0b8346",
       "imports": [
         "extension/js/lib/dedup.js",
         "extension/js/lib/types.js",
@@ -9292,9 +9292,9 @@
     {
       "path": "extension/test/chrome-test-process.mjs",
       "description": "Development support: Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
-      "lines": 184,
-      "bytes": 6486,
-      "sha256": "d07449c70386e6d2016d3b8e6a5022ce337c28cd622ba6a15f60a1fa8d4bfb2d",
+      "lines": 192,
+      "bytes": 6954,
+      "sha256": "bc6a960cd833b3f5fca17f59f4af71fffbb570e887d98796d8dfeb82bf0e08a0",
       "imports": [],
       "references": [],
       "exports": [
@@ -9355,15 +9355,16 @@
         "tools/measure-inbox-property.mjs",
         "tools/measure-installed-inbox.mjs",
         "tools/measure-native-storage.mjs",
+        "tools/probe-chrome-page-target.mjs",
         "tools/security-favicon-browser.mjs"
       ]
     },
     {
       "path": "extension/test/chrome-test-process.test.mjs",
       "description": "Regression checks: Standalone Node assertions against production modules, synthetic adapters and/or source contracts; no installed browser or release artifact required.",
-      "lines": 98,
-      "bytes": 3664,
-      "sha256": "a848d999794d3b88d1f924342344babcf040efb838346ae2b26fa95f583ef314",
+      "lines": 100,
+      "bytes": 3817,
+      "sha256": "2a789cb1bb6312f21723bbdc229501f30997052ac25fc0795f57983607f054e6",
       "imports": [
         "extension/test/chrome-test-process.mjs"
       ],
@@ -10534,7 +10535,7 @@
     },
     {
       "path": "extension/test/inbox-filter-performance.mjs",
-      "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget.",
+      "description": "Regression checks: Synthetic production-module performance regression with measured wall-clock budget; run in controlled Linux performance lane. An Inbox filter keystroke at T2/T3 must perform zero Inbox storage reads and stay within budget. Runs with an explicit 4 GB heap: the T3 fixture exceeds the 2 GB default heap of a 7 GB hosted runner.",
       "lines": 129,
       "bytes": 5755,
       "sha256": "716f034044e64a7bb6130d20af2581ae9dfe33b8807d49b222ba029e8f33765a",
@@ -16106,9 +16107,9 @@
     {
       "path": "test-inventory.json",
       "description": "Project guide or configuration: test inventory.",
-      "lines": 4614,
-      "bytes": 173493,
-      "sha256": "c81ce459da2e62e9ad734eb5f9d62661b9df0f6d59f91c4c4ffe150416be28ab",
+      "lines": 4622,
+      "bytes": 174041,
+      "sha256": "be9e045776d6a0c1b4d6b598d476421de0ca7b5702732a7c41198afe15eff784",
       "imports": [],
       "references": [],
       "exports": [],
@@ -16228,9 +16229,9 @@
     {
       "path": "tools/check-automation-reveal.mjs",
       "description": "Regression checks: Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
-      "lines": 253,
-      "bytes": 15379,
-      "sha256": "8ff902bce5e5ff60e6c7b7a57e354e3db95e06c0556e8d5eefbd557c1afaea69",
+      "lines": 257,
+      "bytes": 15698,
+      "sha256": "17dff4163a7490e4d615a86b08b99b9283687a4c032f9831bf73e4189b7807bd",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs",
@@ -16262,9 +16263,9 @@
     {
       "path": "tools/check-data-import.mjs",
       "description": "Regression checks: Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time.",
-      "lines": 75,
-      "bytes": 4435,
-      "sha256": "4f1b2b5a345f5e2ae2932bc82f59dd12fe31a32db7692deaaf5059c354fd3389",
+      "lines": 93,
+      "bytes": 5418,
+      "sha256": "e6dd2a2a9e0392ac20521270520336842a1275e702ff4312fd32023f7ec4b55e",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"
@@ -16894,8 +16895,8 @@
       "path": "tools/export-public-repo.mjs",
       "description": "Development support: One-way curated public source export with explicit allow/deny lists, inventory filtering, regenerated learning files and a sensitive-content guard; never writes inside the workspace.",
       "lines": 248,
-      "bytes": 13508,
-      "sha256": "4b7ba6e18957f58d52a5ff78cdca63dab2e2f25f0dec0fd6215fe338df4c61f3",
+      "bytes": 13526,
+      "sha256": "3a6d30593d2359394cd467ce795bcbaca42a8c582735fa85fdd033aeb80ed267",
       "imports": [
         "tools/build-codebase-guide.mjs"
       ],
@@ -17078,6 +17079,24 @@
         "extension/test/search-presentation-refresh-performance.mjs",
         "extension/test/tab-event-refresh-performance.mjs"
       ]
+    },
+    {
+      "path": "tools/probe-chrome-page-target.mjs",
+      "description": "Development support: Bounded hosted-runner probe invoked by the CI workflow before the macOS browser lane: reports whether Chrome can drive a page target (pages=ready/unavailable) and diagnostic switch variants. Decides whether page-driving browser suites run; asserts nothing about EveryTab.",
+      "lines": 146,
+      "bytes": 6761,
+      "sha256": "6f9937ea778578b4b1fa8db45156a9896388d4409100ba98cb9790e199d16e98",
+      "imports": [
+        "extension/test/chrome-test-process.mjs"
+      ],
+      "references": [
+        "extension/test/chrome-test-process.mjs"
+      ],
+      "exports": [
+        "CANDIDATES",
+        "main"
+      ],
+      "importedBy": []
     },
     {
       "path": "tools/pseudo-locale.mjs",
@@ -17347,8 +17366,8 @@
       "path": "tools/testing/export-public-repo.test.mjs",
       "description": "Regression checks: Allow/deny decisions, sensitive-content guard, inventory filtering and a read-only plan of the current tree for the public exporter.",
       "lines": 127,
-      "bytes": 8356,
-      "sha256": "1d2bd92efcb2a02bea103216a4ab2381b59b427747ade6031c74c12cd3aae1c7",
+      "bytes": 8374,
+      "sha256": "d3bced69d7f402756640f9c590b7ade73d95c85f586cd45359a8bea0fefe19d8",
       "imports": [
         "tools/export-public-repo.mjs"
       ],
@@ -17740,9 +17759,9 @@
     {
       "path": "tools/testing/inventory.mjs",
       "description": "Development support: Shared manifest validation, platform selection and shell-free invocation planning.",
-      "lines": 209,
-      "bytes": 11246,
-      "sha256": "8e9dbbc45d6f2e6e6b5cbb8629df1d07ff304aef4520522495471d99d7738b98",
+      "lines": 211,
+      "bytes": 11421,
+      "sha256": "727754df220d72db7b55d893dfc80a2dd660a88ed42bbb929a2da66e1936ac88",
       "imports": [],
       "references": [],
       "exports": [
