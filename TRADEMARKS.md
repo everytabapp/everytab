@@ -38,8 +38,7 @@ can be built and tested.
 ## Official releases
 
 The official EveryTab release is the one published by the maintainers on the
-Chrome Web Store: https://chromewebstore.google.com/ (listing link to be
-updated at launch). Source for each release is tagged in this repository with
+Chrome Web Store: https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh. Source for each release is tagged in this repository with
 its version number.
 
 ## Questions

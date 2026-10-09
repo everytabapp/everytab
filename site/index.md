@@ -26,8 +26,11 @@ server, analytics, advertising, or telemetry.
 
 ## Install
 
-EveryTab 1.0 is coming to the Chrome Web Store. The install link will appear
-here at launch.
+Install EveryTab for free from the Chrome Web Store:
+[https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh](https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh)
+
+EveryTab is available in English and French. The source code is published
+under the MPL-2.0 license.
 
 ## Privacy
 

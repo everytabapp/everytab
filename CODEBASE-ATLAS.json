@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "1525a502144379862d067f41a681bc4bc2c07aaf7432ae5f87849a17d7b09aff",
+  "sourceHash": "307a558f72c4b83464bd786e780b6e89ea673c899025c05aea55755b14ffd5d5",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -157,9 +157,9 @@
     {
       "path": "README.md",
       "description": "Project guide or configuration: README.",
-      "lines": 77,
-      "bytes": 3623,
-      "sha256": "5abac0430996fa646c7430c8206bcab5ee35f490b58a396737e79280fe5e84eb",
+      "lines": 76,
+      "bytes": 3638,
+      "sha256": "69ed4a3c428c857814a73c234c2802a454043458b0877d6842a36b65bab5d23a",
       "imports": [],
       "references": [],
       "exports": [],
