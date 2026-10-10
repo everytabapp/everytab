@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "c9947ee32ba82b6ea697baa92d152508f11fe1bc02f48e3d2afe8e6476c28609",
+  "sourceHash": "d80c5b1082920c532676cfb2c93914ba73221bddb0d74746fa313af18c71f919",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -9295,14 +9295,15 @@
     {
       "path": "extension/test/chrome-test-process.mjs",
       "description": "Development support: Shared synthetic browser/storage/DOM/case or owned-process helper; consumers execute its exported functions.",
-      "lines": 192,
-      "bytes": 6954,
-      "sha256": "bc6a960cd833b3f5fca17f59f4af71fffbb570e887d98796d8dfeb82bf0e08a0",
+      "lines": 212,
+      "bytes": 7895,
+      "sha256": "fea0b395cce0da83c8b715531c0796f48ac2ce46b25e50976bb6aa174b41403c",
       "imports": [],
       "references": [],
       "exports": [
         "CHROME_FIXTURE_ARGS",
         "hasDomTestReceipt",
+        "removeOwnedProfile",
         "runOwnedChrome",
         "spawnOwnedChrome",
         "terminateOwnedChrome"
@@ -16269,9 +16270,9 @@
     {
       "path": "tools/check-automation-reveal.mjs",
       "description": "Regression checks: Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
-      "lines": 257,
-      "bytes": 15765,
-      "sha256": "df79e3fc689657c927b25ff4e651d7b8310d4f5d197c098ee8e6585d73d60b6f",
+      "lines": 259,
+      "bytes": 15893,
+      "sha256": "3beb16e15de3a0f00cb5a9c67844266a7cbc36cbbbe0042538cf5020c0a786e9",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs",
@@ -16303,9 +16304,9 @@
     {
       "path": "tools/check-data-import.mjs",
       "description": "Regression checks: Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time.",
-      "lines": 100,
-      "bytes": 5655,
-      "sha256": "804422bcafe315d36af7076917823582b99f3504238f3b2429c7ff67e6058e93",
+      "lines": 93,
+      "bytes": 5420,
+      "sha256": "94630ac263943719d8e0a2f45e32b21151bd931ec269534b465fd60f6deac0d1",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"

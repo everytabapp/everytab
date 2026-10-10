@@ -122,6 +122,26 @@ export async function terminateOwnedChrome(child, { graceMs = 1_500, forceMs = 1
   child.unref();
 }
 
+/**
+ * Remove a disposable Chrome profile after its owned browser tree has stopped.
+ * Chrome on Windows can leave a short-lived child holding a profile file
+ * (LocalStorage) after the browser exits. Retry there, and if the lock
+ * outlives the retries, warn instead of failing: the hosted runner discards
+ * its temp directory, and the product checks have already finished. Any other
+ * error, or any error on another platform, still fails.
+ * @param {string} profile
+ */
+export async function removeOwnedProfile(profile) {
+  const { rm } = await import("node:fs/promises");
+  const windows = process.platform === "win32";
+  try {
+    await rm(profile, { recursive: true, force: true, maxRetries: windows ? 8 : 0, retryDelay: 250 });
+  } catch (error) {
+    if (!windows || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error?.code)) throw error;
+    console.warn(`EveryTab: temporary Chrome profile cleanup deferred (${error.code})`);
+  }
+}
+
 /** Run a short Chrome fixture and capture output without leaking its process tree on timeout. */
 export async function runOwnedChrome(command, args, {
   timeoutMs,

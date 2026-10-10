@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { cleanupInboxMeasurement } from './testing/inbox-measurement-cleanup.mjs';
-import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
+import { CHROME_FIXTURE_ARGS, removeOwnedProfile, spawnOwnedChrome, terminateOwnedChrome } from '../extension/test/chrome-test-process.mjs';
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget,
   CdpClient, evaluate, prepareSession } from './capture-store-screenshots.mjs';
 
@@ -245,11 +245,13 @@ try {
 } finally {
   try {
     await cleanupInboxMeasurement({ sessions:[page, manager].filter(Boolean), client, browser, profile }, {
-      terminateOwnedChrome, removeProfile: profile => rm(profile, { recursive:true, force:true, maxRetries: process.platform === 'win32' ? 8 : 0, retryDelay: 250 })
+      terminateOwnedChrome, removeProfile: removeOwnedProfile
     });
     receipt.cleanup = { browser:true, profile:true };
-  } catch {
-    console.error('FAIL automation reveal cleanup');
+  } catch (error) {
+    // Name the failing step's error classes only; never forward raw messages.
+    const causes = (error?.errors ?? [error]).map((cause) => cause?.code ?? cause?.name ?? 'error');
+    console.error(`FAIL automation reveal cleanup (${causes.join(', ')})`);
     process.exitCode = 1;
   }
 }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { CHROME_FIXTURE_ARGS, spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
+import { CHROME_FIXTURE_ARGS, removeOwnedProfile, spawnOwnedChrome, terminateOwnedChrome } from "../extension/test/chrome-test-process.mjs";
 import { chromeBin, extensionRoot, debuggingUrl, detectExtension, createTarget,
   evaluate, prepareSession, waitFor } from "./capture-store-screenshots.mjs";
 
@@ -89,12 +89,5 @@ try {
 } finally {
   page?.client.close();
   await terminateOwnedChrome(chrome);
-  // Windows can keep a just-closed Chrome profile file locked for a moment
-  // (EBUSY); retry the cleanup there, as theme-on-open-extension.mjs does.
-  await rm(profile, {
-    recursive: true,
-    force: true,
-    maxRetries: process.platform === "win32" ? 8 : 0,
-    retryDelay: 250
-  });
+  await removeOwnedProfile(profile);
 }
