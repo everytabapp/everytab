@@ -29,8 +29,10 @@ server, analytics, advertising, or telemetry.
 Install EveryTab for free from the Chrome Web Store:
 [https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh](https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh)
 
+Watch the 85-second tour: [https://www.youtube.com/watch?v=2DMks7AOpPQ](https://www.youtube.com/watch?v=2DMks7AOpPQ)
+
 EveryTab is available in English and French. The source code is published
-under the MPL-2.0 license.
+under the MPL-2.0 license at [https://github.com/everytabapp/everytab](https://github.com/everytabapp/everytab).
 
 ## Privacy
 

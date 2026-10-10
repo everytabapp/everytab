@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "307a558f72c4b83464bd786e780b6e89ea673c899025c05aea55755b14ffd5d5",
+  "sourceHash": "c9947ee32ba82b6ea697baa92d152508f11fe1bc02f48e3d2afe8e6476c28609",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -157,9 +157,9 @@
     {
       "path": "README.md",
       "description": "Project guide or configuration: README.",
-      "lines": 76,
-      "bytes": 3638,
-      "sha256": "69ed4a3c428c857814a73c234c2802a454043458b0877d6842a36b65bab5d23a",
+      "lines": 77,
+      "bytes": 3713,
+      "sha256": "0b6040844f8c77d21fcd5f357bf1dcefc68427b15c92f5cd8192f1d99059851f",
       "imports": [],
       "references": [],
       "exports": [],
@@ -16270,8 +16270,8 @@
       "path": "tools/check-automation-reveal.mjs",
       "description": "Regression checks: Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
       "lines": 257,
-      "bytes": 15698,
-      "sha256": "17dff4163a7490e4d615a86b08b99b9283687a4c032f9831bf73e4189b7807bd",
+      "bytes": 15765,
+      "sha256": "df79e3fc689657c927b25ff4e651d7b8310d4f5d197c098ee8e6585d73d60b6f",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs",
@@ -16303,9 +16303,9 @@
     {
       "path": "tools/check-data-import.mjs",
       "description": "Regression checks: Real Chrome synthetic fixture with disposable profile; explicit browser lane. Existing local capture prerequisites/outputs require inspection before CI promotion. Shared capture helper discovers Chrome at import time.",
-      "lines": 93,
-      "bytes": 5418,
-      "sha256": "e6dd2a2a9e0392ac20521270520336842a1275e702ff4312fd32023f7ec4b55e",
+      "lines": 100,
+      "bytes": 5655,
+      "sha256": "804422bcafe315d36af7076917823582b99f3504238f3b2429c7ff67e6058e93",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs"

@@ -9,6 +9,7 @@ server, analytics or telemetry; your data stays on your device.
 ## Install
 
 - **Chrome Web Store**: https://chromewebstore.google.com/detail/everytab/blepbfaplpkknpbjbdnacjkjcjeliafh (the official release).
+- **Video tour** (85 seconds): https://www.youtube.com/watch?v=2DMks7AOpPQ
 - **From source** (any version in this repository):
   1. Open `chrome://extensions` and enable Developer mode.
   2. Choose **Load unpacked** and select the `extension/` directory.

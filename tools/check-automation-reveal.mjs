@@ -245,7 +245,7 @@ try {
 } finally {
   try {
     await cleanupInboxMeasurement({ sessions:[page, manager].filter(Boolean), client, browser, profile }, {
-      terminateOwnedChrome, removeProfile: profile => rm(profile, { recursive:true, force:true })
+      terminateOwnedChrome, removeProfile: profile => rm(profile, { recursive:true, force:true, maxRetries: process.platform === 'win32' ? 8 : 0, retryDelay: 250 })
     });
     receipt.cleanup = { browser:true, profile:true };
   } catch {

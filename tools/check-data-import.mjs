@@ -89,5 +89,12 @@ try {
 } finally {
   page?.client.close();
   await terminateOwnedChrome(chrome);
-  await rm(profile, { recursive: true, force: true });
+  // Windows can keep a just-closed Chrome profile file locked for a moment
+  // (EBUSY); retry the cleanup there, as theme-on-open-extension.mjs does.
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === "win32" ? 8 : 0,
+    retryDelay: 250
+  });
 }
