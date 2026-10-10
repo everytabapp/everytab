@@ -54,6 +54,13 @@ try {
   manager = await createTarget(debug, 'chrome://extensions');
   await prepareSession(manager);
   operation = 'developer-mode';
+  // On slower hosts (Windows CI) chrome://extensions can still be loading when
+  // the session is ready, before its private API is attached. Wait for it.
+  for (let attempt = 0; ; attempt += 1) {
+    if (await evaluate(manager, "typeof chrome?.developerPrivate?.updateProfileConfiguration === 'function'")) break;
+    if (attempt >= 100) throw new Error('chrome://extensions developer API did not become available');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   await evaluate(manager, 'chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true })');
   operation = 'load-unpacked';
   await client.send('Extensions.loadUnpacked', { path: extensionRoot });

@@ -31,7 +31,7 @@
     "exclusions": "Symlinks, hidden/dependency files, arbitrary root files, archive, evidence, packages, personal data and other unlisted trees.",
     "graph": "Literal source relationships, not a call graph or test coverage. Computed imports, template bodies, messages, browser events and injected calls are not expanded."
   },
-  "sourceHash": "d80c5b1082920c532676cfb2c93914ba73221bddb0d74746fa313af18c71f919",
+  "sourceHash": "3ffa27b2ebcfa7c391dbc5a112ef0a2834dec347fe28592af9921ef524de18c5",
   "entries": [
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -16270,9 +16270,9 @@
     {
       "path": "tools/check-automation-reveal.mjs",
       "description": "Regression checks: Native production automation controller/CSS regression for remount during pointer fade, plus row/Inbox, stationary pointer, keyboard and reduced motion controls; disposable Chrome profile.",
-      "lines": 259,
-      "bytes": 15893,
-      "sha256": "3beb16e15de3a0f00cb5a9c67844266a7cbc36cbbbe0042538cf5020c0a786e9",
+      "lines": 266,
+      "bytes": 16378,
+      "sha256": "35b1c7836851cbbe8370ba19cc409f609b8c7c67be72683a098e8d3747c5aa43",
       "imports": [
         "extension/test/chrome-test-process.mjs",
         "tools/capture-store-screenshots.mjs",
